@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -94,5 +95,42 @@ export class AuthService {
       credentialId: credential.id,
       role: credential.role as 'admin' | 'manager' | 'staff',
     };
+  }
+
+  async resetPasswordWithBootstrapToken(
+    tokenHeader: string | undefined,
+    email: string,
+    newPassword: string,
+  ) {
+    const token = process.env.ADMIN_BOOTSTRAP_TOKEN ?? '';
+    if (!token || tokenHeader !== token) {
+      throw new ForbiddenException('부트스트랩 토큰 불일치');
+    }
+
+    const cred = await this.accountCredentialRepository.findOne({
+      where: { email },
+    });
+    if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+    const hashed = await this.bcrypt.hash(newPassword);
+    await this.accountCredentialRepository.update(cred.id, {
+      password: hashed,
+    });
+
+    return { credentialId: String(cred.id) };
+  }
+
+  async forceResetPasswordByAdmin(email: string, newPassword: string) {
+    const cred = await this.accountCredentialRepository.findOne({
+      where: { email },
+    });
+    if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+    const hashed = await this.bcrypt.hash(newPassword);
+    await this.accountCredentialRepository.update(cred.id, {
+      password: hashed,
+    });
+
+    return { credentialId: String(cred.id) };
   }
 }

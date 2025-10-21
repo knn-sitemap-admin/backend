@@ -1,7 +1,15 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SigninDto } from './dto/signin.dto';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
+import { AdminResetDto } from './dto/admin-reset.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -62,5 +70,29 @@ export class AuthController {
       message: 'me',
       data: req.session?.user ?? null,
     };
+  }
+
+  @Post('admin/reset-password-with-token')
+  async resetWithBootstrapToken(@Body() dto: AdminResetDto, @Req() req: any) {
+    const token = req.headers['x-bootstrap-token'] as string | undefined;
+    const data = await this.service.resetPasswordWithBootstrapToken(
+      token,
+      dto.email,
+      dto.newPassword,
+    );
+    return { message: '비밀번호 재설정 완료(관리자)', data };
+  }
+
+  @Post('admin/force-reset-password')
+  async forceResetByAdmin(@Body() dto: AdminResetDto, @Req() req: any) {
+    const me = req.session?.user;
+    if (!me || me.role !== 'admin') {
+      throw new ForbiddenException('관리자만 실행할 수 있습니다.');
+    }
+    const data = await this.service.forceResetPasswordByAdmin(
+      dto.email,
+      dto.newPassword,
+    );
+    return { message: '비밀번호 재설정 완료', data };
   }
 }
