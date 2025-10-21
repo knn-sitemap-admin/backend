@@ -1,4 +1,4 @@
-import { IsInt, Min, Matches } from 'class-validator';
+import { IsInt, Min, Matches, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateSurveyReservationDto {
@@ -12,4 +12,10 @@ export class CreateSurveyReservationDto {
     message: 'reservedDate must be YYYY-MM-DD',
   })
   reservedDate!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  insertAt?: number;
 }

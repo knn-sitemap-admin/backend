@@ -32,6 +32,10 @@ export class SurveyReservation {
   @Column({ type: 'date', name: 'reserved_date' })
   reservedDate!: string;
 
+  @Index()
+  @Column({ type: 'int', name: 'sort_order', default: 0 })
+  sortOrder!: number;
+
   // 생성 시각
   @CreateDateColumn({ type: 'datetime', name: 'created_at' })
   createdAt!: Date;

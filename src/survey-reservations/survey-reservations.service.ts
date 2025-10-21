@@ -8,6 +8,7 @@ import { PinDraft } from './entities/pin-draft.entity';
 import { DataSource } from 'typeorm';
 import { SurveyReservation } from './entities/survey-reservation.entity';
 import { CreateSurveyReservationDto } from './dto/create-survey-reservation.dto';
+import { ReorderSurveyReservationsDto } from './dto/reorder-survey-reservations.dto';
 
 @Injectable()
 export class SurveyReservationsService {
@@ -51,14 +52,14 @@ export class SurveyReservationsService {
     return this.dataSource.transaction(async (m) => {
       const myAccountId = await this.resolveMyAccountId(meCredentialId);
 
-      // 1) 활성 draft 확인
+      // 활성 draft 확인
       const draft = await m.getRepository(PinDraft).findOne({
-        where: { id: String(dto.pinDraftId) as any, isActive: true as any },
+        where: { id: String(dto.pinDraftId), isActive: true },
       });
       if (!draft)
         throw new NotFoundException('활성 임시핀을 찾을 수 없습니다.');
 
-      // 2) 중복 예약 방지
+      // 중복 예약 방지(해당 draft에 이미 예약 있으면 불가)
       const dup = await m
         .getRepository(SurveyReservation)
         .createQueryBuilder('r')
@@ -67,72 +68,82 @@ export class SurveyReservationsService {
         .getExists();
       if (dup) throw new BadRequestException('이미 등록된 예약이 있습니다.');
 
-      const insert = await m.getRepository(SurveyReservation).insert({
-        pinDraft: { id: String(dto.pinDraftId) } as any,
-        assignee: { id: myAccountId } as any,
+      const surveyReservationRepo = m.getRepository(SurveyReservation);
+
+      // 약들 잠금 후 정렬 계산
+      const current = await surveyReservationRepo
+        .createQueryBuilder('r')
+        .setLock('pessimistic_write')
+        .where('r.assignee_id = :aid', { aid: myAccountId })
+        .andWhere('r.is_deleted = 0')
+        .orderBy('r.sort_order', 'ASC')
+        .addOrderBy('r.id', 'ASC')
+        .getMany();
+
+      let sortOrder: number;
+
+      if (typeof dto.insertAt === 'number') {
+        // 3-1) 특정 위치에 삽입: insertAt 이상의 것들 +1 밀기
+        const insertAt = Math.max(0, Math.min(dto.insertAt, current.length));
+        // 밀기
+        if (insertAt < current.length) {
+          await surveyReservationRepo
+            .createQueryBuilder()
+            .update()
+            .set({ sortOrder: () => 'sort_order + 1' })
+            .where('assignee_id = :aid', { aid: myAccountId })
+            .andWhere('is_deleted = 0')
+            .andWhere('sort_order >= :insertAt', { insertAt })
+            .execute();
+        }
+        sortOrder = insertAt;
+      } else {
+        const maxOrder = current.length
+          ? current[current.length - 1].sortOrder
+          : -1;
+        sortOrder = maxOrder + 1;
+      }
+
+      // insert
+      const insert = await surveyReservationRepo.insert({
+        pinDraft: { id: String(dto.pinDraftId) },
+        assignee: { id: myAccountId },
         reservedDate: dto.reservedDate,
+        sortOrder,
         isDeleted: false,
       });
 
       const id = insert.identifiers?.[0]?.id ?? null;
-      return { id: String(id) };
+      return { id: String(id), sortOrder };
     });
   }
 
   // 내 답사예정
+  // survey-reservations.service.ts
   async listScheduled(meCredentialId: string) {
     const myAccountId = await this.resolveMyAccountId(meCredentialId);
 
-    const qb = this.dataSource
-      .getRepository(PinDraft)
-      .createQueryBuilder('d')
-      .addSelect((sq) => {
-        return sq
-          .select(
-            'DATE_FORMAT(MIN(r.reserved_date), "%Y-%m-%d")',
-            'minReservedDate',
-          )
-          .from(SurveyReservation, 'r')
-          .where('r.pin_draft_id = d.id')
-          .andWhere('r.is_deleted = 0')
-          .andWhere('r.assignee_id = :me', { me: myAccountId });
-      }, 'minReservedDate')
-      .addSelect((sq) => {
-        return sq
-          .select('r2.id', 'minReservationId')
-          .from(SurveyReservation, 'r2')
-          .where('r2.pin_draft_id = d.id')
-          .andWhere('r2.is_deleted = 0')
-          .andWhere('r2.assignee_id = :me', { me: myAccountId })
-          .orderBy('r2.reserved_date', 'ASC')
-          .addOrderBy('r2.id', 'ASC')
-          .limit(1);
-      }, 'minReservationId')
-      .where('d.isActive = 1')
-      .andWhere(
-        `EXISTS (
-        SELECT 1 FROM survey_reservations r
-        WHERE r.pin_draft_id = d.id
-          AND r.is_deleted = 0
-          AND r.assignee_id = :me
-      )`,
-        { me: myAccountId },
-      )
-      .orderBy('minReservedDate IS NULL', 'ASC')
-      .addOrderBy('minReservedDate', 'ASC')
-      .addOrderBy('d.createdAt', 'DESC');
+    const rows = await this.dataSource
+      .getRepository(SurveyReservation)
+      .createQueryBuilder('r')
+      .innerJoinAndSelect('r.pinDraft', 'd')
+      .where('r.assignee_id = :me', { me: myAccountId })
+      .andWhere('r.is_deleted = 0')
+      .orderBy('r.sort_order', 'ASC') // ← 사용자별 순서 1순위
+      .addOrderBy('r.reserved_date', 'ASC') // ← 보조
+      .addOrderBy('r.id', 'ASC') // ← 보조
+      .getMany();
 
-    const { entities, raw } = await qb.getRawAndEntities();
-
-    return entities.map((e, i) => ({
-      id: raw[i]?.minReservationId ? String(raw[i].minReservationId) : null, // 예약 PK
-      pin_draft_id: Number(e.id),
-      lat: Number(e.lat),
-      lng: Number(e.lng),
-      addressLine: e.addressLine,
-      reservedDate: raw[i]?.minReservedDate ?? null,
-      isActive: e.isActive,
-      createdAt: e.createdAt,
+    return rows.map((r) => ({
+      id: Number(r.id),
+      pin_draft_id: Number(r.pinDraft.id),
+      lat: Number(r.pinDraft.lat),
+      lng: Number(r.pinDraft.lng),
+      addressLine: r.pinDraft.addressLine,
+      reservedDate: r.reservedDate, // 'YYYY-MM-DD'
+      sortOrder: r.sortOrder,
+      isActive: r.pinDraft.isActive,
+      createdAt: r.pinDraft.createdAt,
     }));
   }
 
@@ -143,18 +154,21 @@ export class SurveyReservationsService {
 
       const found = await surveyReservationRepo
         .createQueryBuilder('r')
+        .setLock('pessimistic_write')
         .select([
           'r.id AS id',
-          'r.pin_draft_id AS pinDraftId', //피드백 반영
           'r.assignee_id AS assigneeId',
           'r.is_deleted AS isDeleted',
+          'r.sort_order AS sortOrder',
+          'r.pin_draft_id AS pinDraftId',
         ])
         .where('r.id = :id', { id })
         .getRawOne<{
           id: string;
-          pinDraftId: string;
           assigneeId: string;
           isDeleted: number;
+          sortOrder: number;
+          pinDraftId: string;
         }>();
 
       if (!found) throw new NotFoundException('예약을 찾을 수 없습니다.');
@@ -176,11 +190,84 @@ export class SurveyReservationsService {
         .where('id = :id', { id })
         .execute();
 
+      await surveyReservationRepo
+        .createQueryBuilder()
+        .update()
+        .set({ sortOrder: () => 'sort_order - 1' })
+        .where('assignee_id = :aid', { aid: myAccountId })
+        .andWhere('is_deleted = 0')
+        .andWhere('sort_order > :deletedOrder', {
+          deletedOrder: found.sortOrder,
+        })
+        .execute();
+
       return {
         reservationId: id,
         pin_draft_id: Number(found.pinDraftId),
         alreadyCanceled: false,
       };
+    });
+  }
+
+  async reorder(meCredentialId: string, dto: ReorderSurveyReservationsDto) {
+    return this.dataSource.transaction(async (m) => {
+      const myAccountId = await this.resolveMyAccountId(meCredentialId);
+      const surveyReservationRepo = m.getRepository(SurveyReservation);
+
+      const current = await surveyReservationRepo
+        .createQueryBuilder('r')
+        .setLock('pessimistic_write')
+        .where('r.assignee_id = :aid', { aid: myAccountId })
+        .andWhere('r.is_deleted = 0')
+        .orderBy('r.sort_order', 'ASC')
+        .addOrderBy('r.id', 'ASC')
+        .getMany();
+
+      const currentIds = new Set(current.map((r) => Number(r.id)));
+      for (const it of dto.items) {
+        if (!currentIds.has(it.reservationId)) {
+          throw new BadRequestException(
+            '내 활성 예약 목록에 없는 항목이 포함되어 있습니다.',
+          );
+        }
+        if (it.sortOrder < 0) {
+          throw new BadRequestException('sortOrder는 0 이상이어야 합니다.');
+        }
+      }
+
+      const providedIds = new Set(dto.items.map((it) => it.reservationId));
+      const missing = current.filter((r) => !providedIds.has(Number(r.id)));
+      let normalized: Array<{ id: number; sortOrder: number }> = [
+        ...dto.items.map((it) => ({
+          id: it.reservationId,
+          sortOrder: it.sortOrder,
+        })),
+        ...missing.map((r, i) => ({
+          id: Number(r.id),
+          sortOrder: dto.items.length + i,
+        })),
+      ];
+
+      normalized = normalized
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((x, i) => ({ id: x.id, sortOrder: i }));
+
+      if (normalized.length) {
+        const ids = normalized.map((x) => x.id);
+        const caseSql = normalized
+          .map((x) => `WHEN id = ${x.id} THEN ${x.sortOrder}`)
+          .join(' ');
+        await surveyReservationRepo
+          .createQueryBuilder()
+          .update()
+          .set({ sortOrder: () => `CASE ${caseSql} ELSE sort_order END` })
+          .where('assignee_id = :aid', { aid: myAccountId })
+          .andWhere('is_deleted = 0')
+          .andWhere('id IN (:...ids)', { ids })
+          .execute();
+      }
+
+      return { count: normalized.length };
     });
   }
 }

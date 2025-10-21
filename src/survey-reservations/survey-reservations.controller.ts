@@ -5,11 +5,13 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Req,
 } from '@nestjs/common';
 import { SurveyReservationsService } from './survey-reservations.service';
 import { CreateSurveyReservationDto } from './dto/create-survey-reservation.dto';
+import { ReorderSurveyReservationsDto } from './dto/reorder-survey-reservations.dto';
 
 @Controller('survey-reservations')
 export class SurveyReservationsController {
@@ -42,5 +44,12 @@ export class SurveyReservationsController {
     const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
     const data = await this.surveyReservationsService.cancel(id, me);
     return { message: '예약 취소됨', data };
+  }
+
+  @Patch('reorder')
+  async reorder(@Body() dto: ReorderSurveyReservationsDto, @Req() req: any) {
+    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+    const data = await this.surveyReservationsService.reorder(me, dto);
+    return { message: '예약 순서가 변경되었습니다.', data };
   }
 }

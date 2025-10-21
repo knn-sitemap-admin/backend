@@ -13,7 +13,7 @@ export class PinDraft {
 
   @Index()
   @Column({ type: 'decimal', precision: 9, scale: 6 })
-  lat!: string; // DECIMAL → string 매핑됨
+  lat!: string;
 
   @Index()
   @Column({ type: 'decimal', precision: 9, scale: 6 })

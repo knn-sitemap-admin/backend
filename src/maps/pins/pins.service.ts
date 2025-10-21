@@ -103,6 +103,7 @@ export class PinsService {
         'p.lat AS lat',
         'p.lng AS lng',
         'p.badge AS badge',
+        'p.title AS title',
       ])
       .orderBy('p.id', 'DESC')
       .getRawMany<{
@@ -110,6 +111,7 @@ export class PinsService {
         lat: string;
         lng: string;
         badge: string | null;
+        title: string | null;
       }>();
 
     const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
@@ -133,10 +135,10 @@ export class PinsService {
 
       const resvRows = await resvRepo
         .createQueryBuilder('r')
-        .select(['r.pinDraft AS pinDraftId'])
-        .where('r.pinDraft IN (:...ids)', { ids: draftIds })
-        .andWhere('r.isDeleted = 0')
-        .groupBy('r.pinDraft')
+        .select('r.pin_draft_id', 'pinDraftId')
+        .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
+        .andWhere('r.is_deleted = 0')
+        .groupBy('r.pin_draft_id')
         .getRawMany<{ pinDraftId: string }>();
 
       const hasResv = new Set(resvRows.map((r) => String(r.pinDraftId)));
@@ -155,6 +157,7 @@ export class PinsService {
         lat: Number(p.lat),
         lng: Number(p.lng),
         badge: p.badge,
+        title: p.title ?? null,
       })),
       drafts,
     };
