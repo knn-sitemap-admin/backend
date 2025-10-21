@@ -12,6 +12,7 @@ import { Team } from '../entities/team.entity';
 import { TeamMember } from '../entities/team-member.entity';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { BcryptService } from '../../../common/hashing/bcrypt.service';
+import { CreateEmployeeDto } from '../dto/create-employee.dto';
 
 type SafeCredential = {
   id: string;
@@ -35,82 +36,84 @@ export class CredentialsService {
     private readonly bcrypt: BcryptService,
   ) {}
 
-  async createCredential(dto: CreateAccountDto): Promise<SafeCredential> {
+  async createEmployee(dto: CreateEmployeeDto): Promise<SafeCredential> {
     return this.dataSource.transaction(async (tx) => {
-      const credRepo = tx.getRepository(AccountCredential);
-      const accRepo = tx.getRepository(Account);
+      const accountCredentialRepo = tx.getRepository(AccountCredential);
+      const accountRepos = tx.getRepository(Account);
       const teamRepo = tx.getRepository(Team);
-      const tmRepo = tx.getRepository(TeamMember);
+      const teamMemberRepo = tx.getRepository(TeamMember);
 
-      const dup = await credRepo.findOne({ where: { email: dto.email } });
+      // 이메일 중복 체크
+      const dup = await accountCredentialRepo.findOne({
+        where: { email: dto.email },
+      });
       if (dup) throw new ConflictException('이미 존재하는 이메일입니다.');
 
+      // 크리덴셜 생성
       const hashed = await this.bcrypt.hash(dto.password);
-      const cred = credRepo.create({
+      const cred = accountCredentialRepo.create({
         email: dto.email,
         password: hashed,
-        role: dto.role,
+        role: dto.role, // 'manager' | 'staff'
         is_disabled: dto.isDisabled ?? false,
       });
-      await credRepo.save(cred);
+      await accountCredentialRepo.save(cred);
 
-      const account = accRepo.create({
+      // 계정 생성
+      const account = accountRepos.create({
         credential_id: cred.id,
         is_profile_completed: false,
       });
-      await accRepo.save(account);
+      await accountRepos.save(account);
 
-      if (dto.role === 'admin' && dto.team) {
-        throw new BadRequestException('admin은 팀 배정을 가질 수 없습니다');
+      // 팀 배정
+      const { teamId, isPrimary, joinedAt } = dto.team ?? {};
+      if (!teamId) throw new BadRequestException('팀 지정이 필요합니다');
+
+      const team = await teamRepo.findOne({
+        where: { id: teamId, is_active: true },
+      });
+      if (!team) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
+
+      // 팀장 단일성 확보
+      if (dto.role === 'manager') {
+        await teamMemberRepo
+          .createQueryBuilder('tm')
+          .setLock('pessimistic_write')
+          .where('tm.team_id = :tid AND tm.team_role = :r', {
+            tid: team.id,
+            r: 'manager',
+          })
+          .getMany();
+
+        const existsManager = await teamMemberRepo.findOne({
+          where: { team_id: team.id, team_role: 'manager' },
+        });
+        if (existsManager) {
+          throw new ConflictException(
+            `팀 "${team.name}"에 이미 팀장이 존재합니다.`,
+          );
+        }
       }
 
-      if (dto.role !== 'admin') {
-        if (!dto.team?.teamId) {
-          throw new BadRequestException('팀 지정이 필요합니다');
-        }
-
-        const team = await teamRepo.findOne({
-          where: { id: dto.team.teamId, is_active: true },
+      // 주팀 중복 방지
+      const wantPrimary = isPrimary !== false; // 기본 true
+      if (wantPrimary) {
+        const alreadyPrimary = await teamMemberRepo.findOne({
+          where: { account_id: account.id, is_primary: true },
         });
-        if (!team) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
-
-        if (dto.role === 'manager') {
-          await tmRepo
-            .createQueryBuilder('tm')
-            .setLock('pessimistic_write')
-            .where('tm.team_id = :tid AND tm.team_role = :r', {
-              tid: team.id,
-              r: 'manager',
-            })
-            .getMany();
-
-          const existsManager = await tmRepo.findOne({
-            where: { team_id: team.id, team_role: 'manager' },
-          });
-          if (existsManager)
-            throw new ConflictException(
-              `팀 "${team.name}"에 이미 팀장이 존재합니다.`,
-            );
-        }
-
-        if (dto.team.isPrimary !== false) {
-          const alreadyPrimary = await tmRepo.findOne({
-            where: { account_id: account.id, is_primary: true },
-          });
-          if (alreadyPrimary) {
-            throw new ConflictException('이미 주팀이 설정되어 있습니다.');
-          }
-        }
-
-        const teamMember = tmRepo.create({
-          team_id: team.id,
-          account_id: account.id,
-          team_role: dto.role === 'manager' ? 'manager' : 'staff',
-          is_primary: dto.team.isPrimary !== false,
-          joined_at: dto.team.joinedAt ?? new Date().toISOString().slice(0, 10),
-        });
-        await tmRepo.save(teamMember);
+        if (alreadyPrimary)
+          throw new ConflictException('이미 주팀이 설정되어 있습니다.');
       }
+
+      const teamMember = teamMemberRepo.create({
+        team_id: team.id,
+        account_id: account.id,
+        team_role: dto.role === 'manager' ? 'manager' : 'staff',
+        is_primary: wantPrimary,
+        joined_at: joinedAt ?? new Date().toISOString().slice(0, 10),
+      });
+      await teamMemberRepo.save(teamMember);
 
       return {
         id: cred.id,

@@ -15,6 +15,7 @@ import { CreateCredentialDto } from '../dto/create-account-credential.dto';
 import { PatchCredentialDisableDto } from '../dto/patch-credential-disable.dto';
 import { PatchCredentialRoleDto } from '../dto/patch-credential-role.dto';
 import { CredentialsService } from './credentials.service';
+import { CreateEmployeeDto } from '../dto/create-employee.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(SystemRole.ADMIN)
@@ -23,8 +24,9 @@ export class CredentialsController {
   constructor(private readonly service: CredentialsService) {}
 
   @Post()
-  async createCredential(@Body() dto: CreateCredentialDto) {
-    const created = await this.service.createCredential(dto);
+  @Roles('admin')
+  async createEmployee(@Body() dto: CreateEmployeeDto) {
+    const created = await this.service.createEmployee(dto);
     return { message: '계정 생성', data: created };
   }
 
