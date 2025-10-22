@@ -66,101 +66,97 @@ export class PinsService {
     private readonly pinOptionsService: PinOptionsService,
   ) {}
 
-  async getMapPins(dto: MapPinsDto): Promise<PointResp /* | ClusterResp */> {
-    const { swLat, swLng, neLat, neLng, isOld, isNew, favoriteOnly } = dto;
+  async getMapPins(dto: MapPinsDto): Promise<PointResp> {
+    try {
+      const { swLat, swLng, neLat, neLng, isOld, isNew, favoriteOnly } = dto;
 
-    const qb = this.pinRepository
-      .createQueryBuilder('p')
-      .select(['p.id AS id', 'p.lat AS lat', 'p.lng AS lng'])
-      .where('p.lat BETWEEN :swLat AND :neLat', { swLat, neLat })
-      .andWhere('p.lng BETWEEN :swLng AND :neLng', { swLng, neLng });
+      const qb = this.pinRepository
+        .createQueryBuilder('p')
+        .select(['p.id AS id', 'p.lat AS lat', 'p.lng AS lng'])
+        .where('CAST(p.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
+          swLat,
+          neLat,
+        })
+        .andWhere('CAST(p.lng AS DECIMAL(10,6)) BETWEEN :swLng AND :neLng', {
+          swLng,
+          neLng,
+        });
 
-    if (typeof isOld === 'boolean') {
-      qb.andWhere('p.is_old = :isOld', { isOld });
+      if (typeof isOld === 'boolean')
+        qb.andWhere('p.isOld = :isOld', { isOld });
+      if (typeof isNew === 'boolean')
+        qb.andWhere('p.isNew = :isNew', { isNew });
+      if (favoriteOnly) {
+        // 즐겨찾기 기능 미구현 → 무시
+      }
+
+      const points = await qb
+        .select([
+          'p.id AS id',
+          'p.lat AS lat',
+          'p.lng AS lng',
+          'p.badge AS badge',
+          'p.name AS name',
+        ])
+        .orderBy('p.id', 'DESC')
+        .getRawMany();
+
+      const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
+
+      const draftsRaw = await draftRepo
+        .createQueryBuilder('d')
+        .select(['d.id AS id', 'd.lat AS lat', 'd.lng AS lng'])
+        .where('d.isActive = 1')
+        .andWhere('CAST(d.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
+          swLat,
+          neLat,
+        })
+        .andWhere('CAST(d.lng AS DECIMAL(10,6)) BETWEEN :swLng AND :neLng', {
+          swLng,
+          neLng,
+        })
+        .orderBy('d.createdAt', 'DESC')
+        .getRawMany();
+
+      const draftIds = draftsRaw.map((d) => d.id);
+      let drafts: DraftMarker[] = [];
+
+      if (draftIds.length > 0) {
+        const resvRepo =
+          this.pinRepository.manager.getRepository(SurveyReservation);
+        const resvRows = await resvRepo
+          .createQueryBuilder('r')
+          .select('r.pin_draft_id', 'pinDraftId')
+          .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
+          .andWhere('r.isDeleted = 0')
+          .groupBy('r.pin_draft_id')
+          .getRawMany();
+
+        const hasResv = new Set(resvRows.map((r) => String(r.pinDraftId)));
+        drafts = draftsRaw.map((d) => ({
+          id: String(d.id),
+          lat: Number(d.lat),
+          lng: Number(d.lng),
+          draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
+        }));
+      }
+
+      return {
+        mode: 'point',
+        points: points.map((p) => ({
+          id: String(p.id),
+          lat: Number(p.lat),
+          lng: Number(p.lng),
+          badge: p.badge,
+          name: p.name ?? null,
+        })),
+        drafts,
+      };
+    } catch (err) {
+      console.error('getMapPins ERROR:', err.message);
+      console.error(err.stack);
+      throw err;
     }
-    if (typeof isNew === 'boolean') {
-      qb.andWhere('p.is_new = :isNew', { isNew });
-    }
-    if (typeof favoriteOnly === 'boolean' && favoriteOnly) {
-      qb.andWhere(
-        new Brackets((w) => {
-          // 추후 로직 추가
-          w.where('p.is_favorite = TRUE');
-        }),
-      );
-    }
-
-    // 비활성화: 서버측 클러스터링 분기
-    // if (dto.zoom !== undefined && dto.zoom < 15) {
-    //   // 낮은 줌 레벨 -> 서버에서 클러스터링 모드
-    //   const clusters = await this.buildClusters(qb);
-    //   return { mode: 'cluster', clusters };
-    // }
-
-    const points = await qb
-      .select([
-        'p.id AS id',
-        'p.lat AS lat',
-        'p.lng AS lng',
-        'p.badge AS badge',
-        'p.title AS title',
-      ])
-      .orderBy('p.id', 'DESC')
-      .getRawMany<{
-        id: string;
-        lat: string;
-        lng: string;
-        badge: string | null;
-        title: string | null;
-      }>();
-
-    const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
-
-    const draftsRaw = await draftRepo
-      .createQueryBuilder('d')
-      .select(['d.id AS id', 'd.lat AS lat', 'd.lng AS lng'])
-      .where('d.isActive = 1')
-      .andWhere('d.lat BETWEEN :swLat AND :neLat', { swLat, neLat })
-      .andWhere('d.lng BETWEEN :swLng AND :neLng', { swLng, neLng })
-      .orderBy('d.createdAt', 'DESC')
-      .getRawMany<{ id: string; lat: string; lng: string }>();
-
-    // 예약 존재 여부로 draftState 계산
-    const draftIds = draftsRaw.map((d) => d.id);
-    let drafts: DraftMarker[] = [];
-
-    if (draftIds.length > 0) {
-      const resvRepo =
-        this.pinRepository.manager.getRepository(SurveyReservation);
-
-      const resvRows = await resvRepo
-        .createQueryBuilder('r')
-        .select('r.pin_draft_id', 'pinDraftId')
-        .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
-        .andWhere('r.is_deleted = 0')
-        .groupBy('r.pin_draft_id')
-        .getRawMany<{ pinDraftId: string }>();
-
-      const hasResv = new Set(resvRows.map((r) => String(r.pinDraftId)));
-      drafts = draftsRaw.map((d) => ({
-        id: String(d.id),
-        lat: Number(d.lat),
-        lng: Number(d.lng),
-        draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
-      }));
-    }
-
-    return {
-      mode: 'point',
-      points: points.map((p) => ({
-        id: String(p.id),
-        lat: Number(p.lat),
-        lng: Number(p.lng),
-        badge: p.badge,
-        title: p.title ?? null,
-      })),
-      drafts,
-    };
   }
 
   // 서버 클러스터링 로직

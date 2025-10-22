@@ -50,7 +50,7 @@ export class AuthController {
 
   /**
    * @remarks
-   * 상세 명세 작성중
+   * https://www.notion.so/2948186df78b80b1864ed84e03a42ef8?source=copy_link
    * 로그아웃
    */
   @Post('signout')

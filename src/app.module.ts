@@ -27,7 +27,7 @@ import { ContractsModule } from './contracts/contracts.module';
         database: process.env.DB_DATABASE,
         autoLoadEntities: true,
         synchronize: true, // 개발용
-        logging: ['error', 'schema', 'warn', 'query'],
+        logging: ['error', 'schema', 'warn', 'query', 'migration', 'info'],
       }),
     }),
     PinsModule,
