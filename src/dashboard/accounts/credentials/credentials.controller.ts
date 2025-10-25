@@ -11,7 +11,6 @@ import { SessionAuthGuard } from '../../auth/guards/session-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { SystemRole } from '../types/roles';
-import { CreateCredentialDto } from '../dto/create-account-credential.dto';
 import { PatchCredentialDisableDto } from '../dto/patch-credential-disable.dto';
 import { PatchCredentialRoleDto } from '../dto/patch-credential-role.dto';
 import { CredentialsService } from './credentials.service';
@@ -31,18 +30,21 @@ export class CredentialsController {
   }
 
   @Get()
+  @Roles('admin')
   async listCredentials() {
     const items = await this.service.listAllCredentials();
     return { message: '계정 목록', data: items };
   }
 
   @Get(':id')
+  @Roles('admin', 'manager')
   async getCredentialDetail(@Param('id') id: string) {
     const data = await this.service.getCredentialDetail(id);
     return { message: '계정 상세 조회', data };
   }
 
   @Patch(':id/disable')
+  @Roles('admin')
   async patchCredentialDisable(
     @Param('id') id: string,
     @Body() dto: PatchCredentialDisableDto,
@@ -52,6 +54,7 @@ export class CredentialsController {
   }
 
   @Patch(':id/role')
+  @Roles('admin')
   async patchCredentialRole(
     @Param('id') id: string,
     @Body() dto: PatchCredentialRoleDto,

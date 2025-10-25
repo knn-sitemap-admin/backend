@@ -9,6 +9,7 @@ import { PinAreaGroupsModule } from '../pin_area_groups/pin_area_groups.module';
 import { PinOptionsModule } from '../pin-options/pin-options.module';
 import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
 import { SurveyReservation } from '../../common/entities/survey-reservation.entity';
+import { SurveyReservationsModule } from '../../survey-reservations/survey-reservations.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SurveyReservation } from '../../common/entities/survey-reservation.enti
     PinDirectionsModule,
     PinAreaGroupsModule,
     PinOptionsModule,
+    SurveyReservationsModule,
   ],
   controllers: [PinsController],
   providers: [PinsService],

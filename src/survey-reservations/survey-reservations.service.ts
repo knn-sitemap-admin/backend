@@ -15,7 +15,7 @@ export class SurveyReservationsService {
   constructor(private readonly dataSource: DataSource) {}
 
   // 공통 메서드
-  private async resolveMyAccountId(credId: string): Promise<string> {
+  async resolveMyAccountId(credId: string): Promise<string> {
     // 가장 안전한 방법: raw 또는 Account repo 사용
     const row = await this.dataSource.query(
       'SELECT id FROM accounts WHERE credential_id = ? LIMIT 1',
@@ -119,7 +119,6 @@ export class SurveyReservationsService {
   }
 
   // 내 답사예정
-  // survey-reservations.service.ts
   async listScheduled(meCredentialId: string) {
     const myAccountId = await this.resolveMyAccountId(meCredentialId);
 
@@ -129,9 +128,9 @@ export class SurveyReservationsService {
       .innerJoinAndSelect('r.pinDraft', 'd')
       .where('r.assignee_id = :me', { me: myAccountId })
       .andWhere('r.is_deleted = 0')
-      .orderBy('r.sort_order', 'ASC') // ← 사용자별 순서 1순위
-      .addOrderBy('r.reserved_date', 'ASC') // ← 보조
-      .addOrderBy('r.id', 'ASC') // ← 보조
+      .orderBy('r.sort_order', 'ASC')
+      .addOrderBy('r.reserved_date', 'ASC')
+      .addOrderBy('r.id', 'ASC')
       .getMany();
 
     return rows.map((r) => ({

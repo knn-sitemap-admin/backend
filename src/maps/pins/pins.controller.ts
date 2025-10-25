@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { PinsService } from './pins.service';
 import { CreatePinDto } from './dto/create-pin.dto';
@@ -36,8 +37,9 @@ export class PinsController {
    * 핀 필터 검색 API
    */
   @Get('search')
-  async search(@Query() dto: SearchPinsDto) {
-    const data = await this.pinsService.searchPins(dto);
+  async search(@Query() dto: SearchPinsDto, @Req() req: any) {
+    const id = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+    const data = await this.pinsService.searchPins(dto, id);
     return { data };
   }
 

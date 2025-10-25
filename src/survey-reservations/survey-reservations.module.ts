@@ -11,5 +11,6 @@ import { SurveyReservation } from './entities/survey-reservation.entity';
   imports: [TypeOrmModule.forFeature([PinDraft, SurveyReservation])],
   controllers: [SurveyReservationsController, PinDraftsController],
   providers: [SurveyReservationsService, PinDraftsService],
+  exports: [SurveyReservationsService],
 })
 export class SurveyReservationsModule {}

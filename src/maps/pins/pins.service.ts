@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,6 +18,7 @@ import { UpdatePinDto } from './dto/update-pin.dto';
 import { SearchPinsDto } from './dto/search-pins.dto';
 import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
 import { SurveyReservation } from '../../common/entities/survey-reservation.entity';
+import { SurveyReservationsService } from '../../survey-reservations/survey-reservations.service';
 
 // type ClusterResp = {
 //   mode: 'cluster';
@@ -26,6 +28,15 @@ import { SurveyReservation } from '../../common/entities/survey-reservation.enti
 export const decimalToNumber = {
   to: (v?: number | null) => v,
   from: (v: string | null) => (v == null ? null : Number(v)),
+};
+
+type PinMapItem = {
+  id: string;
+  lat: number;
+  lng: number;
+  name: string;
+  badge: string | null;
+  addressLine: string;
 };
 
 type DraftMarker = {
@@ -56,6 +67,8 @@ type SearchResp = {
 
 @Injectable()
 export class PinsService {
+  // private readonly logger = new Logger(PinsService.name);
+
   constructor(
     @InjectRepository(Pin)
     private readonly pinRepository: Repository<Pin>,
@@ -64,6 +77,7 @@ export class PinsService {
     private readonly pinDirectionsService: PinDirectionsService,
     private readonly pinAreaGroupsService: PinAreaGroupsService,
     private readonly pinOptionsService: PinOptionsService,
+    private readonly surveyReservationsService: SurveyReservationsService,
   ) {}
 
   async getMapPins(dto: MapPinsDto): Promise<PointResp> {
@@ -87,7 +101,7 @@ export class PinsService {
       if (typeof isNew === 'boolean')
         qb.andWhere('p.isNew = :isNew', { isNew });
       if (favoriteOnly) {
-        // 즐겨찾기 기능 미구현 → 무시
+        // 즐겨찾기 기능 미구현
       }
 
       const points = await qb
@@ -435,48 +449,35 @@ export class PinsService {
     });
   }
 
-  // 필터링 검색
-  async searchPins(dto: SearchPinsDto): Promise<SearchResp> {
+  async searchPins(
+    dto: SearchPinsDto,
+    meCredentialId = '',
+    isAuthed = false,
+  ): Promise<{ pins: PinMapItem[]; drafts: DraftSearchItem[] }> {
     const qb = this.pinRepository
       .createQueryBuilder('p')
       .leftJoin('p.units', 'u')
       .leftJoin('p.areaGroups', 'ag')
-      .where('1=1');
+      .where('p.is_disabled = :active', { active: 0 });
 
-    // 비활성 제외
-    if (this.pinRepository.metadata.findColumnWithPropertyName('isDisabled')) {
-      qb.andWhere('p.isDisabled = FALSE');
-    }
-
-    // 엘리베이터
     if (typeof dto.hasElevator === 'boolean') {
-      qb.andWhere('p.hasElevator = :hasElevator', {
-        hasElevator: dto.hasElevator,
+      qb.andWhere('p.has_elevator = :hasElevator', {
+        hasElevator: dto.hasElevator ? 1 : 0,
       });
     }
-
-    // 구조(유닛)
-    if (dto.rooms?.length) {
+    if (dto.rooms?.length)
       qb.andWhere('u.rooms IN (:...rooms)', { rooms: dto.rooms });
-    }
-    if (typeof dto.hasLoft === 'boolean') {
-      qb.andWhere('u.hasLoft = :hasLoft', { hasLoft: dto.hasLoft });
-    }
-    if (typeof dto.hasTerrace === 'boolean') {
-      qb.andWhere('u.hasTerrace = :hasTerrace', { hasTerrace: dto.hasTerrace });
-    }
-    if (dto.salePriceMin != null) {
-      qb.andWhere('u.salePrice >= :salePriceMin', {
-        salePriceMin: dto.salePriceMin,
+    if (typeof dto.hasLoft === 'boolean')
+      qb.andWhere('u.has_loft = :hasLoft', { hasLoft: dto.hasLoft ? 1 : 0 });
+    if (typeof dto.hasTerrace === 'boolean')
+      qb.andWhere('u.has_terrace = :hasTerrace', {
+        hasTerrace: dto.hasTerrace ? 1 : 0,
       });
-    }
-    if (dto.salePriceMax != null) {
-      qb.andWhere('u.salePrice <= :salePriceMax', {
-        salePriceMax: dto.salePriceMax,
-      });
-    }
+    if (dto.salePriceMin != null)
+      qb.andWhere('u.min_price >= :priceMin', { priceMin: dto.salePriceMin });
+    if (dto.salePriceMax != null)
+      qb.andWhere('u.max_price <= :priceMax', { priceMax: dto.salePriceMax });
 
-    // 면적
     if (dto.areaMinM2 != null || dto.areaMaxM2 != null) {
       qb.andWhere(
         new Brackets((w) => {
@@ -510,26 +511,47 @@ export class PinsService {
       );
     }
 
-    // 중복 핀 제거
-    const rows = await qb
-      .select(['p.id AS p_id'])
+    const idRows = await qb
+      .select('p.id', 'id')
       .groupBy('p.id')
       .orderBy('p.id', 'DESC')
-      .getRawMany<{ p_id: string }>();
+      .getRawMany<{ id: string }>();
 
-    const ids = rows.map((r) => r.p_id);
-    let pins: PinResponseDto[] = [];
+    const ids = idRows.map((r) => Number(r.id)).filter(Number.isFinite);
 
+    let pins: PinMapItem[] = [];
     if (ids.length) {
-      const entities = await this.pinRepository.find({
-        where: { id: In(ids) },
-        relations: ['options', 'directions', 'areaGroups', 'units'],
-        order: { id: 'DESC' },
-      });
-      pins = entities.map((p) => PinResponseDto.fromEntity(p));
+      const raw = await this.pinRepository
+        .createQueryBuilder('p')
+        .select([
+          'p.id AS id',
+          'p.lat AS lat',
+          'p.lng AS lng',
+          'p.name AS name',
+          'p.badge AS badge',
+          'p.address_line AS addressLine',
+        ])
+        .where('p.id IN (:...ids)', { ids })
+        .orderBy('p.id', 'DESC')
+        .getRawMany<{
+          id: string | number;
+          lat: string | number;
+          lng: string | number;
+          name: string;
+          badge: string | null;
+          addressLine: string;
+        }>();
+
+      pins = raw.map((r) => ({
+        id: String(r.id),
+        lat: Number(r.lat),
+        lng: Number(r.lng),
+        name: r.name,
+        badge: r.badge ?? null,
+        addressLine: r.addressLine,
+      }));
     }
 
-    // 임시핀
     const hasAnyFilter =
       typeof dto.hasElevator === 'boolean' ||
       (dto.rooms?.length ?? 0) > 0 ||
@@ -541,7 +563,6 @@ export class PinsService {
       dto.areaMaxM2 != null;
 
     let drafts: DraftSearchItem[] = [];
-
     if (!hasAnyFilter) {
       const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
       const draftsRaw = await draftRepo
@@ -552,8 +573,9 @@ export class PinsService {
           'd.lng AS lng',
           'd.addressLine AS addressLine',
         ])
-        .where('d.isActive = 1')
+        .where('d.isActive = :active', { active: 1 })
         .orderBy('d.createdAt', 'DESC')
+        .limit(100)
         .getRawMany<{
           id: string;
           lat: string;
@@ -562,27 +584,67 @@ export class PinsService {
         }>();
 
       const draftIds = draftsRaw.map((d) => d.id);
-      if (draftIds.length) {
-        const resvRepo =
-          this.pinRepository.manager.getRepository(SurveyReservation);
-        const resvRows = await resvRepo
-          .createQueryBuilder('r')
-          .select(['r.pinDraft AS pinDraftId'])
-          .where('r.pinDraft IN (:...ids)', { ids: draftIds })
-          .andWhere('r.isDeleted = 0')
-          .groupBy('r.pinDraft')
-          .getRawMany<{ pinDraftId: string }>();
 
-        const hasResv = new Set(resvRows.map((r) => String(r.pinDraftId)));
-        drafts = draftsRaw.map((d) => ({
-          id: String(d.id),
-          lat: Number(d.lat),
-          lng: Number(d.lng),
-          addressLine: d.addressLine,
-          draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
-        }));
+      const resvRepo =
+        this.pinRepository.manager.getRepository(SurveyReservation);
+      const resvRows = draftIds.length
+        ? await resvRepo
+            .createQueryBuilder('r')
+            .select(['r.pinDraft AS pinDraftId', 'r.assignee_id AS assigneeId'])
+            .where('r.pinDraft IN (:...ids)', { ids: draftIds })
+            .andWhere('r.isDeleted = :isDeleted', { isDeleted: 0 })
+            .getRawMany<{ pinDraftId: string; assigneeId: string }>()
+        : [];
+
+      const assigneesByDraft = resvRows.reduce((map, r) => {
+        const k = String(r.pinDraftId);
+        const set = map.get(k) ?? new Set<string>();
+        if (r.assigneeId != null) set.add(String(r.assigneeId));
+        map.set(k, set);
+        return map;
+      }, new Map<string, Set<string>>());
+
+      let myAccountId: string | null = null;
+      if (isAuthed && meCredentialId) {
+        try {
+          myAccountId =
+            await this.surveyReservationsService.resolveMyAccountId(
+              meCredentialId,
+            );
+        } catch {
+          myAccountId = null;
+        }
       }
+
+      drafts = draftsRaw
+        .map((d) => {
+          const assignees =
+            assigneesByDraft.get(String(d.id)) ?? new Set<string>();
+          const hasReservation = assignees.size > 0;
+          const isMine = !!myAccountId && assignees.has(String(myAccountId));
+          if (!hasReservation) {
+            return {
+              id: String(d.id),
+              lat: Number(d.lat),
+              lng: Number(d.lng),
+              addressLine: d.addressLine,
+              draftState: 'BEFORE' as const,
+            };
+          }
+          if (isMine) {
+            return {
+              id: String(d.id),
+              lat: Number(d.lat),
+              lng: Number(d.lng),
+              addressLine: d.addressLine,
+              draftState: 'SCHEDULED' as const,
+            };
+          }
+          return null;
+        })
+        .filter((x): x is DraftSearchItem => x !== null);
     }
+
     return { pins, drafts };
   }
 

@@ -4,9 +4,27 @@ import { Unit } from '../../units/entities/unit.entity';
 import { PinOption } from '../../pin-options/entities/pin-option.entity';
 import { PinDirection } from '../../pin-directions/entities/pin-direction.entity';
 
+function toISODateOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+}
+function toNumOrNull(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+function toBoolOrNull(v: unknown): boolean | null {
+  if (v == null) return null;
+  if (typeof v === 'boolean') return v;
+  const n = Number(v);
+  if (Number.isNaN(n)) return null;
+  return n === 1;
+}
+
 export class PinDirectionResponseDto {
   direction!: string;
-
   static fromEntity(entity: PinDirection): PinDirectionResponseDto {
     return { direction: entity.direction };
   }
@@ -22,15 +40,11 @@ export class PinAreaGroupResponseDto {
 
   static fromEntity(entity: PinAreaGroup): PinAreaGroupResponseDto {
     return {
-      title: entity.title,
-      exclusiveMinM2: entity.exclusiveMinM2
-        ? Number(entity.exclusiveMinM2)
-        : null,
-      exclusiveMaxM2: entity.exclusiveMaxM2
-        ? Number(entity.exclusiveMaxM2)
-        : null,
-      actualMinM2: entity.actualMinM2 ? Number(entity.actualMinM2) : null,
-      actualMaxM2: entity.actualMaxM2 ? Number(entity.actualMaxM2) : null,
+      title: entity.title ?? null,
+      exclusiveMinM2: toNumOrNull(entity.exclusiveMinM2),
+      exclusiveMaxM2: toNumOrNull(entity.exclusiveMaxM2),
+      actualMinM2: toNumOrNull(entity.actualMinM2),
+      actualMaxM2: toNumOrNull(entity.actualMaxM2),
       sortOrder: entity.sortOrder ?? 0,
     };
   }
@@ -47,13 +61,13 @@ export class UnitResponseDto {
 
   static fromEntity(entity: Unit): UnitResponseDto {
     return {
-      rooms: entity.rooms,
-      baths: entity.baths,
-      hasLoft: entity.hasLoft,
-      hasTerrace: entity.hasTerrace,
-      minPrice: entity.minPrice,
-      maxPrice: entity.maxPrice,
-      note: entity.note,
+      rooms: toNumOrNull(entity.rooms),
+      baths: toNumOrNull(entity.baths),
+      hasLoft: toBoolOrNull(entity.hasLoft),
+      hasTerrace: toBoolOrNull(entity.hasTerrace),
+      minPrice: toNumOrNull(entity.minPrice ?? entity.minPrice),
+      maxPrice: toNumOrNull(entity.maxPrice ?? entity.maxPrice),
+      note: entity.note ?? null,
     };
   }
 }
@@ -70,14 +84,14 @@ export class PinOptionsResponseDto {
 
   static fromEntity(entity: PinOption): PinOptionsResponseDto {
     return {
-      hasAircon: entity.hasAircon,
-      hasFridge: entity.hasFridge,
-      hasWasher: entity.hasWasher,
-      hasDryer: entity.hasDryer,
-      hasBidet: entity.hasBidet,
-      hasAirPurifier: entity.hasAirPurifier,
-      isDirectLease: entity.isDirectLease,
-      extraOptionsText: entity.extraOptionsText,
+      hasAircon: toBoolOrNull(entity.hasAircon),
+      hasFridge: toBoolOrNull(entity.hasFridge),
+      hasWasher: toBoolOrNull(entity.hasWasher),
+      hasDryer: toBoolOrNull(entity.hasDryer),
+      hasBidet: toBoolOrNull(entity.hasBidet),
+      hasAirPurifier: toBoolOrNull(entity.hasAirPurifier),
+      isDirectLease: toBoolOrNull(entity.isDirectLease),
+      extraOptionsText: entity.extraOptionsText ?? null,
     };
   }
 }
@@ -91,7 +105,6 @@ export class PinResponseDto {
   badge!: string | null;
   addressLine!: string;
 
-  // 건물/기타 속성
   completionDate!: string | null;
   buildingType!: string | null;
   totalHouseholds!: number | null;
@@ -107,13 +120,11 @@ export class PinResponseDto {
   publicMemo!: string | null;
   privateMemo!: string | null;
 
-  // 연락처
   contactMainLabel!: string;
   contactMainPhone!: string;
   contactSubLabel!: string | null;
   contactSubPhone!: string | null;
 
-  // 연관 관계
   directions!: PinDirectionResponseDto[];
   areaGroups!: PinAreaGroupResponseDto[];
   units!: UnitResponseDto[];
@@ -128,36 +139,33 @@ export class PinResponseDto {
       badge: entity.badge ?? null,
       addressLine: entity.addressLine,
 
-      completionDate: entity.completionDate
-        ? entity.completionDate.toISOString().split('T')[0]
-        : null,
+      completionDate: toISODateOrNull((entity as any).completionDate),
       buildingType: entity.buildingType ?? null,
-      totalHouseholds: entity.totalHouseholds,
-      totalParkingSlots: entity.totalParkingSlots,
-      registrationTypeId: entity.registrationTypeId,
-      parkingTypeId: entity.parkingTypeId,
-      parkingGrade: entity.parkingGrade,
-      slopeGrade: entity.slopeGrade,
-      structureGrade: entity.structureGrade,
-      hasElevator: entity.hasElevator,
-      isOld: entity.isOld,
-      isNew: entity.isNew,
-      publicMemo: entity.publicMemo,
-      privateMemo: entity.privateMemo,
+      totalHouseholds: toNumOrNull(entity.totalHouseholds),
+      totalParkingSlots: toNumOrNull(entity.totalParkingSlots),
+      registrationTypeId: toNumOrNull(entity.registrationTypeId),
+      parkingTypeId: toNumOrNull(entity.parkingTypeId),
+      parkingGrade: entity.parkingGrade ?? null,
+      slopeGrade: entity.slopeGrade ?? null,
+      structureGrade: entity.structureGrade ?? null,
+      hasElevator: toBoolOrNull(entity.hasElevator),
+      isOld: !!entity.isOld,
+      isNew: !!entity.isNew,
+      publicMemo: entity.publicMemo ?? null,
+      privateMemo: entity.privateMemo ?? null,
 
       contactMainLabel: entity.contactMainLabel,
       contactMainPhone: entity.contactMainPhone,
-      contactSubLabel: entity.contactSubLabel,
-      contactSubPhone: entity.contactSubPhone,
+      contactSubLabel: entity.contactSubLabel ?? null,
+      contactSubPhone: entity.contactSubPhone ?? null,
 
       directions:
-        entity.directions?.map((d) => PinDirectionResponseDto.fromEntity(d)) ??
-        [],
-      areaGroups:
-        entity.areaGroups
-          ?.sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((g) => PinAreaGroupResponseDto.fromEntity(g)) ?? [],
-      units: entity.units?.map((u) => UnitResponseDto.fromEntity(u)) ?? [],
+        entity.directions?.map(PinDirectionResponseDto.fromEntity) ?? [],
+      areaGroups: (entity.areaGroups ?? [])
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map(PinAreaGroupResponseDto.fromEntity),
+      units: entity.units?.map(UnitResponseDto.fromEntity) ?? [],
       options: entity.options
         ? PinOptionsResponseDto.fromEntity(entity.options)
         : null,
