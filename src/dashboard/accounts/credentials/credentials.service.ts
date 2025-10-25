@@ -49,12 +49,11 @@ export class CredentialsService {
       });
       if (dup) throw new ConflictException('이미 존재하는 이메일입니다.');
 
-      // 크리덴셜 생성
       const hashed = await this.bcrypt.hash(dto.password);
       const cred = accountCredentialRepo.create({
         email: dto.email,
         password: hashed,
-        role: dto.role, // 'manager' | 'staff'
+        role: dto.role,
         is_disabled: dto.isDisabled ?? false,
       });
       await accountCredentialRepo.save(cred);

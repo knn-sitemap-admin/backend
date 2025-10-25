@@ -9,11 +9,14 @@ import { Team } from '../entities/team.entity';
 import { CreateTeamDto } from '../dto/create-team.dto';
 import { UpdateTeamDto } from '../dto/update-team.dto';
 import { TeamMember } from '../entities/team-member.entity';
-import { Account } from 'aws-sdk';
+import { AccountCredential } from '../entities/account-credential.entity';
+import { Account } from '../entities/account.entity';
 
 @Injectable()
 export class TeamService {
   constructor(
+    @InjectRepository(AccountCredential)
+    private readonly accountCredentialRepository: Repository<AccountCredential>,
     @InjectRepository(Team) private readonly teamRepository: Repository<Team>,
     @InjectRepository(TeamMember)
     private readonly teamMemberRepository: Repository<TeamMember>,
@@ -47,7 +50,7 @@ export class TeamService {
       .leftJoin(
         'team_members',
         'tm',
-        'tm.team_id = t.id AND tm.team_role = "manger"',
+        'tm.team_id = t.id AND tm.team_role = :managerRole',
       )
       .leftJoin('accounts', 'a', 'a.id = tm.account_id')
       .leftJoin('team_members', 'allm', 'allm.team_id = t.id')
@@ -57,9 +60,10 @@ export class TeamService {
         't.code AS code',
         't.description AS description',
         't.is_active AS isActive',
-        'a.name AS teamLeaderName',
-        'COUNT(allm.id) AS memberCount',
+        'MAX(a.name) AS teamLeaderName',
+        'COUNT(DISTINCT allm.id) AS memberCount',
       ])
+      .setParameters({ managerRole: 'manager' }) // 오타 수정
       .groupBy('t.id')
       .orderBy('t.id', 'DESC');
 
@@ -68,7 +72,7 @@ export class TeamService {
       name: string;
       code: string;
       description: string | null;
-      isActive: boolean;
+      isActive: string;
       teamLeaderName: string | null;
       memberCount: string;
     }>();
@@ -78,7 +82,8 @@ export class TeamService {
       name: r.name,
       code: r.code,
       description: r.description ?? null,
-      isActive: !!r.isActive,
+      // '0' | '1' 안전 캐스팅
+      isActive: Number(r.isActive) === 1,
       teamLeaderName: r.teamLeaderName ?? null,
       memberCount: Number(r.memberCount),
     }));
@@ -90,7 +95,7 @@ export class TeamService {
 
     const rows = await this.teamMemberRepository
       .createQueryBuilder('tm')
-      .leftJoin(Account, 'a', 'a.id = tm.account_id')
+      .leftJoin('accounts', 'a', 'a.id = tm.account_id') // 문자열 테이블명으로 조인
       .select([
         'tm.id AS teamMemberId',
         'tm.team_role AS teamRole',
@@ -108,9 +113,8 @@ export class TeamService {
       .getRawMany<{
         teamMemberId: string;
         teamRole: 'manager' | 'staff';
-        isPrimary: 0 | 1 | boolean;
+        isPrimary: 0 | 1 | boolean | string;
         joinedAt: string | null;
-
         accountId: string;
         name: string | null;
         phone: string | null;
@@ -126,7 +130,7 @@ export class TeamService {
       positionRank: r.positionRank ?? null,
       photoUrl: r.photoUrl ?? null,
       teamRole: r.teamRole,
-      isPrimary: !!r.isPrimary,
+      isPrimary: Number(r.isPrimary as any) === 1, // 안전 변환
       joinedAt: r.joinedAt,
     }));
 
