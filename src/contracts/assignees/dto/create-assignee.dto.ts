@@ -1,26 +1,44 @@
-import { IsIn, IsNumber, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  MaxLength,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
-// 기본값 있는 컬럼은 프론트가 안보내면 서비스에서 0/false로 보정
 export class CreateContractAssigneeDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
   accountId?: number;
 
+  @IsOptional()
   @MaxLength(100)
   assigneeName?: string;
 
   @IsIn(['company', 'staff'])
   role!: 'company' | 'staff';
 
+  @Type(() => Number)
   @IsNumber()
   sharePercent!: number; // 0~100 기대(검증은 프론트)
 
+  @Type(() => Number)
   @IsNumber()
   rebateAmount!: number;
 
+  @Type(() => Number)
   @IsNumber()
   finalAmount!: number;
 
+  @IsOptional()
+  @IsBoolean()
   isManual?: boolean;
 
-  // 선택(기본 0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
   sortOrder?: number;
 }

@@ -13,6 +13,7 @@ import { PhotoModule } from './photo/photo.module';
 import { SurveyReservationsModule } from './survey-reservations/survey-reservations.module';
 import { FavoriteModule } from './favorite/favorite.module';
 import { ContractsModule } from './contracts/contracts.module';
+import { PerformanceModule } from './performance/performance.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ContractsModule } from './contracts/contracts.module';
     SurveyReservationsModule,
     FavoriteModule,
     ContractsModule,
+    PerformanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

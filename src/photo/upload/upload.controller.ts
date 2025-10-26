@@ -1,17 +1,21 @@
 import {
+  BadRequestException,
   Controller,
   Post,
-  UploadedFiles,
-  UseInterceptors,
   Query,
   Req,
-  BadRequestException,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
-import { UploadService } from './upload.service';
+import * as uploadService_1 from './upload.service';
+import { IsIn, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
-// 업로드 가능한 파일 확장명 리스트
+const memoryStorage = multer.memoryStorage();
+
+// 업로드 가능한 파일 확장자
 const ALLOWED_FILE_EXTENSIONS = [
   'jpg',
   'jpeg',
@@ -28,22 +32,26 @@ const ALLOWED_FILE_EXTENSIONS = [
   'csv',
   'hwp',
   'hwpx',
-];
+] as const;
 
-// 확장자 기준 필터링
 function isAllowedFile(filename: string): boolean {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
-  return ALLOWED_FILE_EXTENSIONS.includes(ext);
+  return (ALLOWED_FILE_EXTENSIONS as readonly string[]).includes(ext);
 }
 
-const memoryStorage = multer.memoryStorage();
-
-const maxSizeMB = Number(process.env.UPLOAD_MAX_SIZE_MB || 10); // 기본값 10MB
+const maxSizeMB = Number(process.env.UPLOAD_MAX_SIZE_MB || 10);
 const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+class UploadQueryDto {
+  @IsString()
+  @IsIn(['map', 'contracts', 'board', 'profile', 'etc'])
+  @Type(() => String)
+  domain!: uploadService_1.AllowedDomain;
+}
 
 @Controller('photo/upload')
 export class UploadController {
-  constructor(private readonly uploadService: UploadService) {}
+  constructor(private readonly uploadService: uploadService_1.UploadService) {}
 
   @Post()
   @UseInterceptors(
@@ -54,7 +62,7 @@ export class UploadController {
         if (!isAllowedFile(file.originalname)) {
           return cb(
             new BadRequestException(
-              `허용되지 않은 파일 형식입니다. (${file.originalname})`,
+              `허용되지 않은 파일 형식: ${file.originalname}`,
             ),
             false,
           );
@@ -65,16 +73,22 @@ export class UploadController {
   )
   async upload(
     @UploadedFiles() files: Express.Multer.File[],
-    @Query('domain') domain: string,
-    @Req() req: any,
+    @Query() query: UploadQueryDto,
+    @Req()
+    req: any,
   ) {
-    if (!domain) throw new BadRequestException('domain 쿼리값이 필요합니다.');
+    const me: string = String(
+      req.user?.id ?? req.session?.user?.credentialId ?? '',
+    );
+    if (!me)
+      throw new BadRequestException('로그인된 사용자만 업로드할 수 있습니다.');
+    if (!files?.length)
+      throw new BadRequestException('업로드할 파일이 없습니다.');
 
-    const userId = req.user?.id || req.session?.user?.id;
-    const data = await this.uploadService.uploadFiles(files, domain, userId);
+    const data = await this.uploadService.uploadFiles(files, query.domain, me);
 
     return {
-      message: `파일 업로드 완료 (최대 ${maxSizeMB}MB, 허용 확장자 ${process.env.ALLOWED_EXTENSIONS || ''})`,
+      message: `파일 업로드 완료 (최대 ${maxSizeMB}MB)`,
       data,
     };
   }
