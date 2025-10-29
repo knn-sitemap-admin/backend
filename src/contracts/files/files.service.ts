@@ -13,14 +13,14 @@ export class ContractFilesService {
 
   async findAll(contractId: number) {
     return this.contractFileRepository.find({
-      where: { contractId },
+      where: { contract: { id: contractId } },
       order: { createdAt: 'DESC' },
     });
   }
 
   async create(contractId: number, dto: CreateContractFileDto) {
     const entity = this.contractFileRepository.create({
-      contractId,
+      contract: { id: contractId },
       url: dto.url,
       filename: dto.filename ?? null,
     });
@@ -30,7 +30,7 @@ export class ContractFilesService {
 
   async remove(contractId: number, fileId: number) {
     const file = await this.contractFileRepository.findOne({
-      where: { id: fileId, contractId },
+      where: { id: fileId, contract: { id: contractId } },
     });
     if (!file) throw new NotFoundException('파일을 찾을 수 없습니다.');
     await this.contractFileRepository.delete(file.id);

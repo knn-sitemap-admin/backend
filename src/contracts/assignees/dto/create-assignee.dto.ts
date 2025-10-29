@@ -12,7 +12,7 @@ export class CreateContractAssigneeDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  accountId?: number;
+  accountId?: string;
 
   @IsOptional()
   @MaxLength(100)

@@ -8,6 +8,8 @@ import { EntityManager, Repository } from 'typeorm';
 import { ContractAssignee } from './entities/assignee.entity';
 import { CreateContractAssigneeDto } from './dto/create-assignee.dto';
 import { UpdateContractAssigneeDto } from './dto/update-assignee.dto';
+import { Account } from '../../dashboard/accounts/entities/account.entity';
+import { Contract } from '../entities/contract.entity';
 
 @Injectable()
 export class ContractAssigneesService {
@@ -18,7 +20,7 @@ export class ContractAssigneesService {
 
   async findAll(contractId: number) {
     return this.contractAssigneeRepository.find({
-      where: { contractId },
+      where: { contract: { id: contractId } },
       relations: ['account'],
       order: { sortOrder: 'ASC', id: 'ASC' },
     });
@@ -26,8 +28,11 @@ export class ContractAssigneesService {
 
   async create(contractId: number, dto: CreateContractAssigneeDto) {
     const entity = this.contractAssigneeRepository.create({
-      contractId,
-      accountId: dto.accountId ?? null,
+      contract: { id: contractId } as Contract,
+      account:
+        dto.accountId != null
+          ? ({ id: String(dto.accountId) } as Account)
+          : null,
       role: dto.role,
       sharePercent: dto.sharePercent ?? 0,
       rebateAmount: dto.rebateAmount ?? 0,
@@ -39,12 +44,11 @@ export class ContractAssigneesService {
     return { id: saved.id };
   }
 
-  // 트랜잭션 재사용용 벌크(ASSIGNEES 배열 저장 + 자동계산/검증 포함)
   async bulkCreateWithManager(
     manager: EntityManager,
-    contractId: number | string, // uuid일 수도 있으니 string도 허용
+    contractId: number | string,
     assignees: Array<{
-      accountId?: number | string | null;
+      accountId?: string | null;
       role: 'company' | 'staff';
       sharePercent: number;
       rebateAmount?: number;
@@ -67,15 +71,10 @@ export class ContractAssigneesService {
       const autoFinal =
         a.finalAmount ?? Math.round(grandTotal * ((a.sharePercent ?? 0) / 100));
 
-      // Account/Contract의 PK 타입에 맞춰 문자열/숫자로 변환
-      // - 만약 Account.id가 uuid라면 String(...)로
-      // - 만약 number/bigint라면 Number(...)
-      const contractRef: any = { id: contractId };
-      const accountRef: any = a.accountId != null ? { id: a.accountId } : null;
-
       return repo.create({
-        contract: contractRef,
-        account: accountRef,
+        contract: { id: contractId } as any,
+        account:
+          a.accountId != null ? ({ id: String(a.accountId) } as any) : null,
         role: a.role,
         sharePercent: a.sharePercent ?? 0,
         rebateAmount: a.rebateAmount ?? 0,
@@ -85,7 +84,6 @@ export class ContractAssigneesService {
       });
     });
 
-    // 반올림 오차 보정
     const diff =
       grandTotal - rows.reduce((s, r) => s + (r.finalAmount || 0), 0);
     if (rows.length && diff !== 0) rows[rows.length - 1].finalAmount += diff;
@@ -99,29 +97,33 @@ export class ContractAssigneesService {
     dto: UpdateContractAssigneeDto,
   ) {
     const found = await this.contractAssigneeRepository.findOne({
-      where: { id: assigneeId, contractId },
+      where: { id: assigneeId, contract: { id: contractId } },
+      relations: ['account', 'contract'],
     });
     if (!found) throw new NotFoundException('담당자를 찾을 수 없습니다.');
 
-    await this.contractAssigneeRepository.update(
-      { id: assigneeId },
-      {
-        accountId: dto.accountId ?? found.accountId,
-        role: dto.role ?? found.role,
-        sharePercent: dto.sharePercent ?? found.sharePercent,
-        rebateAmount: dto.rebateAmount ?? found.rebateAmount,
-        finalAmount: dto.finalAmount ?? found.finalAmount,
-        isManual:
-          typeof dto.isManual === 'boolean' ? dto.isManual : found.isManual,
-        sortOrder: dto.sortOrder ?? found.sortOrder,
-      },
-    );
+    if (dto.accountId !== undefined) {
+      found.account =
+        dto.accountId == null
+          ? null
+          : ({ id: String(dto.accountId) } as Account);
+    }
+
+    // 스칼라 갱신
+    if (dto.role !== undefined) found.role = dto.role;
+    if (dto.sharePercent !== undefined) found.sharePercent = dto.sharePercent;
+    if (dto.rebateAmount !== undefined) found.rebateAmount = dto.rebateAmount;
+    if (dto.finalAmount !== undefined) found.finalAmount = dto.finalAmount;
+    if (dto.isManual !== undefined) found.isManual = dto.isManual;
+    if (dto.sortOrder !== undefined) found.sortOrder = dto.sortOrder;
+
+    await this.contractAssigneeRepository.save(found);
     return { id: assigneeId };
   }
 
   async remove(contractId: number, assigneeId: number) {
     const found = await this.contractAssigneeRepository.findOne({
-      where: { id: assigneeId, contractId },
+      where: { id: assigneeId, contract: { id: contractId } },
     });
     if (!found) throw new NotFoundException('담당자를 찾을 수 없습니다.');
     await this.contractAssigneeRepository.delete(assigneeId);

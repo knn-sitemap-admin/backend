@@ -11,6 +11,7 @@ import { ListContractsDto } from './dto/list-contracts.dto';
 import { Contract } from './entities/contract.entity';
 import { ContractFile } from './files/entities/file.entity';
 import { ContractAssigneesService } from './assignees/assignees.service';
+import { Account } from 'src/dashboard/accounts/entities/account.entity';
 
 @Injectable()
 export class ContractsService {
@@ -50,16 +51,27 @@ export class ContractsService {
       // (선택) 메인 담당자 FK 유효성 검사
       let salespersonRef: any = null;
       if (dto.salespersonAccountId != null) {
-        // 존재여부만 체크 (accounts 모듈의 Entity 이름에 맞춰 테이블명/리포지토리 사용)
-        const exists = await manager
-          .getRepository('accounts') // 또는 Account 엔티티가 있으면 getRepository(Account)
-          .exist({ where: { id: dto.salespersonAccountId } as any });
-        if (!exists) {
+        const exists = await manager.getRepository(Account).exist({
+          where: { id: String(dto.salespersonAccountId) },
+        });
+        if (!exists)
           throw new BadRequestException(
             'salespersonAccountId가 유효하지 않습니다.',
           );
-        }
-        salespersonRef = { id: dto.salespersonAccountId };
+        salespersonRef = { id: String(dto.salespersonAccountId) };
+      }
+
+      // (옵션) 작성자
+      let createdByRef: any = null;
+      if (dto.createdByAccountId != null) {
+        const exists = await manager.getRepository(Account).exist({
+          where: { id: String(dto.createdByAccountId) },
+        });
+        if (!exists)
+          throw new BadRequestException(
+            'createdByAccountId가 유효하지 않습니다.',
+          );
+        createdByRef = { id: String(dto.createdByAccountId) };
       }
 
       // 계약 저장 (고객 + 금액 + 메인담당자 FK)
@@ -68,9 +80,6 @@ export class ContractsService {
 
         customerName: dto.customerName ?? null,
         customerPhone: dto.customerPhone ?? null,
-
-        // ✅ 새 엔티티에 맞게: 문자열 담당자/분배처 필드는 저장하지 않음
-        // salespersonName / salespersonPhone / distributor* 제거
 
         brokerageFee: dto.brokerageFee,
         vat: dto.vat,
@@ -81,7 +90,8 @@ export class ContractsService {
         calcMemo: dto.calcMemo ?? null,
         grandTotal: dto.grandTotal,
 
-        salesperson: salespersonRef, // ✅ FK로 연결
+        salesperson: salespersonRef,
+        createdBy: createdByRef,
         contractDate: dto.contractDate ?? new Date().toISOString().slice(0, 10),
         status: dto.status ?? 'ongoing',
       });
@@ -137,7 +147,7 @@ export class ContractsService {
 
     // pinId
     if (typeof dto.pinId === 'number') {
-      qb.andWhere('c.pin_id = :pinId', { pinId: dto.pinId });
+      qb.andWhere('c.pinId = :pinId', { pinId: dto.pinId });
     }
 
     // 검색어: 고객명 + 메인담당자명(계정 테이블 기준)
@@ -189,57 +199,75 @@ export class ContractsService {
   }
 
   async update(id: number, dto: UpdateContractDto): Promise<number> {
-    if (!Number.isInteger(id)) {
+    id = Number(id);
+    if (!Number.isInteger(id))
       throw new BadRequestException('id는 number여야 합니다.');
-    }
+
     const found = await this.contractRepository.findOne({ where: { id } });
     if (!found) throw new NotFoundException('계약을 찾을 수 없습니다.');
 
-    // 메인 담당자 FK 설정(옵션)
-    let salespersonRef: any = found.salesperson ?? null;
+    const accountRepo = this.dataSource.getRepository(Account);
+
+    // relation 준비
+    let salespersonRel: Account | null | undefined = undefined;
     if (dto.salespersonAccountId !== undefined) {
       if (dto.salespersonAccountId === null) {
-        salespersonRef = null;
+        salespersonRel = null;
       } else {
-        const exists = await this.dataSource
-          .getRepository('accounts') // 또는 Account 엔티티
-          .exist({ where: { id: dto.salespersonAccountId } });
-        if (!exists)
+        const acct = await accountRepo.findOne({
+          where: { id: String(dto.salespersonAccountId) },
+        });
+        if (!acct)
           throw new BadRequestException(
             'salespersonAccountId가 유효하지 않습니다.',
           );
-        salespersonRef = { id: dto.salespersonAccountId };
+        salespersonRel = acct;
       }
     }
 
-    await this.contractRepository.update(
-      { id },
-      {
-        pinId: dto.pinId ?? found.pinId,
+    let createdByRel: Account | null | undefined = undefined;
+    if (dto.createdByAccountId !== undefined) {
+      if (dto.createdByAccountId === null) {
+        createdByRel = null;
+      } else {
+        const acct = await accountRepo.findOne({
+          where: { id: String(dto.createdByAccountId) },
+        });
+        if (!acct)
+          throw new BadRequestException(
+            'createdByAccountId가 유효하지 않습니다.',
+          );
+        createdByRel = acct;
+      }
+    }
 
-        customerName: dto.customerName ?? found.customerName,
-        customerPhone: dto.customerPhone ?? found.customerPhone,
+    // 스칼라 + relation 머지
+    const toSave: Partial<Contract> = {
+      id,
+      pinId: dto.pinId ?? found.pinId,
 
-        // 문자열 담당자/분배처는 더 이상 저장하지 않음
+      customerName: dto.customerName ?? found.customerName,
+      customerPhone: dto.customerPhone ?? found.customerPhone,
 
-        brokerageFee: dto.brokerageFee ?? found.brokerageFee,
-        vat: dto.vat ?? found.vat,
-        brokerageTotal: dto.brokerageTotal ?? found.brokerageTotal,
-        rebateTotal: dto.rebateTotal ?? found.rebateTotal,
-        supportAmount: dto.supportAmount ?? found.supportAmount,
+      brokerageFee: dto.brokerageFee ?? found.brokerageFee,
+      vat: dto.vat ?? found.vat,
+      brokerageTotal: dto.brokerageTotal ?? found.brokerageTotal,
+      rebateTotal: dto.rebateTotal ?? found.rebateTotal,
+      supportAmount: dto.supportAmount ?? found.supportAmount,
 
-        isTaxed: typeof dto.isTaxed === 'boolean' ? dto.isTaxed : found.isTaxed,
-        calcMemo: dto.calcMemo ?? found.calcMemo,
+      isTaxed: typeof dto.isTaxed === 'boolean' ? dto.isTaxed : found.isTaxed,
+      calcMemo: dto.calcMemo ?? found.calcMemo,
 
-        contractDate: dto.contractDate ?? found.contractDate,
-        status: dto.status ?? found.status,
+      contractDate: dto.contractDate ?? found.contractDate,
+      status: dto.status ?? found.status,
 
-        grandTotal: dto.grandTotal ?? found.grandTotal,
+      grandTotal: dto.grandTotal ?? found.grandTotal,
+    };
 
-        salesperson: salespersonRef,
-      },
-    );
+    if (salespersonRel !== undefined) toSave.salesperson = salespersonRel;
+    if (createdByRel !== undefined) toSave.createdBy = createdByRel;
 
+    await this.contractRepository.save(toSave);
     return id;
   }
 

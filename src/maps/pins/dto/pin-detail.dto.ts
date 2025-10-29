@@ -4,6 +4,12 @@ import { Unit } from '../../units/entities/unit.entity';
 import { PinOption } from '../../pin-options/entities/pin-option.entity';
 import { PinDirection } from '../../pin-directions/entities/pin-direction.entity';
 
+function toIntOrNull(v: unknown): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : Math.trunc(n);
+}
+
 function toISODateOrNull(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
@@ -105,6 +111,11 @@ export class PinResponseDto {
   badge!: string | null;
   addressLine!: string;
 
+  totalBuildings!: number | null;
+  totalFloors!: number | null;
+  remainingHouseholds!: number | null;
+  minRealMoveInCost!: number | null;
+
   completionDate!: string | null;
   buildingType!: string | null;
   totalHouseholds!: number | null;
@@ -154,10 +165,17 @@ export class PinResponseDto {
       publicMemo: entity.publicMemo ?? null,
       privateMemo: entity.privateMemo ?? null,
 
-      contactMainLabel: entity.contactMainLabel,
+      // 연락처 라벨은 null 허용
+      contactMainLabel: entity.contactMainLabel ?? null,
       contactMainPhone: entity.contactMainPhone,
       contactSubLabel: entity.contactSubLabel ?? null,
       contactSubPhone: entity.contactSubPhone ?? null,
+
+      // 신규 필드
+      totalBuildings: toNumOrNull(entity.totalBuildings),
+      totalFloors: toNumOrNull(entity.totalFloors),
+      remainingHouseholds: toNumOrNull(entity.remainingHouseholds),
+      minRealMoveInCost: toIntOrNull(entity.minRealMoveInCost),
 
       directions:
         entity.directions?.map(PinDirectionResponseDto.fromEntity) ?? [],

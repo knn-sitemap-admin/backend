@@ -6,6 +6,7 @@ import {
   Index,
   ManyToOne,
   JoinColumn,
+  RelationId,
 } from 'typeorm';
 import { Type } from 'class-transformer';
 import { Account } from '../../dashboard/accounts/entities/account.entity';
@@ -19,7 +20,6 @@ export class Contract {
   @Type(() => Number)
   id!: number;
 
-  @Index()
   @Column('bigint', { unsigned: true, nullable: true })
   @Type(() => Number)
   pinId!: number | null;
@@ -31,8 +31,18 @@ export class Contract {
   customerPhone!: string | null;
 
   @ManyToOne(() => Account, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'salesperson_id' })
+  @JoinColumn({ name: 'salesperson_id' }) // 물리 컬럼명
   salesperson?: Account | null;
+
+  @RelationId((c: Contract) => c.salesperson)
+  salespersonId!: string | null;
+
+  @ManyToOne(() => Account, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'created_by_id' })
+  createdBy?: Account | null;
+
+  @RelationId((c: Contract) => c.createdBy)
+  createdById!: string | null;
 
   // 금액/계산 관련 (프론트 계산값 그대로 저장)
   @Column({ type: 'bigint', default: 0 })

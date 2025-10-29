@@ -35,7 +35,11 @@ export class CreateContractDto {
 
   @IsOptional()
   @IsString()
-  salespersonAccountId?: number;
+  salespersonAccountId?: string;
+
+  @IsOptional()
+  @IsString()
+  createdByAccountId?: string;
 
   // 금액(프론트 계산값을 현재 구조 그대로 받음)
   @Type(() => Number)

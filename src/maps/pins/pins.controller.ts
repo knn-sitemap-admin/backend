@@ -39,9 +39,17 @@ export class PinsController {
   @Get('search')
   async search(@Query() dto: SearchPinsDto, @Req() req: any) {
     const id = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
-    const data = await this.pinsService.searchPins(dto, id);
+    const isAuthed = !!id;
+    const data = await this.pinsService.searchPins(dto, id, isAuthed);
     return { data };
   }
+
+  // @Get('search')
+  // async search(@Query() dto: SearchPinsDto, @Req() req: any) {
+  //   const id = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+  //   const data = await this.pinsService.searchPins(dto, id);
+  //   return { data };
+  // }
 
   /**
    * @remarks

@@ -14,6 +14,7 @@ import { SurveyReservationsModule } from './survey-reservations/survey-reservati
 import { FavoriteModule } from './favorite/favorite.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { PerformanceModule } from './performance/performance.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { PerformanceModule } from './performance/performance.module';
     FavoriteModule,
     ContractsModule,
     PerformanceModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

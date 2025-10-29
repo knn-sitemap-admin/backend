@@ -93,12 +93,12 @@ export class Pin {
   parkingTypeId: number | null = null;
 
   @Column({
-    type: 'enum',
-    enum: ['상', '중', '하'],
+    type: 'varchar',
+    length: 10,
     name: 'parking_grade',
     nullable: true,
   })
-  parkingGrade: Grade3 | null = null;
+  parkingGrade: string | null = null;
 
   @Column({
     type: 'enum',
@@ -116,8 +116,13 @@ export class Pin {
   })
   structureGrade: Grade3 | null = null;
 
-  @Column({ type: 'varchar', length: 20, name: 'contact_main_label' })
-  contactMainLabel!: string;
+  @Column({
+    type: 'varchar',
+    length: 20,
+    name: 'contact_main_label',
+    nullable: true,
+  })
+  contactMainLabel: string;
 
   @Column({ type: 'varchar', length: 50, name: 'contact_main_phone' })
   contactMainPhone!: string;
@@ -189,4 +194,21 @@ export class Pin {
 
   @OneToMany(() => Unit, (u) => u.pin, { cascade: ['remove'] })
   units!: Unit[];
+
+  @Column({ type: 'int', name: 'total_buildings', nullable: true })
+  totalBuildings: number | null = null;
+
+  @Column({ type: 'int', name: 'total_floors', nullable: true })
+  totalFloors: number | null = null;
+
+  @Column({ type: 'int', name: 'remaining_households', nullable: true })
+  remainingHouseholds: number | null = null;
+
+  @Column({
+    type: 'bigint',
+    name: 'min_real_move_in_cost',
+    nullable: true,
+    unsigned: true,
+  })
+  minRealMoveInCost: string | null = null;
 }

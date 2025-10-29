@@ -54,7 +54,6 @@ export class EmployeeInfoController {
   }
 
   // 무소속 사용자 조회
-  @Roles(SystemRole.ADMIN, SystemRole.MANAGER)
   @Get('employees/unassigned')
   async getUnassignedEmployees() {
     const list = await this.service.findUnassignedEmployees();

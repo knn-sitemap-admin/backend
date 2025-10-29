@@ -6,6 +6,7 @@ import {
   CreateDateColumn,
   JoinColumn,
   Index,
+  RelationId,
 } from 'typeorm';
 import { Type } from 'class-transformer';
 import { Contract } from '../../entities/contract.entity';
@@ -16,14 +17,14 @@ export class ContractFile {
   @Type(() => Number)
   id!: number;
 
-  @Index()
-  @Column('bigint', { unsigned: true })
-  @Type(() => Number)
-  contractId!: number;
-
-  @ManyToOne(() => Contract, (c) => c, { onDelete: 'CASCADE' })
+  @Index('IDX_contract_files_contract_id')
+  @ManyToOne(() => Contract, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'contract_id' })
   contract!: Contract;
+
+  @RelationId((f: ContractFile) => f.contract)
+  @Type(() => Number)
+  contractId!: number;
 
   @Column('text')
   url!: string;

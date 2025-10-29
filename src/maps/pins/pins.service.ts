@@ -214,26 +214,38 @@ export class PinsService {
 
     return this.dataSource.transaction(async (manager) => {
       const pinRepo = manager.getRepository(Pin);
-
-      // 임시핀 자동 매칭
-      // 해당 로직 추후 수정 필요
-      const EPS = 0.00001; // 오차범위
       const draftRepo = manager.getRepository(PinDraft);
 
-      const candidate = await draftRepo
-        .createQueryBuilder('d')
-        .where('d.isActive = 1')
-        .andWhere('d.lat BETWEEN :latMin AND :latMax', {
-          latMin: dto.lat - EPS,
-          latMax: dto.lat + EPS,
-        })
-        .andWhere('d.lng BETWEEN :lngMin AND :lngMax', {
-          lngMin: dto.lng - EPS,
-          lngMax: dto.lng + EPS,
-        })
-        .orderBy('d.createdAt', 'DESC')
-        .setLock('pessimistic_write')
-        .getOne();
+      // 1) 임시핀 매칭: 명시적 pinDraftId 우선
+      let candidate: PinDraft | null = null;
+
+      if (dto.pinDraftId != null) {
+        candidate = await draftRepo.findOne({
+          where: { id: String(dto.pinDraftId), isActive: true },
+        });
+        if (!candidate) {
+          throw new BadRequestException(
+            '활성 임시핀(pinDraftId)을 찾을 수 없습니다.',
+          );
+        }
+      } else {
+        // 2) 기존 EPS 근사 fallback
+        const EPS = 0.00001;
+        candidate = await draftRepo
+          .createQueryBuilder('d')
+          .where('d.isActive = 1')
+          .andWhere('d.lat BETWEEN :latMin AND :latMax', {
+            latMin: dto.lat - EPS,
+            latMax: dto.lat + EPS,
+          })
+          .andWhere('d.lng BETWEEN :lngMin AND :lngMax', {
+            lngMin: dto.lng - EPS,
+            lngMax: dto.lng + EPS,
+          })
+          .orderBy('d.createdAt', 'DESC')
+          .setLock('pessimistic_write')
+          .getOne();
+      }
 
       // 핀 저장
       const pin = pinRepo.create({
@@ -254,7 +266,7 @@ export class PinsService {
         parkingGrade: dto.parkingGrade ?? null,
         slopeGrade: dto.slopeGrade ?? null,
         structureGrade: dto.structureGrade ?? null,
-        contactMainLabel: dto.contactMainLabel,
+        contactMainLabel: dto.contactMainLabel ?? null,
         contactMainPhone: dto.contactMainPhone,
         contactSubLabel: dto.contactSubLabel ?? null,
         contactSubPhone: dto.contactSubPhone ?? null,
@@ -262,6 +274,11 @@ export class PinsService {
         isNew: dto.isNew ?? false,
         publicMemo: dto.publicMemo ?? null,
         privateMemo: dto.privateMemo ?? null,
+
+        totalBuildings: dto.totalBuildings ?? null,
+        totalFloors: dto.totalFloors ?? null,
+        remainingHouseholds: dto.remainingHouseholds ?? null,
+        minRealMoveInCost: dto.minRealMoveInCost ?? null,
       } as DeepPartial<Pin>);
 
       await pinRepo.save(pin);
@@ -309,9 +326,7 @@ export class PinsService {
 
       // 매칭된 임시핀 있으면 비활성화(승격 처리)
       if (candidate) {
-        await draftRepo.update(candidate.id, {
-          isActive: false,
-        });
+        await draftRepo.update(candidate.id, { isActive: false });
       }
 
       return { id: String(pin.id), matchedDraftId: candidate?.id ?? null };
@@ -382,7 +397,7 @@ export class PinsService {
 
       // 연락처 & 배지
       if (dto.contactMainLabel !== undefined)
-        pin.contactMainLabel = dto.contactMainLabel;
+        pin.contactMainLabel = dto.contactMainLabel ?? null;
       if (dto.contactMainPhone !== undefined)
         pin.contactMainPhone = dto.contactMainPhone;
       if (dto.contactSubLabel !== undefined)
@@ -390,6 +405,17 @@ export class PinsService {
       if (dto.contactSubPhone !== undefined)
         pin.contactSubPhone = dto.contactSubPhone ?? null;
       if (dto.badge !== undefined) pin.badge = dto.badge ?? null;
+
+      if (dto.totalBuildings !== undefined)
+        pin.totalBuildings = dto.totalBuildings ?? null;
+      if (dto.totalFloors !== undefined)
+        pin.totalFloors = dto.totalFloors ?? null;
+      if (dto.remainingHouseholds !== undefined)
+        pin.remainingHouseholds = dto.remainingHouseholds ?? null;
+      if (dto.minRealMoveInCost !== undefined) {
+        pin.minRealMoveInCost =
+          dto.minRealMoveInCost == null ? null : String(dto.minRealMoveInCost);
+      }
 
       await pinRepo.save(pin);
 

@@ -167,7 +167,6 @@ export class EmployeeInfoService {
     };
   }
 
-  // GET /dashboard/accounts/me/profile
   async getProfileByCredentialId(credentialId: string) {
     if (!credentialId)
       throw new BadRequestException('세션이 유효하지 않습니다.');
@@ -214,17 +213,11 @@ export class EmployeeInfoService {
     };
   }
 
-  // GET /dashboard/accounts/employees/unassigned
   async findUnassignedEmployees() {
-    // 팀이 없는 계정
     const rows = await this.accountCredentialRepository
       .createQueryBuilder('cred')
-      .leftJoin(Account, 'acc', 'acc.credential_id = cred.id')
-      .leftJoin(
-        'team_members',
-        'tm',
-        'tm.credential_id = cred.id OR tm.account_id = acc.id',
-      )
+      .leftJoin('accounts', 'acc', 'acc.credential_id = cred.id')
+      .leftJoin('team_members', 'tm', 'tm.account_id = acc.id')
       .where('tm.id IS NULL')
       .select([
         'cred.id AS credentialId',

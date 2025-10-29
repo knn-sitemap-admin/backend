@@ -44,10 +44,10 @@ export class CreatePinDto {
   @Length(1, 255)
   addressLine!: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @Length(1, 20)
-  contactMainLabel!: string;
+  contactMainLabel?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -63,6 +63,30 @@ export class CreatePinDto {
   @IsString()
   @Length(1, 50)
   contactSubPhone?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  totalBuildings?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  totalFloors?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  remainingHouseholds?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minRealMoveInCost?: number | null;
 
   // 추가된 필드들
   @IsOptional()
@@ -92,8 +116,8 @@ export class CreatePinDto {
   parkingTypeId?: number | null;
 
   @IsOptional()
-  @IsEnum(['상', '중', '하'])
-  parkingGrade?: Grade3 | null;
+  @IsEnum(['1', '2', '3', '4', '5'])
+  parkingGrade?: string | null;
 
   @IsOptional()
   @IsEnum(['상', '중', '하'])
@@ -146,4 +170,9 @@ export class CreatePinDto {
   @ValidateNested({ each: true })
   @Type(() => CreatePinAreaGroupDto)
   areaGroups?: CreatePinAreaGroupDto[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  pinDraftId?: number;
 }
