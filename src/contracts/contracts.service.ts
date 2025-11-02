@@ -13,6 +13,8 @@ import { ContractFile } from './files/entities/file.entity';
 import { ContractAssigneesService } from './assignees/assignees.service';
 import { Account } from 'src/dashboard/accounts/entities/account.entity';
 
+type ContractWithCount = Contract & { fileCount: number };
+
 @Injectable()
 export class ContractsService {
   constructor(
@@ -123,67 +125,109 @@ export class ContractsService {
     return id;
   }
 
+  // 파일 개수 포함 반환용 타입
+
   async findAll(
     dto: ListContractsDto,
-  ): Promise<{ items: Contract[]; total: number }> {
-    const page = Number.isInteger(dto.page) && dto.page! > 0 ? dto.page! : 1;
-    const sizeRaw =
-      Number.isInteger(dto.size) && dto.size! > 0 ? dto.size! : 20;
-    const size = Math.min(Math.max(sizeRaw, 1), 100);
+  ): Promise<{ items: ContractWithCount[]; total: number }> {
+    try {
+      const page = Number.isInteger(dto.page) && dto.page! > 0 ? dto.page! : 1;
+      const sizeRaw =
+        Number.isInteger(dto.size) && dto.size! > 0 ? dto.size! : 20;
+      const size = Math.min(Math.max(sizeRaw, 1), 100);
 
-    const orderBy =
-      dto.orderBy === 'created_at' ? 'c.created_at' : 'c.contract_date';
-    const orderDir = dto.orderDir === 'ASC' ? 'ASC' : 'DESC';
+      const orderByProp =
+        dto.orderBy === 'created_at' ? 'c.createdAt' : 'c.contractDate';
+      const orderDir: 'ASC' | 'DESC' = dto.orderDir === 'ASC' ? 'ASC' : 'DESC';
 
-    const qb = this.contractRepository
-      .createQueryBuilder('c')
-      // 메인 담당자 JOIN (이름/팀 표시 & 검색용)
-      .leftJoinAndSelect('c.salesperson', 'sp')
-      // 파일 유무 필터/표시용
-      .leftJoin('contract_files', 'f', 'f.contract_id = c.id')
-      .take(size)
-      .skip((page - 1) * size)
-      .orderBy(orderBy, orderDir);
+      const baseQb = this.contractRepository
+        .createQueryBuilder('c')
+        .leftJoinAndSelect('c.salesperson', 'sp');
 
-    // pinId
-    if (typeof dto.pinId === 'number') {
-      qb.andWhere('c.pinId = :pinId', { pinId: dto.pinId });
-    }
+      // ---- 필터들 ----
+      if (typeof dto.pinId === 'number') {
+        baseQb.andWhere('c.pinId = :pinId', { pinId: dto.pinId });
+      }
+      if (dto.q?.trim()) {
+        baseQb.andWhere('(c.customer_name LIKE :kw OR sp.name LIKE :kw)', {
+          kw: `%${dto.q.trim()}%`,
+        });
+      }
+      if (dto.dateFrom)
+        baseQb.andWhere('c.contract_date >= :df', { df: dto.dateFrom });
+      if (dto.dateTo)
+        baseQb.andWhere('c.contract_date <= :dt', { dt: dto.dateTo });
+      if (dto.status) baseQb.andWhere('c.status = :st', { st: dto.status });
 
-    // 검색어: 고객명 + 메인담당자명(계정 테이블 기준)
-    if (dto.q && dto.q.trim() !== '') {
-      qb.andWhere('(c.customer_name LIKE :kw OR sp.name LIKE :kw)', {
-        kw: `%${dto.q.trim()}%`,
-      });
-    }
+      if (typeof dto.assigneeId === 'number') {
+        baseQb.andWhere(
+          `EXISTS (
+           SELECT 1 FROM contract_assignees a
+           WHERE a.contract_id = c.id AND a.account_id = :aid
+         )`,
+          { aid: dto.assigneeId },
+        );
+      }
 
-    // 계약일 범위
-    if (dto.dateFrom)
-      qb.andWhere('c.contract_date >= :df', { df: dto.dateFrom });
-    if (dto.dateTo) qb.andWhere('c.contract_date <= :dt', { dt: dto.dateTo });
+      if (typeof dto.hasFiles === 'boolean') {
+        if (dto.hasFiles) {
+          baseQb.andWhere(
+            `EXISTS (SELECT 1 FROM contract_files f WHERE f.contract_id = c.id)`,
+          );
+        } else {
+          baseQb.andWhere(
+            `NOT EXISTS (SELECT 1 FROM contract_files f WHERE f.contract_id = c.id)`,
+          );
+        }
+      }
 
-    // 상태
-    if (dto.status) qb.andWhere('c.status = :st', { st: dto.status });
+      // ---- 분리 쿼리: 데이터 / 카운트 (TypeORM 버그 회피) ----
+      const dataQb = baseQb
+        .clone()
+        .orderBy(orderByProp, orderDir)
+        .skip((page - 1) * size)
+        .take(size);
 
-    // 특정 분배참여자(account_id) 조건
-    if (typeof dto.assigneeId === 'number') {
-      qb.andWhere(
-        `EXISTS (
-         SELECT 1 FROM contract_assignees a
-         WHERE a.contract_id = c.id AND a.account_id = :aid
-       )`,
-        { aid: dto.assigneeId },
+      const countQb = baseQb
+        .clone()
+        .orderBy() // 카운트에는 정렬 제거
+        .skip(0)
+        .take(0);
+
+      const [items, total] = await Promise.all([
+        dataQb.getMany(),
+        countQb.getCount(),
+      ]);
+
+      // ---- 파일 개수 매핑 (의존성 리포지토리 한 방 그룹쿼리) ----
+      if (items.length > 0) {
+        const ids = items.map((c) => c.id);
+
+        // this.fileRepository 는 @InjectRepository(ContractFile) 로 주입되어 있어야 함
+        const rows = await this.fileRepository
+          .createQueryBuilder('f')
+          .select('f.contract_id', 'contractId')
+          .addSelect('COUNT(*)', 'cnt')
+          .where('f.contract_id IN (:...ids)', { ids })
+          .groupBy('f.contract_id')
+          .getRawMany<{ contractId: string; cnt: string }>();
+
+        const countMap = new Map<number, number>(
+          rows.map((r) => [Number(r.contractId), Number(r.cnt)]),
+        );
+
+        for (const it of items as ContractWithCount[]) {
+          it.fileCount = countMap.get(it.id) ?? 0;
+        }
+      }
+
+      return { items: items as ContractWithCount[], total };
+    } catch (err) {
+      console.error('findAll() 에러:', err);
+      throw new Error(
+        `계약 목록 조회 실패: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-
-    // 파일 유무
-    if (typeof dto.hasFiles === 'boolean') {
-      if (dto.hasFiles) qb.andWhere('f.id IS NOT NULL');
-      else qb.andWhere('f.id IS NULL');
-    }
-
-    const [items, total] = await qb.getManyAndCount();
-    return { items, total };
   }
 
   async findOne(id: number): Promise<Contract> {
@@ -208,7 +252,6 @@ export class ContractsService {
 
     const accountRepo = this.dataSource.getRepository(Account);
 
-    // relation 준비
     let salespersonRel: Account | null | undefined = undefined;
     if (dto.salespersonAccountId !== undefined) {
       if (dto.salespersonAccountId === null) {
