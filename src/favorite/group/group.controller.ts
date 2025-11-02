@@ -6,12 +6,13 @@ import {
   Patch,
   Query,
   Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { GroupService } from './group.service';
 import { UpdateFavoriteGroupDto } from './dto/update-group.dto';
 import { ReorderFavoriteGroupsDto } from './dto/reorder-favorite-groups.dto';
 
-@Controller('group')
+@Controller('favorite/group')
 export class GroupController {
   constructor(private readonly service: GroupService) {}
 
@@ -20,11 +21,17 @@ export class GroupController {
     @Query('includeItems') includeItems: string,
     @Req() req: any,
   ) {
-    const accountId = String(req.user.userId);
-    const withItems = includeItems === '1' || includeItems === 'true';
+    try {
+      const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+      if (!me) throw new UnauthorizedException('로그인이 필요합니다.');
 
-    const data = await this.service.getGroups(accountId, withItems);
-    return { message: '조회 성공', data };
+      const withItems = includeItems === '1' || includeItems === 'true';
+      const data = await this.service.getGroups(String(me), withItems);
+      return { message: '조회 성공', data };
+    } catch (e) {
+      console.error('GroupController.getGroups error:', e);
+      throw e;
+    }
   }
 
   @Patch(':groupId')

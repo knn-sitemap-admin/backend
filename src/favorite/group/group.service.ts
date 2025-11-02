@@ -2,52 +2,60 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, In } from 'typeorm';
+import { DataSource, In, QueryFailedError } from 'typeorm';
 import { FavoriteGroup } from './entities/group.entity';
 
 @Injectable()
 export class GroupService {
   constructor(private readonly dataSource: DataSource) {}
+  private readonly logger = new Logger(GroupService.name);
 
   async getGroups(accountId: string, includeItems: boolean) {
     const favoriteGroupRepo = this.dataSource.getRepository(FavoriteGroup);
 
-    if (!includeItems) {
-      const groups = await favoriteGroupRepo.find({
-        where: { ownerAccountId: accountId },
-        order: { sortOrder: 'ASC' },
-      });
+    try {
+      if (!includeItems) {
+        const groups = await favoriteGroupRepo.find({
+          where: { ownerAccountId: accountId },
+          order: { sortOrder: 'ASC' },
+        });
+
+        return groups.map((g) => ({
+          id: g.id,
+          title: g.title,
+          sortOrder: g.sortOrder,
+        }));
+      }
+
+      const qb = favoriteGroupRepo
+        .createQueryBuilder('g')
+        .leftJoinAndSelect('g.items', 'i')
+        .where('g.ownerAccountId = :accountId', { accountId })
+        .orderBy('g.sortOrder', 'ASC')
+        .addOrderBy('i.sortOrder', 'ASC');
+
+      const groups = await qb.getMany();
 
       return groups.map((g) => ({
         id: g.id,
         title: g.title,
         sortOrder: g.sortOrder,
+        itemCount: g.items?.length ?? 0,
+        items: (g.items ?? []).map((i) => ({
+          itemId: i.id,
+          pinId: i.pinId,
+          sortOrder: i.sortOrder,
+          createdAt: i.createdAt,
+        })),
       }));
+    } catch (err) {
+      console.error('getGroups error:', err);
+      throw err; // Nest가 알아서 500 응답으로 처리
     }
-
-    const qb = favoriteGroupRepo
-      .createQueryBuilder('g')
-      .leftJoinAndSelect('g.items', 'i')
-      .where('g.ownerAccountId = :accountId', { accountId })
-      .orderBy('g.sortOrder', 'ASC')
-      .addOrderBy('i.sortOrder', 'ASC');
-
-    const groups = await qb.getMany();
-
-    return groups.map((g) => ({
-      id: g.id,
-      title: g.title,
-      sortOrder: g.sortOrder,
-      itemCount: g.items?.length ?? 0,
-      items: (g.items ?? []).map((i) => ({
-        itemId: i.id,
-        pinId: i.pinId,
-        sortOrder: i.sortOrder,
-        createdAt: i.createdAt,
-      })),
-    }));
   }
 
   async updateGroupTitle(accountId: string, groupId: string, title: string) {
