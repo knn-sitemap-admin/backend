@@ -36,10 +36,10 @@ export class Pin {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'decimal', precision: 9, scale: 6, name: 'lat' })
+  @Column({ type: 'decimal', precision: 11, scale: 8, name: 'lat' })
   lat!: string;
 
-  @Column({ type: 'decimal', precision: 9, scale: 6, name: 'lng' })
+  @Column({ type: 'decimal', precision: 11, scale: 8, name: 'lng' })
   lng!: string;
 
   @Column({ type: 'varchar', length: 255, name: 'name' })

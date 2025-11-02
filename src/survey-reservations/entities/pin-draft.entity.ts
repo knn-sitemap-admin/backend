@@ -12,11 +12,11 @@ export class PinDraft {
   id!: string;
 
   @Index()
-  @Column({ type: 'decimal', precision: 9, scale: 6 })
+  @Column({ type: 'decimal', precision: 10, scale: 7 })
   lat!: string;
 
   @Index()
-  @Column({ type: 'decimal', precision: 9, scale: 6 })
+  @Column({ type: 'decimal', precision: 10, scale: 7 })
   lng!: string;
 
   @Column({ type: 'text', name: 'address_line' })
