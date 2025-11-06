@@ -13,6 +13,9 @@ import { createClient, type RedisClientType } from 'redis';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  //배포
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   //보안 헤더
   app.use(helmet());
 
@@ -24,6 +27,16 @@ async function bootstrap() {
     origin: ['*', true],
     credentials: true,
   });
+
+  //배포버전
+  // const corsOrigins = (process.env.CORS_ORIGIN ?? '')
+  //   .split(',')
+  //   .map((s) => s.trim())
+  //   .filter(Boolean);
+  // app.enableCors({
+  //   origin: corsOrigins.length ? corsOrigins : false,
+  //   credentials: true,
+  // });
 
   //전역 파이프
   app.useGlobalPipes(
@@ -39,20 +52,21 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformInterceptor());
 
   //node-redis 클라이언트
-  const redisClient: RedisClientType = createClient({
-    socket: {
-      host: process.env.REDIS_HOST ?? 'localhost',
-      port: Number(process.env.REDIS_PORT ?? 6379),
-    },
-    password: process.env.REDIS_PASSWORD || undefined,
-  });
+  const redisUrl = process.env.REDIS_URL;
+  const redisClient: RedisClientType = redisUrl
+    ? createClient({ url: redisUrl })
+    : createClient({
+        socket: {
+          host: process.env.REDIS_HOST ?? 'localhost',
+          port: Number(process.env.REDIS_PORT ?? 6379),
+        },
+        password: process.env.REDIS_PASSWORD || undefined,
+      });
 
   redisClient.on('error', (err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
-    // eslint-disable-next-line no-console
     console.error('Redis Client Error:', msg);
   });
-
   await redisClient.connect();
 
   type RedisStoreCtorArg = ConstructorParameters<typeof RedisStore>[0];
