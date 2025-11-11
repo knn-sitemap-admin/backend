@@ -13,6 +13,18 @@ import { createClient, type RedisClientType } from 'redis';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // main.ts (부팅 직후)
+  app.getHttpAdapter().getInstance().set('etag', false);
+
+  // main.ts (미들웨어로 캐시 금지 + Vary 헤더)
+  app.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Vary', 'Origin, Cookie, Authorization');
+    next();
+  });
+
   //배포
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
