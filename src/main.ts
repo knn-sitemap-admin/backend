@@ -22,10 +22,14 @@ async function bootstrap() {
   //요청 로깅
   app.use(morgan('combined'));
 
-  //CORS
   app.enableCors({
-    origin: ['*', true],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      return callback(null, true);
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   //배포버전

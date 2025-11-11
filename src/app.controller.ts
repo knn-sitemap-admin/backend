@@ -25,4 +25,9 @@ export class AppController {
       },
     };
   }
+
+  @Get('favicon.ico')
+  ignore() {
+    return '';
+  }
 }
