@@ -86,9 +86,14 @@ async function bootstrap() {
       secret: process.env.SESSION_SECRET ?? 'change_this_secret',
       resave: false,
       saveUninitialized: false,
+
+      proxy: true,
+
       cookie: {
         httpOnly: true,
-        secure: process.env.SESSION_COOKIE_SECURE === 'true',
+        secure: true,
+        sameSite: 'none',
+        path: '/',
         maxAge: 1000 * 60 * 60 * 24 * 7,
       },
     }),

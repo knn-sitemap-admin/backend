@@ -41,11 +41,18 @@ export class AuthController {
   @Post('signin')
   async signin(@Body() dto: SigninDto, @Req() req: any) {
     const sessionUser = await this.service.signin(dto.email, dto.password);
+    await new Promise<void>((resolve, reject) => {
+      req.session.regenerate((err: any) => (err ? reject(err) : resolve()));
+    });
+
     req.session.user = sessionUser;
-    return {
-      message: '로그인 성공',
-      data: sessionUser,
-    };
+
+    // 저장 보장
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err: any) => (err ? reject(err) : resolve()));
+    });
+
+    return { message: '로그인 성공', data: sessionUser };
   }
 
   /**
