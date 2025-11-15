@@ -28,7 +28,8 @@ import { ReportsModule } from './reports/reports.module';
         password: process.env.DB_PASSWORD,
         database: process.env.DB_DATABASE,
         autoLoadEntities: true,
-        synchronize: true, // 개발용
+        // synchronize: true, // 개발용
+        synchronize: false, // 배포용
         logging: ['error', 'schema', 'warn', 'query', 'migration', 'info'],
       }),
     }),
