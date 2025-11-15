@@ -2,11 +2,13 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
   Min,
 } from 'class-validator';
+import { BuildingType } from '../entities/pin.entity';
 
 export class SearchPinsDto {
   @IsOptional()
@@ -53,4 +55,10 @@ export class SearchPinsDto {
   @IsNumber()
   @Min(0)
   areaMaxM2?: number;
+
+  @IsOptional()
+  @IsArray()
+  @Type(() => String)
+  @IsIn(['APT', 'OP', '주택', '근생', '도생'], { each: true })
+  buildingTypes?: BuildingType[];
 }

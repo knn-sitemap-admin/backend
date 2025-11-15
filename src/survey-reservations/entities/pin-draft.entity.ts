@@ -27,4 +27,12 @@ export class PinDraft {
 
   @Column({ type: 'boolean', name: 'is_active', default: true })
   isActive!: boolean;
+
+  @Column({
+    type: 'bigint',
+    unsigned: true,
+    name: 'creator_id',
+    nullable: true,
+  })
+  creatorId: string | null = null;
 }

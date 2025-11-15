@@ -26,8 +26,10 @@ export class PinsController {
    * 핀 생성 API
    */
   @Post()
-  async create(@Body() dto: CreatePinDto) {
-    const data = await this.pinsService.create(dto);
+  async create(@Body() dto: CreatePinDto, @Req() req: any) {
+    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+
+    const data = await this.pinsService.create(dto, me || null);
     return { message: '핀 생성됨', data };
   }
 
@@ -76,8 +78,14 @@ export class PinsController {
    * https://www.notion.so/2858186df78b800fa226fb48dbf63435?source=copy_link
    */
   @Patch(':id')
-  async patch(@Param('id') id: string, @Body() dto: UpdatePinDto) {
-    const data = await this.pinsService.update(id, dto);
+  async patch(
+    @Param('id') id: string,
+    @Body() dto: UpdatePinDto,
+    @Req() req: any,
+  ) {
+    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+
+    const data = await this.pinsService.update(id, dto, me || null);
     return { message: '핀 수정됨', data };
   }
 

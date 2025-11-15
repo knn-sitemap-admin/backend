@@ -5,6 +5,8 @@ import {
   OneToMany,
   Index,
   OneToOne,
+  UpdateDateColumn,
+  CreateDateColumn,
 } from 'typeorm';
 import { PinDirection } from '../../pin-directions/entities/pin-direction.entity';
 import { Unit } from '../../units/entities/unit.entity';
@@ -12,7 +14,7 @@ import { PinOption } from '../../pin-options/entities/pin-option.entity';
 import { PinAreaGroup } from '../../pin_area_groups/entities/pin_area_group.entity';
 
 export type Grade3 = '상' | '중' | '하';
-export type BuildingType = 'APT' | 'OP' | '주택' | '근생';
+export type BuildingType = 'APT' | 'OP' | '주택' | '근생' | '도생';
 
 export enum PinBadge {
   R1_TO_1_5 = 'R1_TO_1_5',
@@ -61,7 +63,7 @@ export class Pin {
 
   @Column({
     type: 'enum',
-    enum: ['APT', 'OP', '주택', '근생'],
+    enum: ['APT', 'OP', '주택', '근생', '도생'],
     name: 'building_type',
     nullable: true,
   })
@@ -211,4 +213,18 @@ export class Pin {
     unsigned: true,
   })
   minRealMoveInCost: string | null = null;
+
+  @Column({
+    type: 'bigint',
+    unsigned: true,
+    name: 'last_editor_id',
+    nullable: true,
+  })
+  lastEditorId: string | null = null;
+
+  @CreateDateColumn({ type: 'datetime', name: 'created_at' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ type: 'datetime', name: 'updated_at' })
+  updatedAt!: Date;
 }

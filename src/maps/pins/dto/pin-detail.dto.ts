@@ -102,7 +102,13 @@ export class PinOptionsResponseDto {
   }
 }
 
-// 최상위 DTO
+// 관련 인물 DTO
+export type PinPersonInfo = {
+  id: string;
+  name: string | null;
+};
+
+//최상위 DTO
 export class PinResponseDto {
   id!: string;
   lat!: number;
@@ -131,17 +137,39 @@ export class PinResponseDto {
   publicMemo!: string | null;
   privateMemo!: string | null;
 
-  contactMainLabel!: string;
+  contactMainLabel!: string | null;
   contactMainPhone!: string;
   contactSubLabel!: string | null;
   contactSubPhone!: string | null;
+
+  // 생성/수정/답사 시각
+  createdAt!: string | null;
+  updatedAt!: string | null;
+  surveyedAt!: string | null;
+
+  // 관련 인물 id
+  creatorId!: string | null;
+  surveyorId!: string | null;
+  lastEditorId!: string | null;
+
+  // 관련 인물 정보
+  creator!: PinPersonInfo | null;
+  surveyor!: PinPersonInfo | null;
+  lastEditor!: PinPersonInfo | null;
 
   directions!: PinDirectionResponseDto[];
   areaGroups!: PinAreaGroupResponseDto[];
   units!: UnitResponseDto[];
   options!: PinOptionsResponseDto | null;
 
-  static fromEntity(entity: Pin): PinResponseDto {
+  static fromEntity(
+    entity: Pin,
+    people?: {
+      creator?: PinPersonInfo | null;
+      surveyor?: PinPersonInfo | null;
+      lastEditor?: PinPersonInfo | null;
+    },
+  ): PinResponseDto {
     return {
       id: String(entity.id),
       lat: Number(entity.lat),
@@ -165,17 +193,32 @@ export class PinResponseDto {
       publicMemo: entity.publicMemo ?? null,
       privateMemo: entity.privateMemo ?? null,
 
-      // 연락처 라벨은 null 허용
       contactMainLabel: entity.contactMainLabel ?? null,
       contactMainPhone: entity.contactMainPhone,
       contactSubLabel: entity.contactSubLabel ?? null,
       contactSubPhone: entity.contactSubPhone ?? null,
 
-      // 신규 필드
       totalBuildings: toNumOrNull(entity.totalBuildings),
       totalFloors: toNumOrNull(entity.totalFloors),
       remainingHouseholds: toNumOrNull(entity.remainingHouseholds),
       minRealMoveInCost: toIntOrNull(entity.minRealMoveInCost),
+
+      createdAt: toISODateOrNull((entity as any).createdAt),
+      updatedAt: toISODateOrNull((entity as any).updatedAt),
+      surveyedAt: toISODateOrNull((entity as any).surveyedAt),
+
+      // id만
+      creatorId: entity.creatorId ? String(entity.creatorId) : null,
+      surveyorId: entity.surveyedBy ? String(entity.surveyedBy) : null,
+      lastEditorId:
+        (entity as any).lastEditorId != null
+          ? String((entity as any).lastEditorId)
+          : null,
+
+      // 이름 포함 객체
+      creator: people?.creator ?? null,
+      surveyor: people?.surveyor ?? null,
+      lastEditor: people?.lastEditor ?? null,
 
       directions:
         entity.directions?.map(PinDirectionResponseDto.fromEntity) ?? [],

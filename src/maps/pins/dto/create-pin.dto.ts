@@ -94,7 +94,7 @@ export class CreatePinDto {
   completionDate?: Date | null;
 
   @IsOptional()
-  @IsEnum(['APT', 'OP', '주택', '근생'])
+  @IsEnum(['APT', 'OP', '주택', '근생', '도생'])
   buildingType?: BuildingType | null;
 
   @IsOptional()

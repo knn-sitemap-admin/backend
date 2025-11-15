@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Req } from '@nestjs/common';
 import { CreatePinDraftDto } from './dto/create-pin-draft.dto';
 import { PinDraftsService } from './pin-drafts.service';
 
@@ -12,8 +12,9 @@ export class PinDraftsController {
    * 임시핀 생성 API
    */
   @Post()
-  async create(@Body() dto: CreatePinDraftDto) {
-    const data = await this.service.create(dto);
+  async create(@Body() dto: CreatePinDraftDto, @Req() req: any) {
+    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+    const data = await this.service.create(dto, me || null);
     return { message: '임시핀 생성', data };
   }
 }

@@ -13,12 +13,13 @@ import { UnitsService } from '../units/units.service';
 import { PinDirectionsService } from '../pin-directions/pin-directions.service';
 import { PinOptionsService } from '../pin-options/pin-options.service';
 import { PinAreaGroupsService } from '../pin_area_groups/pin_area_groups.service';
-import { PinResponseDto } from './dto/pin-detail.dto';
+import { PinPersonInfo, PinResponseDto } from './dto/pin-detail.dto';
 import { UpdatePinDto } from './dto/update-pin.dto';
 import { SearchPinsDto } from './dto/search-pins.dto';
 import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
-import { SurveyReservation } from '../../common/entities/survey-reservation.entity';
 import { SurveyReservationsService } from '../../survey-reservations/survey-reservations.service';
+import { Account } from '../../dashboard/accounts/entities/account.entity';
+import { SurveyReservation } from '../../survey-reservations/entities/survey-reservation.entity';
 
 // type ClusterResp = {
 //   mode: 'cluster';
@@ -142,7 +143,7 @@ export class PinsService {
           .createQueryBuilder('r')
           .select('r.pin_draft_id', 'pinDraftId')
           .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
-          .andWhere('r.isDeleted = 0')
+          .andWhere('r.is_deleted = 0')
           .groupBy('r.pin_draft_id')
           .getRawMany();
 
@@ -206,8 +207,7 @@ export class PinsService {
   //   }));
   // }
 
-  async create(dto: CreatePinDto) {
-    // 좌표 1차 검증
+  async create(dto: CreatePinDto, meCredentialId: string | null) {
     if (!Number.isFinite(dto.lat) || !Number.isFinite(dto.lng)) {
       throw new BadRequestException('잘못된 좌표');
     }
@@ -215,8 +215,9 @@ export class PinsService {
     return this.dataSource.transaction(async (manager) => {
       const pinRepo = manager.getRepository(Pin);
       const draftRepo = manager.getRepository(PinDraft);
+      const resvRepo = manager.getRepository(SurveyReservation);
 
-      // 1) 임시핀 매칭: 명시적 pinDraftId 우선
+      // 1) 임시핀 매칭
       let candidate: PinDraft | null = null;
 
       if (dto.pinDraftId != null) {
@@ -229,7 +230,6 @@ export class PinsService {
           );
         }
       } else {
-        // 2) 기존 EPS 근사 fallback
         const EPS = 0.00001;
         candidate = await draftRepo
           .createQueryBuilder('d')
@@ -247,7 +247,48 @@ export class PinsService {
           .getOne();
       }
 
-      // 핀 저장
+      // 2) 생성자 accountId
+      let creatorAccountId: string | null = null;
+
+      if (candidate && candidate.creatorId) {
+        creatorAccountId = String(candidate.creatorId);
+      } else if (meCredentialId) {
+        try {
+          creatorAccountId =
+            await this.surveyReservationsService.resolveMyAccountId(
+              meCredentialId,
+            );
+        } catch {
+          creatorAccountId = null;
+        }
+      }
+
+      // 3) 답사자 / 답사일 (예약 기준)
+      let surveyedBy: string | null = null;
+      let surveyedAt: Date | null = null;
+
+      if (candidate) {
+        const resv = await resvRepo.findOne({
+          where: {
+            pinDraft: { id: candidate.id },
+            isDeleted: false,
+          },
+          relations: ['assignee'],
+          order: { createdAt: 'DESC' },
+        });
+
+        if (resv) {
+          surveyedBy = String(resv.assignee.id);
+          surveyedAt = new Date(resv.reservedDate);
+        }
+      }
+
+      if (!candidate && creatorAccountId && !surveyedBy) {
+        surveyedBy = creatorAccountId;
+        surveyedAt = new Date(); // 또는 null 유지하고 프론트에서 createdAt 사용해도 됨
+      }
+
+      // 4) 핀 저장
       const pin = pinRepo.create({
         lat: String(dto.lat),
         lng: String(dto.lng),
@@ -274,16 +315,19 @@ export class PinsService {
         isNew: dto.isNew ?? false,
         publicMemo: dto.publicMemo ?? null,
         privateMemo: dto.privateMemo ?? null,
-
         totalBuildings: dto.totalBuildings ?? null,
         totalFloors: dto.totalFloors ?? null,
         remainingHouseholds: dto.remainingHouseholds ?? null,
         minRealMoveInCost: dto.minRealMoveInCost ?? null,
+
+        creatorId: creatorAccountId,
+        surveyedBy,
+        surveyedAt,
       } as DeepPartial<Pin>);
 
       await pinRepo.save(pin);
 
-      // 옵션/방향/면적그룹/유닛
+      // 5) 옵션/방향/면적그룹/유닛 기존 로직 그대로
       if (dto.options) {
         await this.pinOptionsService.upsertWithManager(
           manager,
@@ -324,7 +368,7 @@ export class PinsService {
         );
       }
 
-      // 매칭된 임시핀 있으면 비활성화(승격 처리)
+      // 6) 임시핀 승격 처리
       if (candidate) {
         await draftRepo.update(candidate.id, { isActive: false });
       }
@@ -334,14 +378,65 @@ export class PinsService {
   }
 
   async findDetail(id: string): Promise<PinResponseDto> {
-    const pin = await this.pinRepository.findOneOrFail({
+    const pin = await this.pinRepository.findOne({
       where: { id },
       relations: ['options', 'directions', 'areaGroups', 'units'],
     });
-    return PinResponseDto.fromEntity(pin);
+
+    if (!pin) {
+      throw new NotFoundException('핀 없음');
+    }
+
+    const accountRepo = this.dataSource.getRepository(Account);
+
+    let creator: PinPersonInfo | null = null;
+    let surveyor: PinPersonInfo | null = null;
+    let lastEditor: PinPersonInfo | null = null;
+
+    if (pin.creatorId) {
+      const acc = await accountRepo.findOne({
+        where: { id: String(pin.creatorId) },
+      });
+      if (acc) {
+        creator = {
+          id: String(acc.id),
+          name: acc.name ?? null,
+        };
+      }
+    }
+
+    if (pin.surveyedBy) {
+      const acc = await accountRepo.findOne({
+        where: { id: String(pin.surveyedBy) },
+      });
+      if (acc) {
+        surveyor = {
+          id: String(acc.id),
+          name: acc.name ?? null,
+        };
+      }
+    }
+
+    if (pin.lastEditorId) {
+      const acc = await accountRepo.findOne({
+        where: { id: String(pin.lastEditorId) },
+      });
+      if (acc) {
+        lastEditor = {
+          id: String(acc.id),
+          name: acc.name ?? null,
+        };
+      }
+    }
+
+    return PinResponseDto.fromEntity(pin, {
+      creator,
+      surveyor,
+      lastEditor,
+    });
   }
 
-  async update(id: string, dto: UpdatePinDto) {
+  async update(id: string, dto: UpdatePinDto, meCredentialId: string | null) {
     return this.dataSource.transaction(async (manager) => {
       const pinRepo = manager.getRepository(Pin);
       const pin = await pinRepo.findOne({ where: { id } });
@@ -415,6 +510,17 @@ export class PinsService {
       if (dto.minRealMoveInCost !== undefined) {
         pin.minRealMoveInCost =
           dto.minRealMoveInCost == null ? null : String(dto.minRealMoveInCost);
+      }
+      if (meCredentialId) {
+        try {
+          const editorAccountId =
+            await this.surveyReservationsService.resolveMyAccountId(
+              meCredentialId,
+            );
+          pin.lastEditorId = editorAccountId;
+        } catch {
+          // 계정 못 찾으면 그냥 무시
+        }
       }
 
       await pinRepo.save(pin);
@@ -504,6 +610,12 @@ export class PinsService {
     if (dto.salePriceMax != null)
       qb.andWhere('u.max_price <= :priceMax', { priceMax: dto.salePriceMax });
 
+    if (dto.buildingTypes?.length) {
+      qb.andWhere('p.building_type IN (:...buildingTypes)', {
+        buildingTypes: dto.buildingTypes,
+      });
+    }
+
     if (dto.areaMinM2 != null || dto.areaMaxM2 != null) {
       qb.andWhere(
         new Brackets((w) => {
@@ -586,7 +698,8 @@ export class PinsService {
       dto.salePriceMin != null ||
       dto.salePriceMax != null ||
       dto.areaMinM2 != null ||
-      dto.areaMaxM2 != null;
+      dto.areaMaxM2 != null ||
+      (dto.buildingTypes?.length ?? 0) > 0;
 
     let drafts: DraftSearchItem[] = [];
     if (!hasAnyFilter) {
@@ -616,9 +729,12 @@ export class PinsService {
       const resvRows = draftIds.length
         ? await resvRepo
             .createQueryBuilder('r')
-            .select(['r.pinDraft AS pinDraftId', 'r.assignee_id AS assigneeId'])
-            .where('r.pinDraft IN (:...ids)', { ids: draftIds })
-            .andWhere('r.isDeleted = :isDeleted', { isDeleted: 0 })
+            .select([
+              'r.pin_draft_id AS pinDraftId',
+              'r.assignee_id AS assigneeId',
+            ])
+            .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
+            .andWhere('r.is_deleted = :isDeleted', { isDeleted: 0 })
             .getRawMany<{ pinDraftId: string; assigneeId: string }>()
         : [];
 
