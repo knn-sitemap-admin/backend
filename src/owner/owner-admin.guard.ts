@@ -9,7 +9,7 @@ export class OwnerAdminGuard implements CanActivate {
     const res = ctx.getResponse<Response>();
 
     const me = req.session?.user;
-=
+
     console.log('[OwnerAdminGuard] session user =', me);
 
     if (!me || me.role !== 'admin') {
