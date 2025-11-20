@@ -1,17 +1,18 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { Response } from 'express';
+import type { Request, Response } from 'express';
 
 @Injectable()
 export class OwnerAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const ctx = context.switchToHttp();
-    const req: any = ctx.getRequest();
-    const res: Response = ctx.getResponse();
+    const req = ctx.getRequest<Request & { session?: any }>();
+    const res = ctx.getResponse<Response>();
 
-    const user = req.session?.user;
+    const me = req.session?.user;
+=
+    console.log('[OwnerAdminGuard] session user =', me);
 
-    if (!user || user.role !== 'admin') {
-      // 세션이 없거나 admin이 아니면 로그인 페이지로
+    if (!me || me.role !== 'admin') {
       res.redirect('/owner/login');
       return false;
     }
