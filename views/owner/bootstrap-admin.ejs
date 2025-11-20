@@ -1,0 +1,36 @@
+<div class="owner-auth-page">
+    <div class="oa-card">
+        <h1 class="oa-title">최초 관리자 등록</h1>
+        <p class="oa-desc">
+            아직 관리자 계정이 없을 때 1회 실행하는 페이지입니다.<br />
+            부트스트랩 토큰을 알고 있는 사람만 등록할 수 있습니다.
+        </p>
+
+        <form id="bootstrapForm" class="oa-form">
+            <div class="oa-field">
+                <label for="baEmail">이메일</label>
+                <input type="email" id="baEmail" required />
+            </div>
+
+            <div class="oa-field">
+                <label for="baPassword">비밀번호 (8자 이상)</label>
+                <input type="password" id="baPassword" minlength="8" required />
+            </div>
+
+            <div class="oa-field">
+                <label for="baToken">부트스트랩 토큰</label>
+                <input type="password" id="baToken" required />
+            </div>
+
+            <div class="oa-actions">
+                <button type="submit">관리자 생성 / 재설정</button>
+            </div>
+        </form>
+
+        <div class="oa-links">
+            <a href="/owner/login">로그인으로 돌아가기</a>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/owner-auth.js"></script>

@@ -18,6 +18,10 @@ export class TransformInterceptor implements NestInterceptor {
     const req = ctx.switchToHttp().getRequest();
     const path = req?.originalUrl ?? req?.url ?? '';
 
+    if (req.url.startsWith('/owner')) {
+      return next.handle();
+    }
+
     return next.handle().pipe(
       map((body: OkBody | any) => {
         if (body && typeof body === 'object' && 'success' in body) return body;

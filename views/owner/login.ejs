@@ -1,0 +1,111 @@
+<div class="owner-auth-page">
+    <div class="oa-card">
+        <h1 class="oa-title">로그인</h1>
+
+        <form id="loginForm" class="oa-form">
+            <div class="oa-field">
+                <label for="loginEmail">이메일</label>
+                <input type="email" id="loginEmail" required />
+            </div>
+
+            <div class="oa-field">
+                <label for="loginPassword">비밀번호</label>
+                <input type="password" id="loginPassword" required />
+            </div>
+
+            <div class="oa-actions">
+                <button type="submit">로그인</button>
+            </div>
+        </form>
+
+        <div class="oa-links">
+            <a href="/owner/bootstrap-admin">최초 관리자 등록</a>
+            <span>|</span>
+            <a href="/owner/reset-password">비밀번호 재설정</a>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/owner-auth.js"></script>
+
+<style>
+    .owner-auth-page {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 40px 0;
+        font-size: 13px;
+    }
+
+    .oa-card {
+        width: 360px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 20px 24px;
+        background: #fff;
+    }
+
+    .oa-title {
+        margin: 0 0 16px;
+        font-size: 20px;
+    }
+
+    .oa-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .oa-field {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .oa-field label {
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 4px;
+    }
+
+    .oa-field input {
+        font-size: 13px;
+        padding: 6px 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+    }
+
+    .oa-actions {
+        margin-top: 8px;
+    }
+
+    .oa-actions button {
+        width: 100%;
+        padding: 8px 0;
+        font-size: 13px;
+        border-radius: 3px;
+        border: 1px solid #444;
+        background: #333;
+        color: #fff;
+        cursor: pointer;
+    }
+
+    .oa-actions button:hover {
+        background: #222;
+    }
+
+    .oa-links {
+        margin-top: 12px;
+        font-size: 12px;
+        text-align: center;
+        color: #666;
+    }
+
+    .oa-links a {
+        color: #2b70d9;
+        text-decoration: none;
+    }
+
+    .oa-links a:hover {
+        text-decoration: underline;
+    }
+</style>

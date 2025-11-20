@@ -15,6 +15,8 @@ import { FavoriteModule } from './favorite/favorite.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { PerformanceModule } from './performance/performance.module';
 import { ReportsModule } from './reports/reports.module';
+import { NoticesModule } from './notices/notices.module';
+import { OwnerModule } from './owner/owner.module';
 
 @Module({
   imports: [
@@ -28,8 +30,8 @@ import { ReportsModule } from './reports/reports.module';
         password: process.env.DB_PASSWORD,
         database: process.env.DB_DATABASE,
         autoLoadEntities: true,
-        // synchronize: true, // 개발용
-        synchronize: false, // 배포용
+        synchronize: true, // 개발용
+        // synchronize: false, // 배포용
         logging: ['error', 'schema', 'warn', 'query', 'migration', 'info'],
       }),
     }),
@@ -45,6 +47,8 @@ import { ReportsModule } from './reports/reports.module';
     ContractsModule,
     PerformanceModule,
     ReportsModule,
+    NoticesModule,
+    OwnerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

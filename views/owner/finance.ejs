@@ -1,0 +1,455 @@
+<div class="owner-finance-page">
+    <div class="of-page-header">
+        <h1>매출 / 정산 분석</h1>
+        <div class="of-page-subtitle">
+            완료된 계약 기준으로 기간별 매출 / 회사 / 사원 / 팀 정산 현황
+        </div>
+    </div>
+
+    <%
+    const periodMode = (filter.period === 'custom') ? 'custom' : 'preset';
+    const totalAmount = summary.totalAmount || 0;
+    const formatNumber = (n) => Number(n || 0).toLocaleString('ko-KR');
+    const formatPercent = (part, total) => {
+        const p = Number(total) > 0 ? (Number(part || 0) / Number(total) * 100) : 0;
+        return p.toFixed(1);
+    };
+    %>
+
+    <!-- 필터 영역 -->
+    <form method="get" class="of-filter-form">
+        <div class="of-filter-row">
+            <div class="of-field">
+                <label for="qTeam">담당 팀</label>
+                <select name="qTeam" id="qTeam">
+                    <option value="">전체 팀</option>
+                    <% if (Array.isArray(teams)) { %>
+                        <% teams.forEach(function(t) { %>
+                            <option value="<%= t.name %>" <%= filter.qTeam === t.name ? 'selected' : '' %>>
+                                <%= t.name %>
+                            </option>
+                        <% }) %>
+                    <% } %>
+                </select>
+            </div>
+
+            <div class="of-field">
+                <label for="qSalesperson">담당자</label>
+                <input
+                        type="text"
+                        id="qSalesperson"
+                        name="qSalesperson"
+                        value="<%= filter.qSalesperson || '' %>"
+                        placeholder="담당자 이름"
+                />
+            </div>
+
+            <div class="of-field of-field-period">
+                <div class="of-period-top">
+                    <span class="of-period-label">기간</span>
+                    <label class="of-radio-inline">
+                        <input
+                                type="radio"
+                                name="periodMode"
+                                value="preset"
+                                <%= periodMode === 'preset' ? 'checked' : '' %>
+                        />
+                        빠른선택
+                    </label>
+                    <label class="of-radio-inline">
+                        <input
+                                type="radio"
+                                name="periodMode"
+                                value="custom"
+                                <%= periodMode === 'custom' ? 'checked' : '' %>
+                        />
+                        직접입력
+                    </label>
+                </div>
+
+                <div class="of-period-preset">
+                    <select name="periodPreset" id="ofPeriodPreset">
+                        <option value="today"   <%= filter.period === 'today' ? 'selected' : '' %>>오늘</option>
+                        <option value="week"    <%= filter.period === 'week' ? 'selected' : '' %>>1주일</option>
+                        <option value="month"   <%= filter.period === 'month' ? 'selected' : '' %>>1개월</option>
+                        <option value="quarter" <%= filter.period === 'quarter' ? 'selected' : '' %>>3개월</option>
+                        <option value="half"    <%= filter.period === 'half' ? 'selected' : '' %>>6개월</option>
+                        <option value="year"    <%= filter.period === 'year' ? 'selected' : '' %>>1년</option>
+                    </select>
+                </div>
+
+                <div class="of-period-custom">
+                    <input
+                            type="date"
+                            name="from"
+                            value="<%= filter.from || '' %>"
+                    />
+                    <span>~</span>
+                    <input
+                            type="date"
+                            name="to"
+                            value="<%= filter.to || '' %>"
+                    />
+                </div>
+
+                <input type="hidden" name="period" id="ofHiddenPeriod" value="<%= filter.period %>" />
+            </div>
+
+            <div class="of-field of-field-buttons">
+                <label>&nbsp;</label>
+                <div class="of-filter-buttons">
+                    <button type="submit">조회</button>
+                    <a href="/owner/finance" class="of-btn-reset">초기화</a>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- KPI 카드 -->
+    <div class="of-kpi-row">
+        <div class="of-kpi-card of-kpi-total">
+            <div class="of-kpi-label">선택 기간 총 매출</div>
+            <div class="of-kpi-value"><%= formatNumber(summary.totalAmount) %>원</div>
+            <div class="of-kpi-desc">계약 금액 합계</div>
+        </div>
+
+        <div class="of-kpi-card of-kpi-company">
+            <div class="of-kpi-label">회사 수령액/순 이익</div>
+            <div class="of-kpi-value"><%= formatNumber(summary.companyAmount) %>원</div>
+            <div class="of-kpi-desc">
+                비율: <%= formatPercent(summary.companyAmount, totalAmount) %>%
+            </div>
+        </div>
+
+        <div class="of-kpi-card of-kpi-staff">
+            <div class="of-kpi-label">사원 수령액(전체)</div>
+            <div class="of-kpi-value"><%= formatNumber(summary.staffAmount) %>원</div>
+            <div class="of-kpi-desc">
+                비율: <%= formatPercent(summary.staffAmount, totalAmount) %>%
+            </div>
+        </div>
+
+        <div class="of-kpi-card of-kpi-count">
+            <div class="of-kpi-label">완료된 계약 건수</div>
+            <div class="of-kpi-value"><%= summary.totalContracts %>건</div>
+            <div class="of-kpi-desc">상태 = 계약완료</div>
+        </div>
+    </div>
+
+    <!-- 테이블 구역 -->
+    <div class="of-table-section">
+        <div class="of-table-panel">
+            <div class="of-table-header">
+                <div class="of-table-title">사원별 정산 요약</div>
+                <div class="of-table-subtitle">
+                    담당자 기준 분배 금액 및 참여 계약 수
+                </div>
+            </div>
+
+            <div class="of-table-wrapper">
+                <table class="of-data-table">
+                    <thead>
+                    <tr>
+                        <th>담당자</th>
+                        <th>소속 팀</th>
+                        <th>계약 건수</th>
+                        <th>정산 금액 합계</th>
+                        <th>총 매출중 비율(%)</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <% if (!bySalesperson.length) { %>
+                        <tr>
+                            <td colspan="5" class="of-empty-cell">
+                                선택한 조건에 해당하는 사원 정산 데이터가 없습니다.
+                            </td>
+                        </tr>
+                    <% } else { %>
+                        <% bySalesperson.forEach(function(row) { %>
+                            <tr>
+                                <td><%= row.salespersonName || '-' %></td>
+                                <td><%= row.teamName || '-' %></td>
+                                <td class="of-num"><%= row.contractCount %></td>
+                                <td class="of-num"><%= formatNumber(row.totalAmount) %></td>
+                                <td class="of-num">
+                                    <%= formatPercent(row.totalAmount, totalAmount) %>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="of-table-panel">
+            <div class="of-table-header">
+                <div class="of-table-title">팀별 정산 요약</div>
+                <div class="of-table-subtitle">
+                    팀 소속 사원들의 정산 금액 합계
+                </div>
+            </div>
+
+            <div class="of-table-wrapper">
+                <table class="of-data-table">
+                    <thead>
+                    <tr>
+                        <th>팀 이름</th>
+                        <th>계약 건수</th>
+                        <th>정산 금액 합계</th>
+                        <th>비율(%)</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <% if (!byTeam.length) { %>
+                        <tr>
+                            <td colspan="4" class="of-empty-cell">
+                                선택한 조건에 해당하는 팀 정산 데이터가 없습니다.
+                            </td>
+                        </tr>
+                    <% } else { %>
+                        <% byTeam.forEach(function(row) { %>
+                            <tr>
+                                <td><%= row.teamName || '-' %></td>
+                                <td class="of-num"><%= row.contractCount %></td>
+                                <td class="of-num"><%= formatNumber(row.totalAmount) %></td>
+                                <td class="of-num">
+                                    <%= formatPercent(row.totalAmount, totalAmount) %>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/owner-finance.js"></script>
+
+<style>
+    .owner-finance-page {
+        font-size: 13px;
+    }
+
+    .of-page-header {
+        margin-bottom: 16px;
+    }
+
+    .of-page-header h1 {
+        margin: 0;
+        font-size: 24px;
+    }
+
+    .of-page-subtitle {
+        font-size: 12px;
+        color: #666;
+        margin-top: 4px;
+    }
+
+    .of-filter-form {
+        margin-bottom: 12px;
+    }
+
+    .of-filter-row {
+        display: flex;
+        gap: 16px;
+        align-items: flex-end;
+        margin-bottom: 8px;
+    }
+
+    .of-field {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .of-field label {
+        font-size: 12px;
+        margin-bottom: 4px;
+        color: #555;
+    }
+
+    .of-field input,
+    .of-field select {
+        font-size: 13px;
+        padding: 4px 6px;
+        border: 1px solid #ccc;
+        border-radius: 2px;
+        box-sizing: border-box;
+    }
+
+    .of-field-period {
+        flex: 2;
+    }
+
+    .of-field-buttons {
+        flex: 0 0 180px;
+    }
+
+    .of-filter-buttons {
+        display: flex;
+        gap: 6px;
+        justify-content: flex-end;
+    }
+
+    .of-filter-buttons button,
+    .of-btn-reset {
+        padding: 4px 10px;
+        font-size: 13px;
+        border-radius: 2px;
+        border: 1px solid #ccc;
+        background: #f8f8f8;
+        cursor: pointer;
+        text-decoration: none;
+        color: #333;
+    }
+
+    .of-btn-reset:hover,
+    .of-filter-buttons button:hover {
+        background: #eee;
+    }
+
+    .of-period-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+
+    .of-period-label {
+        font-size: 12px;
+        color: #555;
+    }
+
+    .of-radio-inline {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 12px;
+    }
+
+    .of-period-preset,
+    .of-period-custom {
+        margin-bottom: 3px;
+    }
+
+    .of-period-custom {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    /* KPI */
+    .of-kpi-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .of-kpi-card {
+        flex: 1 1 0;
+        background: #ffffff;
+        border: 1px solid #dcdcdc;
+        border-radius: 4px;
+        padding: 10px 12px;
+    }
+
+    .of-kpi-label {
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 6px;
+    }
+
+    .of-kpi-value {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+
+    .of-kpi-desc {
+        font-size: 11px;
+        color: #777;
+    }
+
+    .of-kpi-total {
+        border-left: 3px solid #2b70d9;
+    }
+
+    .of-kpi-company {
+        border-left: 3px solid #3c9d40;
+    }
+
+    .of-kpi-staff {
+        border-left: 3px solid #e09c24;
+    }
+
+    .of-kpi-count {
+        border-left: 3px solid #888;
+    }
+
+    /* 테이블 */
+    .of-table-section {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .of-table-panel {
+        background: #ffffff;
+        border: 1px solid #dcdcdc;
+    }
+
+    .of-table-header {
+        padding: 8px 10px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .of-table-title {
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .of-table-subtitle {
+        font-size: 11px;
+        color: #777;
+        margin-top: 2px;
+    }
+
+    .of-table-wrapper {
+        overflow-x: auto;
+    }
+
+    .of-data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .of-data-table thead {
+        background: #f5f5f5;
+    }
+
+    .of-data-table th,
+    .of-data-table td {
+        padding: 6px 8px;
+        border: 1px solid #e0e0e0;
+        white-space: nowrap;
+    }
+
+    .of-data-table th {
+        text-align: left;
+    }
+
+    .of-num {
+        text-align: right;
+    }
+
+    .of-empty-cell {
+        text-align: center;
+        padding: 10px;
+        color: #777;
+    }
+</style>

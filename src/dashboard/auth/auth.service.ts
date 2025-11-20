@@ -133,4 +133,18 @@ export class AuthService {
 
     return { credentialId: String(cred.id) };
   }
+
+  async hasAdminOrAccount1(): Promise<boolean> {
+    const adminCount = await this.accountCredentialRepository.count({
+      where: { role: 'admin' },
+    });
+
+    if (adminCount > 0) return true;
+
+    const account1 = await this.accountRepository.findOne({
+      where: { id: '1' },
+    });
+
+    return !!account1;
+  }
 }

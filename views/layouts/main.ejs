@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title><%= typeof pageTitle !== 'undefined' ? pageTitle : 'NoteMap Admin' %></title>
+    <link rel="stylesheet" href="/static/css/base.css" />
+    <link rel="stylesheet" href="/static/css/dashboard.css" />
+</head>
+<script src="/static/js/owner-contracts.js"></script>
+
+<body>
+
+<div class="sidebar">
+    <h2>관리메뉴</h2>
+    <ul>
+        <li><a href="/owner">대시보드</a></li>
+        <li><a href="/owner/contracts">계약 현황</a></li>
+        <li><a href="/owner/finance">매출/정산</a></li>
+        <li><a href="/owner/performance">사원 실적</a></li>
+        <li><a href="/owner/pins">핀 통계</a></li>
+    </ul>
+</div>
+
+<div class="content">
+    <%- body %>
+</div>
+
+</body>
+</html>

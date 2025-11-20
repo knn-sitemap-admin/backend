@@ -1,0 +1,241 @@
+<div class="owner-pin-stats-page">
+    <div class="ops-page-header">
+        <h1>핀 통계</h1>
+    </div>
+
+    <!-- 필터 영역 -->
+    <div class="ops-filter-row">
+        <select id="filterCity" class="ops-select">
+            <option value="all">전체 지역</option>
+            <option value="seoul">서울</option>
+            <option value="incheon">인천</option>
+            <option value="gyeonggi">경기</option>
+        </select>
+
+        <select id="filterPeriod" class="ops-select">
+            <option value="month">1개월</option>
+            <option value="quarter">3개월</option>
+            <option value="half">6개월</option>
+            <option value="year" selected>1년</option>
+            <option value="custom">직접입력</option>
+        </select>
+
+        <input type="date" id="filterFrom" class="ops-date" disabled>
+        <span class="ops-range-sep">~</span>
+        <input type="date" id="filterTo" class="ops-date" disabled>
+
+        <button id="applyFilterBtn" class="ops-apply-btn">적용</button>
+    </div>
+
+    <!-- 요약 카드 -->
+    <div class="ops-summary-row">
+        <div class="ops-summary-card">
+            <div class="ops-summary-label">전체 핀 수</div>
+            <div id="statTotalPins" class="ops-summary-value">0</div>
+        </div>
+
+        <div class="ops-summary-card">
+            <div class="ops-summary-label">가장 많은 도시</div>
+            <div id="statTopCity" class="ops-summary-value">-</div>
+        </div>
+
+        <div class="ops-summary-card">
+            <div class="ops-summary-label">임시핀(답사전)</div>
+            <div id="statDraftBefore" class="ops-summary-value">0</div>
+        </div>
+
+        <div class="ops-summary-card">
+            <div class="ops-summary-label">임시핀(답사예정/예약)</div>
+            <div id="statScheduled" class="ops-summary-value">0</div>
+        </div>
+    </div>
+
+    <!-- 도시별 핀 수 -->
+    <div class="ops-table-panel">
+        <div class="ops-table-header">
+            <div class="ops-table-title">도시별 핀 수</div>
+        </div>
+        <div class="ops-table-wrapper">
+            <table class="ops-table">
+                <thead>
+                <tr>
+                    <th>도시</th>
+                    <th>핀 수</th>
+                </tr>
+                </thead>
+                <tbody id="cityStatsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 지역구별 핀 수 TOP20 -->
+    <div class="ops-table-panel">
+        <div class="ops-table-header">
+            <div class="ops-table-title">지역구별 핀 수 (TOP 20)</div>
+        </div>
+        <div class="ops-table-wrapper">
+            <table class="ops-table">
+                <thead>
+                <tr>
+                    <th>지역구</th>
+                    <th>핀 수</th>
+                </tr>
+                </thead>
+                <tbody id="districtStatsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 답사전 임시핀 -->
+    <div class="ops-table-panel">
+        <div class="ops-table-header">
+            <div class="ops-table-title">답사전 임시핀 (지역구별 TOP 20)</div>
+        </div>
+        <div class="ops-table-wrapper">
+            <table class="ops-table">
+                <thead>
+                <tr>
+                    <th>지역구</th>
+                    <th>갯수</th>
+                </tr>
+                </thead>
+                <tbody id="draftBeforeStatsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 예약된 답사 예정 -->
+    <div class="ops-table-panel">
+        <div class="ops-table-header">
+            <div class="ops-table-title">예약된 답사예정 (지역구별 TOP 20)</div>
+        </div>
+        <div class="ops-table-wrapper">
+            <table class="ops-table">
+                <thead>
+                <tr>
+                    <th>지역구</th>
+                    <th>갯수</th>
+                </tr>
+                </thead>
+                <tbody id="scheduledStatsBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/pins.js"></script>
+
+<style>
+    .owner-pin-stats-page {
+        font-size: 13px;
+    }
+
+    .ops-page-header {
+        margin-bottom: 16px;
+    }
+
+    .ops-page-header h1 {
+        margin: 0;
+        font-size: 24px;
+    }
+
+    .ops-filter-row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 16px;
+    }
+
+    .ops-select,
+    .ops-date {
+        padding: 4px 6px;
+        font-size: 13px;
+        border: 1px solid #ccc;
+        border-radius: 2px;
+    }
+
+    .ops-date[disabled] {
+        background: #f5f5f5;
+        color: #aaa;
+    }
+
+    .ops-range-sep {
+        font-size: 13px;
+        color: #666;
+    }
+
+    .ops-apply-btn {
+        padding: 4px 14px;
+        font-size: 13px;
+        border-radius: 2px;
+        border: 1px solid #ccc;
+        background: #f8f8f8;
+        cursor: pointer;
+    }
+
+    .ops-apply-btn:hover {
+        background: #eee;
+    }
+
+    .ops-summary-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+    }
+
+    .ops-summary-card {
+        flex: 1 1 0;
+        background: #ffffff;
+        border: 1px solid #dcdcdc;
+        border-radius: 4px;
+        padding: 10px 12px;
+    }
+
+    .ops-summary-label {
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 6px;
+    }
+
+    .ops-summary-value {
+        font-size: 18px;
+        font-weight: bold;
+    }
+
+    .ops-table-panel {
+        margin-bottom: 16px;
+        background: #ffffff;
+        border: 1px solid #dcdcdc;
+    }
+
+    .ops-table-header {
+        padding: 8px 10px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .ops-table-title {
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .ops-table-wrapper {
+        overflow-x: auto;
+    }
+
+    .ops-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    .ops-table thead {
+        background: #f5f5f5;
+    }
+
+    .ops-table th,
+    .ops-table td {
+        padding: 6px 8px;
+        border: 1px solid #e0e0e0;
+        white-space: nowrap;
+    }
+</style>

@@ -13,5 +13,6 @@ import { Account } from '../accounts/entities/account.entity';
   ],
   controllers: [AuthController],
   providers: [AuthService],
+  exports: [AuthService],
 })
 export class AuthModule {}

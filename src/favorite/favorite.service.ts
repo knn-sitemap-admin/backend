@@ -18,7 +18,7 @@ export class FavoriteService {
       const groupRepo = m.getRepository(FavoriteGroup);
       const itemRepo = m.getRepository(FavoriteGroupItem);
 
-      // 그룹 선택 or 생성
+      // 그룹 선택 / 생성
       let group: FavoriteGroup | null = null;
 
       if (dto.groupId) {

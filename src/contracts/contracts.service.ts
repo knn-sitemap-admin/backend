@@ -181,18 +181,13 @@ export class ContractsService {
         }
       }
 
-      // ---- 분리 쿼리: 데이터 / 카운트 (TypeORM 버그 회피) ----
       const dataQb = baseQb
         .clone()
         .orderBy(orderByProp, orderDir)
         .skip((page - 1) * size)
         .take(size);
 
-      const countQb = baseQb
-        .clone()
-        .orderBy() // 카운트에는 정렬 제거
-        .skip(0)
-        .take(0);
+      const countQb = baseQb.clone().orderBy().skip(0).take(0);
 
       const [items, total] = await Promise.all([
         dataQb.getMany(),

@@ -9,9 +9,25 @@ import { TransformInterceptor } from './common/transform/transform.interceptor';
 import session from 'express-session';
 import { RedisStore } from 'connect-redis';
 import { createClient, type RedisClientType } from 'redis';
+import { join } from 'path';
+import express from 'express';
+import expressLayouts from 'express-ejs-layouts';
+
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  const expressApp = app.getHttpAdapter().getInstance();
+
+  app.setBaseViewsDir(join(__dirname, '..', 'views'));
+  app.setViewEngine('ejs');
+
+  app.use(expressLayouts);
+  expressApp.set('layout', 'layouts/main');
+
+  // 정적파일 제공 (css/js/img)
+  app.use('/static', express.static(join(__dirname, '..', 'public')));
 
   // main.ts (부팅 직후)
   app.getHttpAdapter().getInstance().set('etag', false);
