@@ -26,6 +26,8 @@ import { SurveyReservation } from '../../survey-reservations/entities/survey-res
 //   clusters: Array<{ lat: number; lng: number; count: number }>;
 // };
 
+export type AgeType = 'OLD' | 'NEW' | null;
+
 export const decimalToNumber = {
   to: (v?: number | null) => v,
   from: (v: string | null) => (v == null ? null : Number(v)),
@@ -49,7 +51,14 @@ type DraftMarker = {
 
 type PointResp = {
   mode: 'point';
-  points: { id: string; lat: number; lng: number; badge: string | null }[];
+  points: {
+    id: string;
+    lat: number;
+    lng: number;
+    name: string | null;
+    badge: string | null;
+    ageType: AgeType;
+  }[];
   drafts: DraftMarker[];
 };
 
@@ -112,9 +121,19 @@ export class PinsService {
           'p.lng AS lng',
           'p.badge AS badge',
           'p.name AS name',
+          'p.is_old AS isOld',
+          'p.is_new AS isNew',
         ])
         .orderBy('p.id', 'DESC')
-        .getRawMany();
+        .getRawMany<{
+          id: string | number;
+          lat: string | number;
+          lng: string | number;
+          badge: string | null;
+          name: string | null;
+          isOld: 0 | 1 | boolean | null;
+          isNew: 0 | 1 | boolean | null;
+        }>();
 
       const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
 
@@ -158,13 +177,30 @@ export class PinsService {
 
       return {
         mode: 'point',
-        points: points.map((p) => ({
-          id: String(p.id),
-          lat: Number(p.lat),
-          lng: Number(p.lng),
-          badge: p.badge,
-          name: p.name ?? null,
-        })),
+        points: points.map((p) => {
+          const isOld = !!p.isOld;
+          const isNew = !!p.isNew;
+
+          let ageType: AgeType = null;
+
+          // 정책: 둘 다 true인 경우는 신축 우선으로 본다 (원하면 OLD 우선으로 바꿔도 됨)
+          if (isNew && !isOld) {
+            ageType = 'NEW';
+          } else if (isOld && !isNew) {
+            ageType = 'OLD';
+          } else if (isNew && isOld) {
+            ageType = 'NEW';
+          }
+
+          return {
+            id: String(p.id),
+            lat: Number(p.lat),
+            lng: Number(p.lng),
+            name: p.name ?? null,
+            badge: p.badge ?? null,
+            ageType,
+          };
+        }),
         drafts,
       };
     } catch (err) {
@@ -266,9 +302,10 @@ export class PinsService {
       // 3) 답사자 / 답사일 (예약 기준)
       let surveyedBy: string | null = null;
       let surveyedAt: Date | null = null;
+      let matchedReservation: SurveyReservation | null = null;
 
       if (candidate) {
-        const resv = await resvRepo.findOne({
+        matchedReservation = await resvRepo.findOne({
           where: {
             pinDraft: { id: candidate.id },
             isDeleted: false,
@@ -277,15 +314,15 @@ export class PinsService {
           order: { createdAt: 'DESC' },
         });
 
-        if (resv) {
-          surveyedBy = String(resv.assignee.id);
-          surveyedAt = new Date(resv.reservedDate);
+        if (matchedReservation) {
+          surveyedBy = String(matchedReservation.assignee.id);
+          surveyedAt = new Date(matchedReservation.reservedDate);
         }
       }
 
       if (!candidate && creatorAccountId && !surveyedBy) {
         surveyedBy = creatorAccountId;
-        surveyedAt = new Date(); // 또는 null 유지하고 프론트에서 createdAt 사용해도 됨
+        surveyedAt = new Date();
       }
 
       // 4) 핀 저장
@@ -295,6 +332,7 @@ export class PinsService {
         badge: dto.badge ?? null,
         addressLine: dto.addressLine,
         name: dto.name,
+        rebateText: dto.rebateText ?? null,
         completionDate: dto.completionDate
           ? new Date(dto.completionDate)
           : null,
@@ -327,7 +365,7 @@ export class PinsService {
 
       await pinRepo.save(pin);
 
-      // 5) 옵션/방향/면적그룹/유닛 기존 로직 그대로
+      // 5) 옵션/방향/면적그룹/유닛 기존 로직
       if (dto.options) {
         await this.pinOptionsService.upsertWithManager(
           manager,
@@ -368,12 +406,30 @@ export class PinsService {
         );
       }
 
-      // 6) 임시핀 승격 처리
+      // 6) 임시핀 비활성화
       if (candidate) {
         await draftRepo.update(candidate.id, { isActive: false });
       }
 
-      return { id: String(pin.id), matchedDraftId: candidate?.id ?? null };
+      // 7) 임시핀 승격 처리: 예약도 답사 완료로 정리
+      //    -> 예약 테이블에 is_deleted = 1로 바꿔서
+      //       "답사 예정" 집계에서 빠지게 함
+      if (matchedReservation) {
+        await resvRepo.update(matchedReservation.id, {
+          isDeleted: true,
+        });
+        // 여러 개가 남을 수 있으면 아래처럼 한 번에 처리도 가능
+        // await resvRepo.update(
+        //   { pinDraft: { id: candidate!.id }, isDeleted: false },
+        //   { isDeleted: true },
+        // );
+      }
+
+      return {
+        id: String(pin.id),
+        matchedDraftId: candidate?.id ?? null,
+        matchedReservationId: matchedReservation?.id ?? null,
+      };
     });
   }
 
@@ -489,6 +545,10 @@ export class PinsService {
       if (dto.publicMemo !== undefined) pin.publicMemo = dto.publicMemo ?? null;
       if (dto.privateMemo !== undefined)
         pin.privateMemo = dto.privateMemo ?? null;
+
+      if (dto.rebateText !== undefined) {
+        pin.rebateText = dto.rebateText ?? null;
+      }
 
       // 연락처 & 배지
       if (dto.contactMainLabel !== undefined)
@@ -790,27 +850,20 @@ export class PinsService {
     return { pins, drafts };
   }
 
-  // 핀 비활성
-  async setDisabled(id: number, isDisabled: boolean) {
+  async deletePin(id: number) {
     return this.dataSource.transaction(async (m) => {
-      const repo = m.getRepository(Pin);
+      const pinRepo = m.getRepository(Pin);
 
-      // 컬럼 존재 확인
-      const col = repo.metadata.findColumnWithPropertyName('isDisabled');
-      if (!col) throw new BadRequestException('isDisabled 컬럼이 없습니다.');
-
-      const pin = await repo.findOne({ where: { id: String(id) } });
-      if (!pin) throw new NotFoundException('핀을 찾을 수 없습니다.');
-
-      const already = pin.isDisabled === isDisabled;
-      if (!already) {
-        await repo.update(String(id), { isDisabled });
+      const pin = await pinRepo.findOne({ where: { id: String(id) } });
+      if (!pin) {
+        throw new NotFoundException('핀을 찾을 수 없습니다.');
       }
+
+      await pinRepo.delete(String(id));
 
       return {
         id: String(id),
-        isDisabled,
-        changed: !already,
+        deleted: true,
       };
     });
   }

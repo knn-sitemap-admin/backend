@@ -108,6 +108,8 @@ export type PinPersonInfo = {
   name: string | null;
 };
 
+export type PinAgeType = 'OLD' | 'NEW' | null;
+
 //최상위 DTO
 export class PinResponseDto {
   id!: string;
@@ -116,6 +118,7 @@ export class PinResponseDto {
   name!: string;
   badge!: string | null;
   addressLine!: string;
+  rebateText!: string | null;
 
   totalBuildings!: number | null;
   totalFloors!: number | null;
@@ -132,8 +135,10 @@ export class PinResponseDto {
   slopeGrade!: string | null;
   structureGrade!: string | null;
   hasElevator!: boolean | null;
-  isOld!: boolean;
-  isNew!: boolean;
+
+  // 구옥/신축 구분
+  ageType!: PinAgeType;
+
   publicMemo!: string | null;
   privateMemo!: string | null;
 
@@ -170,6 +175,20 @@ export class PinResponseDto {
       lastEditor?: PinPersonInfo | null;
     },
   ): PinResponseDto {
+    const isOldFlag = !!entity.isOld;
+    const isNewFlag = !!entity.isNew;
+
+    let ageType: PinAgeType = null;
+
+    // 정책: 둘 다 true면 NEW 우선 (필요하면 OLD 우선으로 바꿔도 됨)
+    if (isNewFlag && !isOldFlag) {
+      ageType = 'NEW';
+    } else if (isOldFlag && !isNewFlag) {
+      ageType = 'OLD';
+    } else if (isNewFlag && isOldFlag) {
+      ageType = 'NEW';
+    }
+
     return {
       id: String(entity.id),
       lat: Number(entity.lat),
@@ -177,8 +196,9 @@ export class PinResponseDto {
       name: entity.name,
       badge: entity.badge ?? null,
       addressLine: entity.addressLine,
+      rebateText: entity.rebateText ?? null,
 
-      completionDate: toISODateOrNull((entity as any).completionDate),
+      completionDate: toISODateOrNull(entity.completionDate),
       buildingType: entity.buildingType ?? null,
       totalHouseholds: toNumOrNull(entity.totalHouseholds),
       totalParkingSlots: toNumOrNull(entity.totalParkingSlots),
@@ -188,8 +208,9 @@ export class PinResponseDto {
       slopeGrade: entity.slopeGrade ?? null,
       structureGrade: entity.structureGrade ?? null,
       hasElevator: toBoolOrNull(entity.hasElevator),
-      isOld: !!entity.isOld,
-      isNew: !!entity.isNew,
+
+      ageType,
+
       publicMemo: entity.publicMemo ?? null,
       privateMemo: entity.privateMemo ?? null,
 

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -93,12 +94,18 @@ export class PinsController {
    * @remarks
    * https://www.notion.so/2858186df78b801bac39c31ad955346e?source=copy_link
    */
-  @Patch('disable/:id')
-  async setDisabled(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdatePinDisableDto,
-  ) {
-    const data = await this.pinsService.setDisabled(id, dto.isDisabled);
-    return { message: '핀 활성 상태 변경', data };
+  // @Patch('disable/:id')
+  // async setDisabled(
+  //   @Param('id', ParseIntPipe) id: number,
+  //   @Body() dto: UpdatePinDisableDto,
+  // ) {
+  //   const data = await this.pinsService.setDisabled(id, dto.isDisabled);
+  //   return { message: '핀 활성 상태 변경', data };
+  // }
+
+  @Delete(':id')
+  async deletePin(@Param('id', ParseIntPipe) id: number) {
+    const data = await this.pinsService.deletePin(id);
+    return { message: '핀 삭제 완료', data };
   }
 }

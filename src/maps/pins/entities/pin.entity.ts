@@ -27,7 +27,7 @@ export enum PinBadge {
   R4_TERRACE = 'R4_TERRACE',
   LOFT = 'LOFT', // 복층
   TOWNHOUSE = 'TOWNHOUSE', // 타운하우스
-  OLD_HOUSE = 'OLD_HOUSE', // 구옥
+  // OLD_HOUSE = 'OLD_HOUSE', // 구옥
   SURVEY_SCHEDULED = 'SURVEY_SCHEDULED', // 답사예정
   MOVE_IN_COMPLETE = 'MOVE_IN_COMPLETE', // 입주완료
 }
@@ -60,6 +60,14 @@ export class Pin {
 
   @Column({ type: 'date', name: 'completion_date', nullable: true })
   completionDate: Date | null = null;
+
+  @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'rebate_text',
+    nullable: true,
+  })
+  rebateText: string | null = null;
 
   @Column({
     type: 'enum',

@@ -12,6 +12,7 @@ import {
   IsNotEmpty,
   IsEnum,
   IsInt,
+  MaxLength,
 } from 'class-validator';
 import { CreateUnitDto } from '../../units/dto/create-unit.dto';
 import { CreatePinOptionsDto } from '../../pin-options/dto/create-pin-option.dto';
@@ -175,4 +176,9 @@ export class CreatePinDto {
   @Type(() => Number)
   @IsInt()
   pinDraftId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  rebateText?: string | null;
 }
