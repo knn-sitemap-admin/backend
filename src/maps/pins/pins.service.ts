@@ -1,11 +1,10 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets, DataSource, DeepPartial, In } from 'typeorm';
+import { Repository, Brackets, DataSource, DeepPartial } from 'typeorm';
 import { MapPinsDto } from './dto/map-pins.dto';
 import { Pin } from './entities/pin.entity';
 import { CreatePinDto } from './dto/create-pin.dto';
@@ -20,11 +19,6 @@ import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
 import { SurveyReservationsService } from '../../survey-reservations/survey-reservations.service';
 import { Account } from '../../dashboard/accounts/entities/account.entity';
 import { SurveyReservation } from '../../survey-reservations/entities/survey-reservation.entity';
-
-// type ClusterResp = {
-//   mode: 'cluster';
-//   clusters: Array<{ lat: number; lng: number; count: number }>;
-// };
 
 export type AgeType = 'OLD' | 'NEW' | null;
 
@@ -70,15 +64,8 @@ type DraftSearchItem = {
   draftState: 'BEFORE' | 'SCHEDULED';
 };
 
-type SearchResp = {
-  pins: PinResponseDto[];
-  drafts: DraftSearchItem[];
-};
-
 @Injectable()
 export class PinsService {
-  // private readonly logger = new Logger(PinsService.name);
-
   constructor(
     @InjectRepository(Pin)
     private readonly pinRepository: Repository<Pin>,
@@ -106,12 +93,14 @@ export class PinsService {
           neLng,
         });
 
-      if (typeof isOld === 'boolean')
+      if (typeof isOld === 'boolean') {
         qb.andWhere('p.isOld = :isOld', { isOld });
-      if (typeof isNew === 'boolean')
+      }
+      if (typeof isNew === 'boolean') {
         qb.andWhere('p.isNew = :isNew', { isNew });
+      }
       if (favoriteOnly) {
-        // 즐겨찾기 기능 미구현
+        // 즐겨찾기 필터는 나중에 구현
       }
 
       const points = await qb
@@ -121,8 +110,8 @@ export class PinsService {
           'p.lng AS lng',
           'p.badge AS badge',
           'p.name AS name',
-          'p.is_old AS isOld',
-          'p.is_new AS isNew',
+          'p.isOld AS isOld',
+          'p.isNew AS isNew',
         ])
         .orderBy('p.id', 'DESC')
         .getRawMany<{
@@ -178,17 +167,16 @@ export class PinsService {
       return {
         mode: 'point',
         points: points.map((p) => {
-          const isOld = !!p.isOld;
-          const isNew = !!p.isNew;
+          const oldFlag = !!p.isOld;
+          const newFlag = !!p.isNew;
 
           let ageType: AgeType = null;
-
-          // 정책: 둘 다 true인 경우는 신축 우선으로 본다 (원하면 OLD 우선으로 바꿔도 됨)
-          if (isNew && !isOld) {
+          if (newFlag && !oldFlag) {
             ageType = 'NEW';
-          } else if (isOld && !isNew) {
+          } else if (oldFlag && !newFlag) {
             ageType = 'OLD';
-          } else if (isNew && isOld) {
+          } else if (newFlag && oldFlag) {
+            // 둘 다 true면 신축 우선
             ageType = 'NEW';
           }
 
@@ -203,45 +191,12 @@ export class PinsService {
         }),
         drafts,
       };
-    } catch (err) {
+    } catch (err: any) {
       console.error('getMapPins ERROR:', err.message);
       console.error(err.stack);
       throw err;
     }
   }
-
-  // 서버 클러스터링 로직
-  // private async buildClusters(baseQb: SelectQueryBuilder<Pin>): Promise<Array<{ lat: number; lng: number; count: number }>> {
-  //   const raw = await baseQb
-  //     .select([
-  //       'p.lat AS lat',
-  //       'p.lng AS lng',
-  //     ])
-  //     .getRawMany<{ lat: string; lng: string }>();
-  //
-  //   const cellSize = 0.01;
-  //   const map = new Map<string, { latSum: number; lngSum: number; count: number }>();
-  //
-  //   for (const r of raw) {
-  //     const lat = Number(r.lat);
-  //     const lng = Number(r.lng);
-  //     const key = `${Math.floor(lat / cellSize)}:${Math.floor(lng / cellSize)}`;
-  //     const prev = map.get(key);
-  //     if (prev) {
-  //       prev.latSum += lat;
-  //       prev.lngSum += lng;
-  //       prev.count += 1;
-  //     } else {
-  //       map.set(key, { latSum: lat, lngSum: lng, count: 1 });
-  //     }
-  //   }
-  //
-  //   return Array.from(map.values()).map((c) => ({
-  //     lat: c.latSum / c.count,
-  //     lng: c.lngSum / c.count,
-  //     count: c.count,
-  //   }));
-  // }
 
   async create(dto: CreatePinDto, meCredentialId: string | null) {
     if (!Number.isFinite(dto.lat) || !Number.isFinite(dto.lng)) {
@@ -357,7 +312,6 @@ export class PinsService {
         totalFloors: dto.totalFloors ?? null,
         remainingHouseholds: dto.remainingHouseholds ?? null,
         minRealMoveInCost: dto.minRealMoveInCost ?? null,
-
         creatorId: creatorAccountId,
         surveyedBy,
         surveyedAt,
@@ -365,7 +319,7 @@ export class PinsService {
 
       await pinRepo.save(pin);
 
-      // 5) 옵션/방향/면적그룹/유닛 기존 로직
+      // 5) 옵션/방향/면적그룹/유닛
       if (dto.options) {
         await this.pinOptionsService.upsertWithManager(
           manager,
@@ -411,18 +365,11 @@ export class PinsService {
         await draftRepo.update(candidate.id, { isActive: false });
       }
 
-      // 7) 임시핀 승격 처리: 예약도 답사 완료로 정리
-      //    -> 예약 테이블에 is_deleted = 1로 바꿔서
-      //       "답사 예정" 집계에서 빠지게 함
+      // 7) 예약도 답사 완료로 정리 (집계에서 제외)
       if (matchedReservation) {
         await resvRepo.update(matchedReservation.id, {
           isDeleted: true,
         });
-        // 여러 개가 남을 수 있으면 아래처럼 한 번에 처리도 가능
-        // await resvRepo.update(
-        //   { pinDraft: { id: candidate!.id }, isDeleted: false },
-        //   { isDeleted: true },
-        // );
       }
 
       return {
@@ -500,13 +447,15 @@ export class PinsService {
 
       // 좌표
       if (dto.lat !== undefined) {
-        if (!Number.isFinite(dto.lat))
+        if (!Number.isFinite(dto.lat)) {
           throw new BadRequestException('잘못된 좌표');
+        }
         pin.lat = String(dto.lat);
       }
       if (dto.lng !== undefined) {
-        if (!Number.isFinite(dto.lng))
+        if (!Number.isFinite(dto.lng)) {
           throw new BadRequestException('잘못된 lng');
+        }
         pin.lng = String(dto.lng);
       }
 
@@ -520,57 +469,85 @@ export class PinsService {
           ? new Date(dto.completionDate)
           : null;
       }
-      if (dto.buildingType !== undefined)
+      if (dto.buildingType !== undefined) {
         pin.buildingType = dto.buildingType ?? null;
-      if (dto.hasElevator !== undefined) pin.hasElevator = dto.hasElevator;
+      }
+      if (dto.hasElevator !== undefined) {
+        pin.hasElevator = dto.hasElevator;
+      }
 
-      if (dto.totalHouseholds !== undefined)
+      if (dto.totalHouseholds !== undefined) {
         pin.totalHouseholds = dto.totalHouseholds ?? null;
-      if (dto.totalParkingSlots !== undefined)
+      }
+      if (dto.totalParkingSlots !== undefined) {
         pin.totalParkingSlots = dto.totalParkingSlots ?? null;
-      if (dto.registrationTypeId !== undefined)
+      }
+      if (dto.registrationTypeId !== undefined) {
         pin.registrationTypeId = dto.registrationTypeId ?? null;
-      if (dto.parkingTypeId !== undefined)
+      }
+      if (dto.parkingTypeId !== undefined) {
         pin.parkingTypeId = dto.parkingTypeId ?? null;
+      }
 
-      if (dto.parkingGrade !== undefined)
+      if (dto.parkingGrade !== undefined) {
         pin.parkingGrade = dto.parkingGrade ?? null;
-      if (dto.slopeGrade !== undefined) pin.slopeGrade = dto.slopeGrade ?? null;
-      if (dto.structureGrade !== undefined)
+      }
+      if (dto.slopeGrade !== undefined) {
+        pin.slopeGrade = dto.slopeGrade ?? null;
+      }
+      if (dto.structureGrade !== undefined) {
         pin.structureGrade = dto.structureGrade ?? null;
+      }
 
-      if (dto.isOld !== undefined) pin.isOld = dto.isOld;
-      if (dto.isNew !== undefined) pin.isNew = dto.isNew;
+      if (dto.isOld !== undefined) {
+        pin.isOld = dto.isOld;
+      }
+      if (dto.isNew !== undefined) {
+        pin.isNew = dto.isNew;
+      }
 
-      if (dto.publicMemo !== undefined) pin.publicMemo = dto.publicMemo ?? null;
-      if (dto.privateMemo !== undefined)
+      if (dto.publicMemo !== undefined) {
+        pin.publicMemo = dto.publicMemo ?? null;
+      }
+      if (dto.privateMemo !== undefined) {
         pin.privateMemo = dto.privateMemo ?? null;
+      }
 
       if (dto.rebateText !== undefined) {
         pin.rebateText = dto.rebateText ?? null;
       }
 
       // 연락처 & 배지
-      if (dto.contactMainLabel !== undefined)
+      if (dto.contactMainLabel !== undefined) {
         pin.contactMainLabel = dto.contactMainLabel ?? null;
-      if (dto.contactMainPhone !== undefined)
+      }
+      if (dto.contactMainPhone !== undefined) {
         pin.contactMainPhone = dto.contactMainPhone;
-      if (dto.contactSubLabel !== undefined)
+      }
+      if (dto.contactSubLabel !== undefined) {
         pin.contactSubLabel = dto.contactSubLabel ?? null;
-      if (dto.contactSubPhone !== undefined)
+      }
+      if (dto.contactSubPhone !== undefined) {
         pin.contactSubPhone = dto.contactSubPhone ?? null;
-      if (dto.badge !== undefined) pin.badge = dto.badge ?? null;
+      }
+      if (dto.badge !== undefined) {
+        pin.badge = dto.badge ?? null;
+      }
 
-      if (dto.totalBuildings !== undefined)
+      if (dto.totalBuildings !== undefined) {
         pin.totalBuildings = dto.totalBuildings ?? null;
-      if (dto.totalFloors !== undefined)
+      }
+      if (dto.totalFloors !== undefined) {
         pin.totalFloors = dto.totalFloors ?? null;
-      if (dto.remainingHouseholds !== undefined)
+      }
+      if (dto.remainingHouseholds !== undefined) {
         pin.remainingHouseholds = dto.remainingHouseholds ?? null;
+      }
       if (dto.minRealMoveInCost !== undefined) {
         pin.minRealMoveInCost =
           dto.minRealMoveInCost == null ? null : String(dto.minRealMoveInCost);
       }
+
       if (meCredentialId) {
         try {
           const editorAccountId =
@@ -657,18 +634,29 @@ export class PinsService {
         hasElevator: dto.hasElevator ? 1 : 0,
       });
     }
-    if (dto.rooms?.length)
+    if (dto.rooms?.length) {
       qb.andWhere('u.rooms IN (:...rooms)', { rooms: dto.rooms });
-    if (typeof dto.hasLoft === 'boolean')
-      qb.andWhere('u.has_loft = :hasLoft', { hasLoft: dto.hasLoft ? 1 : 0 });
-    if (typeof dto.hasTerrace === 'boolean')
+    }
+    if (typeof dto.hasLoft === 'boolean') {
+      qb.andWhere('u.has_loft = :hasLoft', {
+        hasLoft: dto.hasLoft ? 1 : 0,
+      });
+    }
+    if (typeof dto.hasTerrace === 'boolean') {
       qb.andWhere('u.has_terrace = :hasTerrace', {
         hasTerrace: dto.hasTerrace ? 1 : 0,
       });
-    if (dto.salePriceMin != null)
-      qb.andWhere('u.min_price >= :priceMin', { priceMin: dto.salePriceMin });
-    if (dto.salePriceMax != null)
-      qb.andWhere('u.max_price <= :priceMax', { priceMax: dto.salePriceMax });
+    }
+    if (dto.salePriceMin != null) {
+      qb.andWhere('u.min_price >= :priceMin', {
+        priceMin: dto.salePriceMin,
+      });
+    }
+    if (dto.salePriceMax != null) {
+      qb.andWhere('u.max_price <= :priceMax', {
+        priceMax: dto.salePriceMax,
+      });
+    }
 
     if (dto.buildingTypes?.length) {
       qb.andWhere('p.building_type IN (:...buildingTypes)', {
