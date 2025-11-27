@@ -129,8 +129,8 @@ export class PinResponseDto {
   buildingType!: string | null;
   totalHouseholds!: number | null;
   totalParkingSlots!: number | null;
-  registrationTypeId!: number | null;
-  parkingTypeId!: number | null;
+  registrationType!: string | null;
+  parkingType!: string | null;
   parkingGrade!: string | null;
   slopeGrade!: string | null;
   structureGrade!: string | null;
@@ -203,7 +203,7 @@ export class PinResponseDto {
       totalHouseholds: toNumOrNull(entity.totalHouseholds),
       totalParkingSlots: toNumOrNull(entity.totalParkingSlots),
       registrationTypeId: toNumOrNull(entity.registrationTypeId),
-      parkingTypeId: toNumOrNull(entity.parkingType),
+      parkingType: entity.parkingType,
       parkingGrade: entity.parkingGrade ?? null,
       slopeGrade: entity.slopeGrade ?? null,
       structureGrade: entity.structureGrade ?? null,
