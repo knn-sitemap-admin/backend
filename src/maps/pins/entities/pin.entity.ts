@@ -26,10 +26,8 @@ export enum PinBadge {
   R4 = 'R4',
   R4_TERRACE = 'R4_TERRACE',
   LOFT = 'LOFT', // 복층
+  LOFT_TERRACE = 'LOFT_TERRACE', // 복층테라스
   TOWNHOUSE = 'TOWNHOUSE', // 타운하우스
-  // OLD_HOUSE = 'OLD_HOUSE', // 구옥
-  SURVEY_SCHEDULED = 'SURVEY_SCHEDULED', // 답사예정
-  MOVE_IN_COMPLETE = 'MOVE_IN_COMPLETE', // 입주완료
 }
 
 @Entity({ name: 'pins' })
@@ -38,10 +36,10 @@ export class Pin {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'decimal', precision: 11, scale: 8, name: 'lat' })
+  @Column({ type: 'decimal', precision: 12, scale: 9, name: 'lat' })
   lat!: string;
 
-  @Column({ type: 'decimal', precision: 11, scale: 8, name: 'lng' })
+  @Column({ type: 'decimal', precision: 13, scale: 9, name: 'lng' })
   lng!: string;
 
   @Column({ type: 'varchar', length: 255, name: 'name' })
@@ -95,12 +93,12 @@ export class Pin {
   registrationTypeId: number | null = null;
 
   @Column({
-    type: 'int',
-    unsigned: true,
-    name: 'parking_type_id',
+    type: 'varchar',
+    length: 50,
+    name: 'parking_type',
     nullable: true,
   })
-  parkingTypeId: number | null = null;
+  parkingType: string | null = null;
 
   @Column({
     type: 'varchar',

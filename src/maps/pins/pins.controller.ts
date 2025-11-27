@@ -15,7 +15,6 @@ import { CreatePinDto } from './dto/create-pin.dto';
 import { UpdatePinDto } from './dto/update-pin.dto';
 import { MapPinsDto } from './dto/map-pins.dto';
 import { SearchPinsDto } from './dto/search-pins.dto';
-import { UpdatePinDisableDto } from './dto/update-pin-disable.dto';
 
 @Controller('pins')
 export class PinsController {

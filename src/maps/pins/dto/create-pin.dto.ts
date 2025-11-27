@@ -112,9 +112,10 @@ export class CreatePinDto {
   @IsInt()
   registrationTypeId?: number | null;
 
+  //주차유형 문자열로 받기
   @IsOptional()
-  @IsInt()
-  parkingTypeId?: number | null;
+  @IsString()
+  parkingType?: string | null;
 
   @IsOptional()
   @IsEnum(['1', '2', '3', '4', '5'])

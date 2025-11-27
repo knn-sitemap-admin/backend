@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { CreatePinDraftDto } from './dto/create-pin-draft.dto';
 import { PinDraft } from './entities/pin-draft.entity';
+import { PinDraftDetailDto } from './dto/pin-draft-detail.dto';
 
 @Injectable()
 export class PinDraftsService {
@@ -32,6 +37,8 @@ export class PinDraftsService {
       lat: String(dto.lat),
       lng: String(dto.lng),
       addressLine: dto.addressLine,
+      name: dto.name ?? null,
+      contactMainPhone: dto.contactMainPhone ?? null,
       isActive: true,
       creatorId: creatorAccountId,
     });
@@ -39,5 +46,22 @@ export class PinDraftsService {
     await repo.save(draft);
 
     return { draftId: draft.id };
+  }
+
+  async findDraftDetail(
+    id: string,
+    meCredentialId: string | null,
+  ): Promise<PinDraftDetailDto> {
+    const draftRepo = this.ds.getRepository(PinDraft);
+
+    const draft = await draftRepo.findOne({
+      where: { id: String(id), isActive: true },
+    });
+
+    if (!draft) {
+      throw new NotFoundException('임시핀 없음');
+    }
+
+    return PinDraftDetailDto.fromEntity(draft);
   }
 }

@@ -6,7 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Brackets, DataSource, DeepPartial } from 'typeorm';
 import { MapPinsDto } from './dto/map-pins.dto';
-import { Pin } from './entities/pin.entity';
+import { Pin, PinBadge } from './entities/pin.entity';
 import { CreatePinDto } from './dto/create-pin.dto';
 import { UnitsService } from '../units/units.service';
 import { PinDirectionsService } from '../pin-directions/pin-directions.service';
@@ -296,7 +296,7 @@ export class PinsService {
         totalHouseholds: dto.totalHouseholds ?? null,
         totalParkingSlots: dto.totalParkingSlots ?? null,
         registrationTypeId: dto.registrationTypeId ?? null,
-        parkingTypeId: dto.parkingTypeId ?? null,
+        parkingType: dto.parkingType ?? null,
         parkingGrade: dto.parkingGrade ?? null,
         slopeGrade: dto.slopeGrade ?? null,
         structureGrade: dto.structureGrade ?? null,
@@ -360,16 +360,14 @@ export class PinsService {
         );
       }
 
-      // 6) 임시핀 비활성화
+      //  임시핀 비활성화
       if (candidate) {
-        await draftRepo.update(candidate.id, { isActive: false });
+        await draftRepo.delete(candidate.id);
       }
 
-      // 7) 예약도 답사 완료로 정리 (집계에서 제외)
+      // 예약도 삭제
       if (matchedReservation) {
-        await resvRepo.update(matchedReservation.id, {
-          isDeleted: true,
-        });
+        await resvRepo.delete(matchedReservation.id);
       }
 
       return {
@@ -485,8 +483,8 @@ export class PinsService {
       if (dto.registrationTypeId !== undefined) {
         pin.registrationTypeId = dto.registrationTypeId ?? null;
       }
-      if (dto.parkingTypeId !== undefined) {
-        pin.parkingTypeId = dto.parkingTypeId ?? null;
+      if (dto.parkingType !== undefined) {
+        pin.parkingType = dto.parkingType ?? null;
       }
 
       if (dto.parkingGrade !== undefined) {
@@ -625,28 +623,54 @@ export class PinsService {
   ): Promise<{ pins: PinMapItem[]; drafts: DraftSearchItem[] }> {
     const qb = this.pinRepository
       .createQueryBuilder('p')
-      .leftJoin('p.units', 'u')
-      .leftJoin('p.areaGroups', 'ag')
+      .leftJoin('p.units', 'u') // 매매가 필터용
+      .leftJoin('p.areaGroups', 'ag') // 면적 필터용
       .where('p.is_disabled = :active', { active: 0 });
 
+    // 0) 방/테라스/복층 → PinBadge 배열로 변환
+    const badgeFilters: PinBadge[] = [];
+    const rooms = dto.rooms ?? [];
+    const hasTerrace = dto.hasTerrace === true;
+    const hasLoft = dto.hasLoft === true;
+
+    if (rooms.includes(1)) {
+      badgeFilters.push(
+        hasTerrace ? PinBadge.R1_TO_1_5_TERRACE : PinBadge.R1_TO_1_5,
+      );
+    }
+    if (rooms.includes(2)) {
+      badgeFilters.push(
+        hasTerrace ? PinBadge.R2_TO_2_5_TERRACE : PinBadge.R2_TO_2_5,
+      );
+    }
+    if (rooms.includes(3)) {
+      badgeFilters.push(hasTerrace ? PinBadge.R3_TERRACE : PinBadge.R3);
+    }
+    if (rooms.includes(4)) {
+      badgeFilters.push(hasTerrace ? PinBadge.R4_TERRACE : PinBadge.R4);
+    }
+
+    // 복층 필터
+    if (hasLoft) {
+      badgeFilters.push(hasTerrace ? PinBadge.LOFT_TERRACE : PinBadge.LOFT);
+    }
+
+    const uniqueBadges = Array.from(new Set(badgeFilters));
+
+    if (uniqueBadges.length > 0) {
+      qb.andWhere('p.badge IN (:...badges)', {
+        badges: uniqueBadges,
+      });
+    }
+
+    // 1) 엘리베이터 (핀 기준)
     if (typeof dto.hasElevator === 'boolean') {
       qb.andWhere('p.has_elevator = :hasElevator', {
         hasElevator: dto.hasElevator ? 1 : 0,
       });
     }
-    if (dto.rooms?.length) {
-      qb.andWhere('u.rooms IN (:...rooms)', { rooms: dto.rooms });
-    }
-    if (typeof dto.hasLoft === 'boolean') {
-      qb.andWhere('u.has_loft = :hasLoft', {
-        hasLoft: dto.hasLoft ? 1 : 0,
-      });
-    }
-    if (typeof dto.hasTerrace === 'boolean') {
-      qb.andWhere('u.has_terrace = :hasTerrace', {
-        hasTerrace: dto.hasTerrace ? 1 : 0,
-      });
-    }
+
+    // 2) 매매가 (유닛 기준) – 기존 유지
     if (dto.salePriceMin != null) {
       qb.andWhere('u.min_price >= :priceMin', {
         priceMin: dto.salePriceMin,
@@ -658,12 +682,14 @@ export class PinsService {
       });
     }
 
+    // 3) 등기 타입 (핀 기준)
     if (dto.buildingTypes?.length) {
       qb.andWhere('p.building_type IN (:...buildingTypes)', {
         buildingTypes: dto.buildingTypes,
       });
     }
 
+    // 4) 전용면적 (areaGroups 기준) – 기존 로직 유지
     if (dto.areaMinM2 != null || dto.areaMaxM2 != null) {
       qb.andWhere(
         new Brackets((w) => {
@@ -697,6 +723,15 @@ export class PinsService {
       );
     }
 
+    // 5) 실입주금 (핀 기준)
+    if (dto.minRealMoveInCostMax != null) {
+      qb.andWhere(
+        'p.min_real_move_in_cost IS NOT NULL AND p.min_real_move_in_cost <= :moveInMax',
+        { moveInMax: dto.minRealMoveInCostMax },
+      );
+    }
+
+    // 6) 필터된 핀 id 목록 조회
     const idRows = await qb
       .select('p.id', 'id')
       .groupBy('p.id')
@@ -733,22 +768,23 @@ export class PinsService {
         lat: Number(r.lat),
         lng: Number(r.lng),
         name: r.name,
-        badge: r.badge ?? null,
+        badge: (r.badge as PinBadge | null) ?? null,
         addressLine: r.addressLine,
       }));
     }
 
+    // 7) 필터 사용 여부 (임시핀 숨길지 결정)
     const hasAnyFilter =
+      uniqueBadges.length > 0 ||
       typeof dto.hasElevator === 'boolean' ||
-      (dto.rooms?.length ?? 0) > 0 ||
-      typeof dto.hasLoft === 'boolean' ||
-      typeof dto.hasTerrace === 'boolean' ||
       dto.salePriceMin != null ||
       dto.salePriceMax != null ||
       dto.areaMinM2 != null ||
       dto.areaMaxM2 != null ||
-      (dto.buildingTypes?.length ?? 0) > 0;
+      (dto.buildingTypes?.length ?? 0) > 0 ||
+      dto.minRealMoveInCostMax != null;
 
+    // 8) 임시핀 검색 (필터가 하나도 없을 때만)
     let drafts: DraftSearchItem[] = [];
     if (!hasAnyFilter) {
       const draftRepo = this.pinRepository.manager.getRepository(PinDraft);

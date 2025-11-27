@@ -203,7 +203,7 @@ export class PinResponseDto {
       totalHouseholds: toNumOrNull(entity.totalHouseholds),
       totalParkingSlots: toNumOrNull(entity.totalParkingSlots),
       registrationTypeId: toNumOrNull(entity.registrationTypeId),
-      parkingTypeId: toNumOrNull(entity.parkingTypeId),
+      parkingTypeId: toNumOrNull(entity.parkingType),
       parkingGrade: entity.parkingGrade ?? null,
       slopeGrade: entity.slopeGrade ?? null,
       structureGrade: entity.structureGrade ?? null,
