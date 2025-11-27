@@ -359,15 +359,15 @@ export class PinsService {
           dto.units,
         );
       }
+      
+      // 예약도 삭제
+      if (matchedReservation) {
+        await resvRepo.delete(matchedReservation.id);
+      }
 
       //  임시핀 비활성화
       if (candidate) {
         await draftRepo.delete(candidate.id);
-      }
-
-      // 예약도 삭제
-      if (matchedReservation) {
-        await resvRepo.delete(matchedReservation.id);
       }
 
       return {
