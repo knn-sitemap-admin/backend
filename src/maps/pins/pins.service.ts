@@ -359,7 +359,7 @@ export class PinsService {
           dto.units,
         );
       }
-      
+
       // 예약도 삭제
       if (matchedReservation) {
         await resvRepo.delete(matchedReservation.id);
@@ -632,6 +632,7 @@ export class PinsService {
     const rooms = dto.rooms ?? [];
     const hasTerrace = dto.hasTerrace === true;
     const hasLoft = dto.hasLoft === true;
+    const hasTownhouse = dto.hasTownhouse === true;
 
     if (rooms.includes(1)) {
       badgeFilters.push(
@@ -653,6 +654,10 @@ export class PinsService {
     // 복층 필터
     if (hasLoft) {
       badgeFilters.push(hasTerrace ? PinBadge.LOFT_TERRACE : PinBadge.LOFT);
+    }
+
+    if (hasTownhouse) {
+      badgeFilters.push(PinBadge.TOWNHOUSE);
     }
 
     const uniqueBadges = Array.from(new Set(badgeFilters));

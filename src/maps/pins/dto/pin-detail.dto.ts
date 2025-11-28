@@ -129,7 +129,7 @@ export class PinResponseDto {
   buildingType!: string | null;
   totalHouseholds!: number | null;
   totalParkingSlots!: number | null;
-  registrationType!: string | null;
+  registrationTypeId!: number | null;
   parkingType!: string | null;
   parkingGrade!: string | null;
   slopeGrade!: string | null;

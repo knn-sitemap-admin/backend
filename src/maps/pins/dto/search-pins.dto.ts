@@ -40,6 +40,11 @@ export class SearchPinsDto {
   @IsOptional()
   @Type(() => Boolean)
   @IsBoolean()
+  hasTownhouse?: boolean;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
   hasElevator?: boolean;
 
   @IsOptional()

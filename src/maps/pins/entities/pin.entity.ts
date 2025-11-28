@@ -17,9 +17,9 @@ export type Grade3 = '상' | '중' | '하';
 export type BuildingType = 'APT' | 'OP' | '주택' | '근생' | '도생';
 
 export enum PinBadge {
-  R1_TO_1_5 = 'R1_TO_1_5',
-  R1_TO_1_5_TERRACE = 'R1_TO_1_5_TERRACE',
-  R2_TO_2_5 = 'R2_TO_2_5',
+  R1_TO_1_5 = 'R1_TO_1_5', //1
+  R1_TO_1_5_TERRACE = 'R1_TO_1_5_TERRACE', //1
+  R2_TO_2_5 = 'R2_TO_2_5', //2
   R2_TO_2_5_TERRACE = 'R2_TO_2_5_TERRACE',
   R3 = 'R3',
   R3_TERRACE = 'R3_TERRACE',
