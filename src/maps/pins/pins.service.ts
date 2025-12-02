@@ -361,8 +361,13 @@ export class PinsService {
       }
 
       // 예약도 삭제
-      if (matchedReservation) {
-        await resvRepo.delete(matchedReservation.id);
+      if (candidate) {
+        await resvRepo
+          .createQueryBuilder()
+          .delete()
+          .from(SurveyReservation)
+          .where('pin_draft_id = :id', { id: candidate.id })
+          .execute();
       }
 
       //  임시핀 비활성화
