@@ -7,6 +7,7 @@ import { DataSource } from 'typeorm';
 import { CreatePinDraftDto } from './dto/create-pin-draft.dto';
 import { PinDraft } from './entities/pin-draft.entity';
 import { PinDraftDetailDto } from './dto/pin-draft-detail.dto';
+import { SurveyReservation } from './entities/survey-reservation.entity';
 
 @Injectable()
 export class PinDraftsService {
@@ -48,10 +49,7 @@ export class PinDraftsService {
     return { draftId: draft.id };
   }
 
-  async findDraftDetail(
-    id: string,
-    meCredentialId: string | null,
-  ): Promise<PinDraftDetailDto> {
+  async findDraftDetail(id: string): Promise<PinDraftDetailDto> {
     const draftRepo = this.ds.getRepository(PinDraft);
 
     const draft = await draftRepo.findOne({
@@ -63,5 +61,29 @@ export class PinDraftsService {
     }
 
     return PinDraftDetailDto.fromEntity(draft);
+  }
+
+  async deleteDraftWithReservations(draftId: string) {
+    const draftRepo = this.ds.getRepository(PinDraft);
+    const resvRepo = this.ds.getRepository(SurveyReservation);
+
+    // 1) 임시핀 존재 여부만 체크
+    const draft = await draftRepo.findOne({
+      where: { id: String(draftId) },
+    });
+
+    if (!draft) {
+      throw new NotFoundException('임시핀을 찾을 수 없습니다.');
+    }
+
+    await resvRepo.delete({
+      pinDraft: { id: draft.id },
+    } as any);
+
+    await draftRepo.delete(draft.id);
+
+    return {
+      deletedDraftId: String(draft.id),
+    };
   }
 }

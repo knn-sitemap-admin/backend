@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Req,
+} from '@nestjs/common';
 import { CreatePinDraftDto } from './dto/create-pin-draft.dto';
 import { PinDraftsService } from './pin-drafts.service';
 
@@ -19,10 +27,18 @@ export class PinDraftsController {
   }
 
   @Get(':id')
-  async getDraftDetail(@Param('id') id: string, @Req() req: any) {
-    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
-
-    const data = await this.service.findDraftDetail(id, me || null);
+  async getDraftDetail(@Param('id') id: string) {
+    const data = await this.service.findDraftDetail(id);
     return { message: '임시핀 상세', data };
+  }
+
+  @Delete(':id')
+  async deleteDraft(@Param('id') id: string) {
+    const result = await this.service.deleteDraftWithReservations(id);
+
+    return {
+      message: '임시핀 삭제 완료',
+      data: result,
+    };
   }
 }
