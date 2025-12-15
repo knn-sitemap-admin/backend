@@ -108,6 +108,11 @@ async function bootstrap() {
     prefix: 'sess:',
   } satisfies RedisStoreCtorArg);
 
+  expressApp.set('sessionStore', store);
+
+  const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
+  const ttlMs = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
+
   app.use(
     session({
       store,
@@ -122,7 +127,7 @@ async function bootstrap() {
         secure: true,
         sameSite: 'none',
         path: '/',
-        maxAge: 1000 * 60 * 60 * 24 * 7,
+        maxAge: ttlMs,
       },
     }),
   );

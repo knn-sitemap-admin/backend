@@ -15,6 +15,7 @@ import { PatchCredentialDisableDto } from '../dto/patch-credential-disable.dto';
 import { PatchCredentialRoleDto } from '../dto/patch-credential-role.dto';
 import { CredentialsService } from './credentials.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
+import { PatchAccountRankDto } from '../dto/atch-account-rank.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Roles(SystemRole.ADMIN)
@@ -61,5 +62,18 @@ export class CredentialsController {
   ) {
     const result = await this.service.setCredentialRole(id, dto.role);
     return { message: '권한 변경', data: result };
+  }
+
+  @Patch(':id/position-rank')
+  @Roles('admin') // 관리자만
+  async patchPositionRank(
+    @Param('id') credentialId: string,
+    @Body() dto: PatchAccountRankDto,
+  ) {
+    const data = await this.service.setAccountPositionRankAndSyncRole(
+      credentialId,
+      dto.positionRank,
+    );
+    return { message: '직급 변경', data };
   }
 }

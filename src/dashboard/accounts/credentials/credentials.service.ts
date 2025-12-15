@@ -13,6 +13,7 @@ import { TeamMember } from '../entities/team-member.entity';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { BcryptService } from '../../../common/hashing/bcrypt.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
+import { AccountSession } from '../../auth/entities/account-session.entity';
 
 type SafeCredential = {
   id: string;
@@ -34,7 +35,22 @@ export class CredentialsService {
     @InjectRepository(TeamMember)
     private readonly teamMemberRepository: Repository<TeamMember>,
     private readonly bcrypt: BcryptService,
+    @InjectRepository(AccountSession)
+    private readonly accountSessionRepository: Repository<AccountSession>,
   ) {}
+
+  private async deactivateAllSessionsByCredentialId(
+    credentialId: string,
+  ): Promise<void> {
+    const now = new Date();
+    await this.accountSessionRepository
+      .createQueryBuilder()
+      .update(AccountSession)
+      .set({ is_active: false, deactivated_at: now })
+      .where('credential_id = :cid', { cid: credentialId })
+      .andWhere('is_active = 1')
+      .execute();
+  }
 
   async createEmployee(dto: CreateEmployeeDto): Promise<SafeCredential> {
     return this.dataSource.transaction(async (tx) => {
@@ -150,8 +166,13 @@ export class CredentialsService {
       where: { id },
     });
     if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
     cred.is_disabled = disabled;
     await this.accountCredentialRepository.save(cred);
+
+    // 추가: 해당 credential의 모든 세션 즉시 끊기
+    await this.deactivateAllSessionsByCredentialId(String(cred.id));
+
     return { id: cred.id, disabled: cred.is_disabled };
   }
 
@@ -160,8 +181,13 @@ export class CredentialsService {
       where: { id },
     });
     if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
     cred.role = role;
     await this.accountCredentialRepository.save(cred);
+
+    // 추가: 해당 credential의 모든 세션 즉시 끊기
+    await this.deactivateAllSessionsByCredentialId(String(cred.id));
+
     return { id: cred.id, role: cred.role };
   }
 
@@ -237,5 +263,72 @@ export class CredentialsService {
           }
         : null,
     };
+  }
+
+  private isManagerRank(rank: string): boolean {
+    return rank === 'TEAM_LEADER' || rank === 'DIRECTOR';
+  }
+
+  private toRoleFromRank(rank: string): 'manager' | 'staff' {
+    return this.isManagerRank(rank) ? 'manager' : 'staff';
+  }
+
+  async setAccountPositionRankAndSyncRole(
+    credentialId: string,
+    positionRank: any, // PositionRank로 써도 되는데 enum 바뀌는 중이라 any로 둬도 됨
+  ) {
+    return this.dataSource.transaction(async (tx) => {
+      const credRepo = tx.getRepository(AccountCredential);
+      const accRepo = tx.getRepository(Account);
+
+      const cred = await credRepo.findOne({
+        where: { id: String(credentialId) },
+      });
+      if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+      // admin은 직급으로 권한 바꾸지 않음(너가 말한 정책)
+      if (cred.role === 'admin') {
+        // 그래도 account 직급은 바꿀 수 있게 할지/막을지 정책인데,
+        // 일단 "바꿀 수는 있지만 role은 유지"로 처리
+      }
+
+      const acc = await accRepo.findOne({
+        where: { credential_id: String(credentialId) },
+      });
+      if (!acc)
+        throw new NotFoundException('연결된 Account를 찾을 수 없습니다.');
+
+      acc.position_rank = positionRank;
+      await accRepo.save(acc);
+
+      // admin이 아니면: rank로 role 재계산 후 반영
+      let changedRole: 'admin' | 'manager' | 'staff' = cred.role;
+      if (cred.role !== 'admin') {
+        const nextRole = this.toRoleFromRank(String(positionRank));
+        if (cred.role !== nextRole) {
+          cred.role = nextRole;
+          await credRepo.save(cred);
+          changedRole = nextRole;
+        }
+      }
+
+      // 권한/직급 변경은 즉시 세션 강제 종료
+      // (transaction 안에서는 this.accountSessionRepository가 tx repo가 아니니, 여기서 직접 tx repo 사용)
+      const sessionRepo = tx.getRepository(AccountSession);
+      const now = new Date();
+      await sessionRepo
+        .createQueryBuilder()
+        .update(AccountSession)
+        .set({ is_active: false, deactivated_at: now })
+        .where('credential_id = :cid', { cid: String(credentialId) })
+        .andWhere('is_active = 1')
+        .execute();
+
+      return {
+        credentialId: String(credentialId),
+        positionRank: String(positionRank),
+        role: changedRole,
+      };
+    });
   }
 }

@@ -8,11 +8,11 @@ import {
 import { AccountCredential } from './account-credential.entity';
 
 export enum PositionRank {
-  STAFF = 'STAFF', // 사원
   ASSISTANT_MANAGER = 'ASSISTANT_MANAGER', // 대리
   MANAGER = 'MANAGER', // 과장
   DEPUTY_GENERAL = 'DEPUTY_GENERAL', // 차장
   GENERAL_MANAGER = 'GENERAL_MANAGER', // 부장
+  TEAM_LEADER = 'TEAM_LEADER', // 팀장
   DIRECTOR = 'DIRECTOR', // 실장
 }
 
@@ -52,9 +52,9 @@ export class Account {
   @Column({
     type: 'enum',
     enum: PositionRank,
-    default: PositionRank.STAFF,
+    nullable: true,
   })
-  position_rank!: PositionRank;
+  position_rank!: PositionRank | null;
 
   @Column({ type: 'boolean', default: false })
   is_profile_completed!: boolean;

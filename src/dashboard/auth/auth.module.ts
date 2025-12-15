@@ -5,10 +5,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccountCredential } from '../accounts/entities/account-credential.entity';
 import { BcryptModule } from '../../common/hashing/bcrypt.module';
 import { Account } from '../accounts/entities/account.entity';
+import { AccountSession } from './entities/account-session.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AccountCredential, Account]),
+    TypeOrmModule.forFeature([AccountCredential, Account, AccountSession]),
     BcryptModule,
   ],
   controllers: [AuthController],

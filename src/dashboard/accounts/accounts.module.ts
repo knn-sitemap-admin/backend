@@ -15,11 +15,20 @@ import { TeamMemberController } from './team-members/team-member.controller';
 import { TeamMemberService } from './team-members/team-member.service';
 import { BcryptService } from '../../common/hashing/bcrypt.service';
 import { BcryptModule } from '../../common/hashing/bcrypt.module';
+import { AccountSession } from '../auth/entities/account-session.entity';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Account, AccountCredential, Team, TeamMember]),
+    TypeOrmModule.forFeature([
+      Account,
+      AccountCredential,
+      Team,
+      TeamMember,
+      AccountSession,
+    ]),
     BcryptModule,
+    AuthModule,
   ],
   controllers: [
     CredentialsController,
