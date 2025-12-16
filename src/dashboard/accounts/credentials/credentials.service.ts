@@ -52,14 +52,100 @@ export class CredentialsService {
       .execute();
   }
 
+  // async createEmployee(dto: CreateEmployeeDto): Promise<SafeCredential> {
+  //   return this.dataSource.transaction(async (tx) => {
+  //     const accountCredentialRepo = tx.getRepository(AccountCredential);
+  //     const accountRepos = tx.getRepository(Account);
+  //     const teamRepo = tx.getRepository(Team);
+  //     const teamMemberRepo = tx.getRepository(TeamMember);
+  //
+  //     // 이메일 중복 체크
+  //     const dup = await accountCredentialRepo.findOne({
+  //       where: { email: dto.email },
+  //     });
+  //     if (dup) throw new ConflictException('이미 존재하는 이메일입니다.');
+  //
+  //     const hashed = await this.bcrypt.hash(dto.password);
+  //     const cred = accountCredentialRepo.create({
+  //       email: dto.email,
+  //       password: hashed,
+  //       role: dto.role,
+  //       is_disabled: dto.isDisabled ?? false,
+  //     });
+  //     await accountCredentialRepo.save(cred);
+  //
+  //     // 계정 생성
+  //     const account = accountRepos.create({
+  //       credential_id: cred.id,
+  //       is_profile_completed: false,
+  //     });
+  //     await accountRepos.save(account);
+  //
+  //     // 팀 배정
+  //     const { teamId, isPrimary, joinedAt } = dto.team ?? {};
+  //     if (!teamId) throw new BadRequestException('팀 지정이 필요합니다');
+  //
+  //     const team = await teamRepo.findOne({
+  //       where: { id: teamId, is_active: true },
+  //     });
+  //     if (!team) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
+  //
+  //     // 팀장 단일성 확보
+  //     if (dto.role === 'manager') {
+  //       await teamMemberRepo
+  //         .createQueryBuilder('tm')
+  //         .setLock('pessimistic_write')
+  //         .where('tm.team_id = :tid AND tm.team_role = :r', {
+  //           tid: team.id,
+  //           r: 'manager',
+  //         })
+  //         .getMany();
+  //
+  //       const existsManager = await teamMemberRepo.findOne({
+  //         where: { team_id: team.id, team_role: 'manager' },
+  //       });
+  //       if (existsManager) {
+  //         throw new ConflictException(
+  //           `팀 "${team.name}"에 이미 팀장이 존재합니다.`,
+  //         );
+  //       }
+  //     }
+  //
+  //     // 주팀 중복 방지
+  //     const wantPrimary = isPrimary !== false; // 기본 true
+  //     if (wantPrimary) {
+  //       const alreadyPrimary = await teamMemberRepo.findOne({
+  //         where: { account_id: account.id, is_primary: true },
+  //       });
+  //       if (alreadyPrimary)
+  //         throw new ConflictException('이미 주팀이 설정되어 있습니다.');
+  //     }
+  //
+  //     const teamMember = teamMemberRepo.create({
+  //       team_id: team.id,
+  //       account_id: account.id,
+  //       team_role: dto.role === 'manager' ? 'manager' : 'staff',
+  //       is_primary: wantPrimary,
+  //       joined_at: joinedAt ?? new Date().toISOString().slice(0, 10),
+  //     });
+  //     await teamMemberRepo.save(teamMember);
+  //
+  //     return {
+  //       id: cred.id,
+  //       email: cred.email,
+  //       role: cred.role,
+  //       is_disabled: cred.is_disabled,
+  //     };
+  //   });
+  // }
+
   async createEmployee(dto: CreateEmployeeDto): Promise<SafeCredential> {
     return this.dataSource.transaction(async (tx) => {
       const accountCredentialRepo = tx.getRepository(AccountCredential);
-      const accountRepos = tx.getRepository(Account);
+      const accountRepo = tx.getRepository(Account);
       const teamRepo = tx.getRepository(Team);
       const teamMemberRepo = tx.getRepository(TeamMember);
 
-      // 이메일 중복 체크
       const dup = await accountCredentialRepo.findOne({
         where: { email: dto.email },
       });
@@ -74,61 +160,40 @@ export class CredentialsService {
       });
       await accountCredentialRepo.save(cred);
 
-      // 계정 생성
-      const account = accountRepos.create({
+      const account = accountRepo.create({
         credential_id: cred.id,
         is_profile_completed: false,
       });
-      await accountRepos.save(account);
+      await accountRepo.save(account);
 
       // 팀 배정
-      const { teamId, isPrimary, joinedAt } = dto.team ?? {};
-      if (!teamId) throw new BadRequestException('팀 지정이 필요합니다');
-
-      const team = await teamRepo.findOne({
-        where: { id: teamId, is_active: true },
-      });
-      if (!team) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
-
-      // 팀장 단일성 확보
-      if (dto.role === 'manager') {
-        await teamMemberRepo
-          .createQueryBuilder('tm')
-          .setLock('pessimistic_write')
-          .where('tm.team_id = :tid AND tm.team_role = :r', {
-            tid: team.id,
-            r: 'manager',
-          })
-          .getMany();
-
-        const existsManager = await teamMemberRepo.findOne({
-          where: { team_id: team.id, team_role: 'manager' },
+      const teamId = dto.team?.teamId;
+      if (teamId) {
+        const team = await teamRepo.findOne({
+          where: { id: teamId, is_active: true },
         });
-        if (existsManager) {
-          throw new ConflictException(
-            `팀 "${team.name}"에 이미 팀장이 존재합니다.`,
-          );
+        if (!team) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
+
+        const wantPrimary = dto.team?.isPrimary !== false;
+        if (wantPrimary) {
+          const alreadyPrimary = await teamMemberRepo.findOne({
+            where: { account_id: account.id, is_primary: true },
+          });
+          if (alreadyPrimary) {
+            throw new ConflictException('이미 주팀이 설정되어 있습니다.');
+          }
         }
-      }
 
-      // 주팀 중복 방지
-      const wantPrimary = isPrimary !== false; // 기본 true
-      if (wantPrimary) {
-        const alreadyPrimary = await teamMemberRepo.findOne({
-          where: { account_id: account.id, is_primary: true },
+        const teamMember = teamMemberRepo.create({
+          team_id: team.id,
+          account_id: account.id,
+          team_role: 'staff', // 이제 manager 배정 금지
+          is_primary: dto.team?.isPrimary !== false,
+          joined_at:
+            dto.team?.joinedAt ?? new Date().toISOString().slice(0, 10),
         });
-        if (alreadyPrimary)
-          throw new ConflictException('이미 주팀이 설정되어 있습니다.');
+        await teamMemberRepo.save(teamMember);
       }
-
-      const teamMember = teamMemberRepo.create({
-        team_id: team.id,
-        account_id: account.id,
-        team_role: dto.role === 'manager' ? 'manager' : 'staff',
-        is_primary: wantPrimary,
-        joined_at: joinedAt ?? new Date().toISOString().slice(0, 10),
-      });
-      await teamMemberRepo.save(teamMember);
 
       return {
         id: cred.id,
@@ -275,22 +340,20 @@ export class CredentialsService {
 
   async setAccountPositionRankAndSyncRole(
     credentialId: string,
-    positionRank: any, // PositionRank로 써도 되는데 enum 바뀌는 중이라 any로 둬도 됨
+    positionRank: any, // enum 바뀌는 중이면 any 유지
+    teamName?: string,
   ) {
     return this.dataSource.transaction(async (tx) => {
       const credRepo = tx.getRepository(AccountCredential);
       const accRepo = tx.getRepository(Account);
+      const teamRepo = tx.getRepository(Team);
+      const teamMemberRepo = tx.getRepository(TeamMember);
+      const sessionRepo = tx.getRepository(AccountSession);
 
       const cred = await credRepo.findOne({
         where: { id: String(credentialId) },
       });
       if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
-
-      // admin은 직급으로 권한 바꾸지 않음(너가 말한 정책)
-      if (cred.role === 'admin') {
-        // 그래도 account 직급은 바꿀 수 있게 할지/막을지 정책인데,
-        // 일단 "바꿀 수는 있지만 role은 유지"로 처리
-      }
 
       const acc = await accRepo.findOne({
         where: { credential_id: String(credentialId) },
@@ -298,10 +361,14 @@ export class CredentialsService {
       if (!acc)
         throw new NotFoundException('연결된 Account를 찾을 수 없습니다.');
 
+      const prevRank = acc.position_rank ? String(acc.position_rank) : null;
+      const nextRank = positionRank ? String(positionRank) : null;
+
+      // 1) 직급 업데이트
       acc.position_rank = positionRank;
       await accRepo.save(acc);
 
-      // admin이 아니면: rank로 role 재계산 후 반영
+      // 2) admin이 아니면 role 동기화
       let changedRole: 'admin' | 'manager' | 'staff' = cred.role;
       if (cred.role !== 'admin') {
         const nextRole = this.toRoleFromRank(String(positionRank));
@@ -312,9 +379,138 @@ export class CredentialsService {
         }
       }
 
-      // 권한/직급 변경은 즉시 세션 강제 종료
-      // (transaction 안에서는 this.accountSessionRepository가 tx repo가 아니니, 여기서 직접 tx repo 사용)
-      const sessionRepo = tx.getRepository(AccountSession);
+      // 3) TEAM_LEADER 승급/강등에 따른 팀/팀멤버 동기화
+      const becameTeamLeader =
+        nextRank === 'TEAM_LEADER' && prevRank !== 'TEAM_LEADER';
+      const leftTeamLeader =
+        prevRank === 'TEAM_LEADER' && nextRank !== 'TEAM_LEADER';
+
+      // 3-A) 팀장으로 "승급"된 경우: 팀 자동 생성 + 팀장 team_member 자동 생성
+      if (becameTeamLeader) {
+        // 팀장 계정은 어떤 팀에도 소속되면 안 됨 (기존 소속 제거)
+        // - 정책: 팀장 되는 순간 모든 team_members 제거
+        await teamMemberRepo
+          .createQueryBuilder()
+          .delete()
+          .from(TeamMember)
+          .where('account_id = :aid', { aid: String(acc.id) })
+          .execute();
+
+        // 이미 내 팀이 있는지 확인 (중복 생성 방지)
+        const myTeam = await teamRepo.findOne({
+          where: { leader_account_id: String(acc.id) },
+        });
+
+        if (!myTeam) {
+          // teamName 없으면 기본값
+          const name =
+            (teamName && teamName.trim()) ||
+            (acc.name ? `${acc.name} 팀` : `팀-${acc.id}`);
+
+          // code 생성: 충돌 방지 위해 짧게 + 루프
+          const makeCode = () =>
+            `TL-${acc.id}-${Date.now().toString(36)}`.toUpperCase();
+          let code = makeCode();
+
+          // code unique 충돌 가능성 낮지만, 안정적으로 3번 재시도
+          for (let i = 0; i < 3; i++) {
+            const exists = await teamRepo.findOne({ where: { code } });
+            if (!exists) break;
+            code = makeCode();
+          }
+
+          // name unique 충돌 가능: 충돌 시 뒤에 suffix
+          let finalName = name;
+          const nameDup = await teamRepo.findOne({
+            where: { name: finalName },
+          });
+          if (nameDup) {
+            finalName = `${name}-${acc.id}`;
+          }
+
+          const createdTeam = teamRepo.create({
+            leader_account_id: String(acc.id),
+            name: finalName,
+            code,
+            description: null,
+            is_active: true,
+          });
+          const savedTeam = await teamRepo.save(createdTeam);
+
+          // 팀장 멤버 자동 생성 (team_role=manager)
+          const leaderMember = teamMemberRepo.create({
+            team_id: String(savedTeam.id),
+            account_id: String(acc.id),
+            team_role: 'manager',
+            is_primary: true,
+            joined_at: new Date().toISOString().slice(0, 10),
+          });
+          await teamMemberRepo.save(leaderMember);
+        } else {
+          // 내 팀이 이미 있으면: 팀이 inactive면 활성화, 팀장 멤버가 없으면 생성
+          if (!myTeam.is_active) {
+            myTeam.is_active = true;
+            await teamRepo.save(myTeam);
+          }
+
+          const existsLeaderMember = await teamMemberRepo.findOne({
+            where: {
+              team_id: String(myTeam.id),
+              account_id: String(acc.id),
+              team_role: 'manager',
+            } as any,
+          });
+
+          if (!existsLeaderMember) {
+            const leaderMember = teamMemberRepo.create({
+              team_id: String(myTeam.id),
+              account_id: String(acc.id),
+              team_role: 'manager',
+              is_primary: true,
+              joined_at: new Date().toISOString().slice(0, 10),
+            });
+            await teamMemberRepo.save(leaderMember);
+          }
+
+          // 혹시 남아있는 다른 팀 소속이 있다면 제거(안전)
+          await teamMemberRepo
+            .createQueryBuilder()
+            .delete()
+            .from(TeamMember)
+            .where('account_id = :aid AND team_id <> :tid', {
+              aid: String(acc.id),
+              tid: String(myTeam.id),
+            })
+            .execute();
+        }
+      }
+
+      // 3-B) 팀장 "강등"된 경우: 내 팀 비활성화(정책) + 팀장 멤버 제거
+      if (leftTeamLeader) {
+        const myTeam = await teamRepo.findOne({
+          where: { leader_account_id: String(acc.id) },
+        });
+
+        if (myTeam) {
+          // 정책: 팀 비활성화
+          myTeam.is_active = false;
+          await teamRepo.save(myTeam);
+
+          // 팀장 멤버 제거(팀장 강등이니 manager 멤버 제거)
+          await teamMemberRepo
+            .createQueryBuilder()
+            .delete()
+            .from(TeamMember)
+            .where('team_id = :tid AND account_id = :aid AND team_role = :r', {
+              tid: String(myTeam.id),
+              aid: String(acc.id),
+              r: 'manager',
+            })
+            .execute();
+        }
+      }
+
+      // 4) 세션 즉시 종료
       const now = new Date();
       await sessionRepo
         .createQueryBuilder()
@@ -326,9 +522,62 @@ export class CredentialsService {
 
       return {
         credentialId: String(credentialId),
-        positionRank: String(positionRank),
+        prevPositionRank: prevRank,
+        positionRank: nextRank,
         role: changedRole,
+        // 디버깅/프론트 반영에 도움 되는 플래그
+        becameTeamLeader,
+        leftTeamLeader,
       };
     });
+  }
+
+  async listUnassignedEmployees() {
+    const qb = this.accountCredentialRepository
+      .createQueryBuilder('cred')
+      .innerJoin(Account, 'acc', 'acc.credential_id = cred.id')
+      .leftJoin(TeamMember, 'tm', 'tm.account_id = acc.id')
+      .leftJoin(Team, 't', 't.id = tm.team_id AND t.is_active = 1')
+      .select([
+        'cred.id AS credentialId',
+        'cred.role AS role',
+        'acc.id AS accountId',
+        'acc.name AS name',
+        'acc.phone AS phone',
+        'acc.position_rank AS positionRank',
+        'acc.profile_url AS profileUrl',
+      ])
+      // 관리자 제외
+      .where('cred.role <> :adminRole', { adminRole: 'admin' })
+      // 팀장 / 실장 제외
+      .andWhere(
+        '(acc.position_rank IS NULL OR acc.position_rank NOT IN (:...badRanks))',
+        {
+          badRanks: ['TEAM_LEADER', 'DIRECTOR'],
+        },
+      )
+      // 활성 팀에 소속되지 않은 사람만
+      .andWhere('t.id IS NULL')
+      .orderBy('acc.id', 'DESC');
+
+    const rows = await qb.getRawMany<{
+      credentialId: string;
+      role: 'manager' | 'staff';
+      accountId: string;
+      name: string | null;
+      phone: string | null;
+      positionRank: string | null;
+      profileUrl: string | null;
+    }>();
+
+    return rows.map((r) => ({
+      credentialId: String(r.credentialId),
+      accountId: String(r.accountId),
+      role: r.role,
+      name: r.name ?? null,
+      phone: r.phone ?? null,
+      positionRank: r.positionRank ?? null,
+      profileUrl: r.profileUrl ?? null,
+    }));
   }
 }

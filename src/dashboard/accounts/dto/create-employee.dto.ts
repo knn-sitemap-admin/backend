@@ -7,7 +7,6 @@ import {
   IsString,
   MaxLength,
   MinLength,
-  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { CreateTeamAssignDto } from './create-team-assign.dto';
@@ -29,8 +28,8 @@ export class CreateEmployeeDto {
   @IsBoolean()
   isDisabled?: boolean;
 
-  @ValidateIf((o) => o.role === 'manager' || o.role === 'staff')
+  @IsOptional()
   @ValidateNested()
   @Type(() => CreateTeamAssignDto)
-  team!: CreateTeamAssignDto;
+  team?: CreateTeamAssignDto;
 }

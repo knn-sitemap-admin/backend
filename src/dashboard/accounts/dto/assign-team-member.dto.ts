@@ -1,10 +1,4 @@
-import {
-  IsBoolean,
-  IsIn,
-  IsISO8601,
-  IsOptional,
-  IsString,
-} from 'class-validator';
+import { IsBoolean, IsISO8601, IsOptional, IsString } from 'class-validator';
 
 export class AssignTeamMemberDto {
   @IsString()
@@ -12,9 +6,6 @@ export class AssignTeamMemberDto {
 
   @IsString()
   accountId!: string;
-
-  @IsIn(['manager', 'staff'])
-  role!: 'manager' | 'staff';
 
   @IsOptional()
   @IsBoolean()

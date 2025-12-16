@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { SessionAuthGuard } from '../../auth/guards/session-auth.guard';
@@ -35,6 +36,13 @@ export class CredentialsController {
   async listCredentials() {
     const items = await this.service.listAllCredentials();
     return { message: '계정 목록', data: items };
+  }
+
+  @Get('unassigned-employees')
+  @Roles('admin', 'manager')
+  async listUnassignedEmployees() {
+    const data = await this.service.listUnassignedEmployees();
+    return { message: '무소속 사원 목록', data };
   }
 
   @Get(':id')
@@ -73,6 +81,7 @@ export class CredentialsController {
     const data = await this.service.setAccountPositionRankAndSyncRole(
       credentialId,
       dto.positionRank,
+      dto.teamName,
     );
     return { message: '직급 변경', data };
   }
