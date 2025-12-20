@@ -1,28 +1,38 @@
-import { IsOptional } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ListContractsDto {
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
   page?: number;
+
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
   size?: number;
+
   @IsOptional()
+  @IsString()
   q?: string;
 
   @IsOptional()
-  pinId?: number;
-  @IsOptional()
-  assigneeId?: number;
-  @IsOptional()
-  hasFiles?: boolean;
+  @IsString()
+  dateFrom?: string; // YYYY-MM-DD
 
   @IsOptional()
-  status?: 'ongoing' | 'done' | 'canceled';
+  @IsString()
+  dateTo?: string;
+
   @IsOptional()
-  dateFrom?: string; // 'YYYY-MM-DD'
+  @IsIn(['ongoing', 'done', 'canceled', 'rejected'])
+  status?: 'ongoing' | 'done' | 'canceled' | 'rejected';
+
   @IsOptional()
-  dateTo?: string; // 'YYYY-MM-DD'
+  @IsIn(['contract_date', 'created_at'])
+  orderBy?: 'contract_date' | 'created_at';
+
   @IsOptional()
-  orderBy?: 'contract_date' | 'created_at'; // 기본: contract_date
-  @IsOptional()
-  orderDir?: 'ASC' | 'DESC'; // 기본: DESC
+  @IsIn(['ASC', 'DESC'])
+  orderDir?: 'ASC' | 'DESC';
 }

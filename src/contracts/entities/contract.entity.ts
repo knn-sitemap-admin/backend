@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  UpdateDateColumn,
   Index,
   ManyToOne,
   JoinColumn,
@@ -11,82 +12,89 @@ import {
 import { Type } from 'class-transformer';
 import { Account } from '../../dashboard/accounts/entities/account.entity';
 
+export type ContractStatus = 'ongoing' | 'done' | 'canceled' | 'rejected';
+
 @Entity({ name: 'contracts' })
+@Index('UQ_contracts_contract_no', ['contractNo'], { unique: true })
 @Index('IDX_contracts_contract_date', ['contractDate'])
+@Index('IDX_contracts_created_by', ['createdBy'])
 @Index('IDX_contracts_status', ['status'])
-@Index('IDX_contracts_salesperson_id', ['salesperson'])
 export class Contract {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   @Type(() => Number)
   id!: number;
 
-  @Column('bigint', { unsigned: true, nullable: true })
-  @Type(() => Number)
-  pinId!: number | null;
+  @Column({ type: 'varchar', length: 40 })
+  contractNo!: string;
 
-  @Column({ type: 'varchar', length: 100, nullable: true })
-  customerName!: string | null;
-
-  @Column({ type: 'varchar', length: 30, nullable: true })
-  customerPhone!: string | null;
-
+  // 생성자(=담당자)
   @ManyToOne(() => Account, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'salesperson_id' }) // 물리 컬럼명
-  salesperson?: Account | null;
-
-  @RelationId((c: Contract) => c.salesperson)
-  salespersonId!: string | null;
-
-  @ManyToOne(() => Account, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'created_by_id' })
-  createdBy?: Account | null;
+  @JoinColumn({ name: 'created_by_account_id' })
+  createdBy!: Account | null;
 
   @RelationId((c: Contract) => c.createdBy)
-  createdById!: string | null;
+  createdByAccountId!: string | null;
 
-  // 금액/계산 관련 (프론트 계산값 그대로 저장)
-  @Column({ type: 'bigint', default: 0 })
-  @Type(() => Number)
-  brokerageFee!: number;
+  // 고객
+  @Column({ type: 'varchar', length: 100 })
+  customerName!: string;
 
-  @Column({ type: 'bigint', default: 0 })
-  @Type(() => Number)
-  vat!: number;
+  @Column({ type: 'varchar', length: 30 })
+  customerPhone!: string;
 
-  @Column({ type: 'bigint', default: 0 })
+  // 원본 금액/옵션
+  @Column({ type: 'bigint', unsigned: true })
   @Type(() => Number)
-  brokerageTotal!: number;
+  brokerageFee!: number; // 원 단위
 
-  @Column({ type: 'bigint', default: 0 })
-  @Type(() => Number)
-  rebateTotal!: number;
+  @Column({ type: 'boolean', default: false })
+  vatEnabled!: boolean; // 10%
 
-  @Column({ type: 'bigint', default: 0 })
+  @Column({ type: 'int', unsigned: true })
   @Type(() => Number)
-  supportAmount!: number;
+  rebateUnits!: number; // 1=100만원
+
+  @Column({ type: 'bigint', unsigned: true, default: 0 })
+  @Type(() => Number)
+  supportAmount!: number; // 원 단위
 
   @Column({ type: 'boolean', default: true })
-  isTaxed!: boolean;
+  isTaxed!: boolean; // 3.3% 적용 여부(0.967)
 
   @Column({ type: 'text', nullable: true })
   calcMemo!: string | null;
 
-  @Column({ type: 'bigint', default: 0 })
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   @Type(() => Number)
-  grandTotal!: number;
+  companyPercent!: number; // 0~100
 
-  @Index()
+  // 날짜/상태
   @Column({ type: 'date', name: 'contract_date' })
-  contractDate!: string; // 'YYYY-MM-DD'
+  contractDate!: string; // YYYY-MM-DD
 
-  @Index()
+  @Column({ type: 'date', name: 'final_payment_date' })
+  finalPaymentDate!: string; // YYYY-MM-DD
+
   @Column({
     type: 'enum',
-    enum: ['ongoing', 'done', 'canceled'],
+    enum: ['ongoing', 'done', 'canceled', 'rejected'],
     default: 'ongoing',
   })
-  status!: 'ongoing' | 'done' | 'canceled';
+  status!: ContractStatus;
+
+  // 현장 정보
+  @Column({ type: 'varchar', length: 255 })
+  siteAddress!: string;
+
+  @Column({ type: 'varchar', length: 100 })
+  siteName!: string;
+
+  @Column({ type: 'varchar', length: 30 })
+  salesTeamPhone!: string;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt!: Date;
 }

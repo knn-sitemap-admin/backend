@@ -3,21 +3,21 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
-  CreateDateColumn,
   JoinColumn,
   Index,
   RelationId,
+  CreateDateColumn,
 } from 'typeorm';
 import { Type } from 'class-transformer';
 import { Contract } from '../../entities/contract.entity';
 
 @Entity({ name: 'contract_files' })
+@Index('IDX_contract_files_contract', ['contract'])
 export class ContractFile {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   @Type(() => Number)
   id!: number;
 
-  @Index('IDX_contract_files_contract_id')
   @ManyToOne(() => Contract, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'contract_id' })
   contract!: Contract;
@@ -26,11 +26,12 @@ export class ContractFile {
   @Type(() => Number)
   contractId!: number;
 
-  @Column('text')
+  @Column({ type: 'text' })
   url!: string;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  filename!: string | null;
+  @Column({ type: 'smallint', unsigned: true, default: 0 })
+  @Type(() => Number)
+  sortOrder!: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

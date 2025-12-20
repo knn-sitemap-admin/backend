@@ -1,317 +1,671 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+
+import { Contract } from './entities/contract.entity';
+
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { ListContractsDto } from './dto/list-contracts.dto';
-import { Contract } from './entities/contract.entity';
-import { ContractFile } from './files/entities/file.entity';
-import { ContractAssigneesService } from './assignees/assignees.service';
-import { Account } from 'src/dashboard/accounts/entities/account.entity';
 
-type ContractWithCount = Contract & { fileCount: number };
+import { calcContractMoney } from './contracts.calc';
+import { Account } from '../dashboard/accounts/entities/account.entity';
+import { ContractAssignee } from './assignees/entities/assignee.entity';
+import { ContractFile } from './files/entities/file.entity';
+
+type Role = 'admin' | 'manager' | 'staff';
+
+type ListItem = {
+  id: number;
+  contractNo: string;
+
+  createdByAccountId: string | null;
+  createdByName: string | null;
+
+  customerName: string;
+  customerPhone: string;
+
+  contractDate: string;
+  finalPaymentDate: string;
+  status: string;
+
+  siteName: string;
+  siteAddress: string;
+
+  // 원본
+  brokerageFee: number;
+  vatEnabled: boolean;
+  rebateUnits: number;
+  supportAmount: number;
+  isTaxed: boolean;
+  companyPercent: number;
+
+  // derived
+  vatAmount: number;
+  rebateAmount: number;
+  grandTotal: number;
+
+  // admin list에서는 회사 매출도 보이니 포함
+  companyAmount: number;
+
+  // me list에서만 내려줌
+  mySharePercent?: number;
+  myAmount?: number;
+};
 
 @Injectable()
 export class ContractsService {
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(Contract)
-    private readonly contractRepository: Repository<Contract>,
+    private readonly contractRepo: Repository<Contract>,
+    @InjectRepository(ContractAssignee)
+    private readonly assigneeRepo: Repository<ContractAssignee>,
     @InjectRepository(ContractFile)
-    private readonly fileRepository: Repository<ContractFile>,
-    private readonly assigneesService: ContractAssigneesService,
+    private readonly fileRepo: Repository<ContractFile>,
+    @InjectRepository(Account)
+    private readonly accountRepo: Repository<Account>,
   ) {}
 
-  // 숫자 필드 빠른 검증
-  private assertNumbers(...pairs: Array<[any, string]>) {
-    const bad = pairs.find(([v]) => typeof v !== 'number' || Number.isNaN(v));
-    if (bad) throw new BadRequestException(`${bad[1]}는 number여야 합니다.`);
-  }
+  private async resolveAccountByCredentialIdOrThrow(
+    credentialId: string,
+  ): Promise<Account> {
+    if (!credentialId)
+      throw new BadRequestException('세션 credentialId가 없습니다.');
 
-  async create(dto: CreateContractDto): Promise<number> {
-    // 1) 숫자/불리언 최소 검증
-    this.assertNumbers(
-      [dto.brokerageFee, 'brokerageFee'],
-      [dto.vat, 'vat'],
-      [dto.brokerageTotal, 'brokerageTotal'],
-      [dto.rebateTotal, 'rebateTotal'],
-      [dto.supportAmount, 'supportAmount'],
-      [dto.grandTotal, 'grandTotal'],
-    );
-    if (typeof dto.isTaxed !== 'boolean') {
-      throw new BadRequestException('isTaxed는 boolean이어야 합니다.');
-    }
-
-    // 2) 트랜잭션
-    const id = await this.dataSource.transaction(async (manager) => {
-      const contractRepo = manager.getRepository(Contract);
-
-      // (선택) 메인 담당자 FK 유효성 검사
-      let salespersonRef: any = null;
-      if (dto.salespersonAccountId != null) {
-        const exists = await manager.getRepository(Account).exist({
-          where: { id: String(dto.salespersonAccountId) },
-        });
-        if (!exists)
-          throw new BadRequestException(
-            'salespersonAccountId가 유효하지 않습니다.',
-          );
-        salespersonRef = { id: String(dto.salespersonAccountId) };
-      }
-
-      // (옵션) 작성자
-      let createdByRef: any = null;
-      if (dto.createdByAccountId != null) {
-        const exists = await manager.getRepository(Account).exist({
-          where: { id: String(dto.createdByAccountId) },
-        });
-        if (!exists)
-          throw new BadRequestException(
-            'createdByAccountId가 유효하지 않습니다.',
-          );
-        createdByRef = { id: String(dto.createdByAccountId) };
-      }
-
-      // 계약 저장 (고객 + 금액 + 메인담당자 FK)
-      const entity = contractRepo.create({
-        pinId: dto.pinId ?? null,
-
-        customerName: dto.customerName ?? null,
-        customerPhone: dto.customerPhone ?? null,
-
-        brokerageFee: dto.brokerageFee,
-        vat: dto.vat,
-        brokerageTotal: dto.brokerageTotal,
-        rebateTotal: dto.rebateTotal,
-        supportAmount: dto.supportAmount,
-        isTaxed: dto.isTaxed,
-        calcMemo: dto.calcMemo ?? null,
-        grandTotal: dto.grandTotal,
-
-        salesperson: salespersonRef,
-        createdBy: createdByRef,
-        contractDate: dto.contractDate ?? new Date().toISOString().slice(0, 10),
-        status: dto.status ?? 'ongoing',
-      });
-
-      const saved = await contractRepo.save(entity);
-
-      // 파일 메타 저장 (그대로 유지)
-      if (dto.urls?.length) {
-        const fRepo = manager.getRepository(ContractFile);
-        const metas = dto.urls.map((url) =>
-          fRepo.create({ contractId: saved.id, url, filename: null }),
-        );
-        await fRepo.save(metas);
-      }
-
-      // 담당자 분배 저장 (기존 방식 유지)
-      if (dto.assignees?.length) {
-        await this.assigneesService.bulkCreateWithManager(
-          manager,
-          saved.id,
-          dto.assignees,
-          dto.grandTotal,
-        );
-      }
-
-      return saved.id;
+    const account = await this.accountRepo.findOne({
+      where: { credential_id: credentialId, is_deleted: false },
+      select: ['id', 'name', 'credential_id', 'is_deleted'],
     });
 
-    return id;
+    if (!account) throw new ForbiddenException('유효하지 않은 세션입니다.');
+    return account;
   }
 
-  // 파일 개수 포함 반환용 타입
+  private buildContractNo(yyyymmdd: string, id: number): string {
+    // KN 고정 + CNT 고정 + 날짜 + PK(8자리)
+    const suffix = String(id).padStart(8, '0');
+    return `KNCNT${yyyymmdd}${suffix}`;
+  }
 
-  async findAll(
-    dto: ListContractsDto,
-  ): Promise<{ items: ContractWithCount[]; total: number }> {
-    try {
-      const page = Number.isInteger(dto.page) && dto.page! > 0 ? dto.page! : 1;
-      const sizeRaw =
-        Number.isInteger(dto.size) && dto.size! > 0 ? dto.size! : 20;
-      const size = Math.min(Math.max(sizeRaw, 1), 100);
+  private normalizePaging(dto: ListContractsDto) {
+    const page =
+      Number.isInteger(dto.page) && (dto.page as number) > 0
+        ? (dto.page as number)
+        : 1;
+    const sizeRaw =
+      Number.isInteger(dto.size) && (dto.size as number) > 0
+        ? (dto.size as number)
+        : 20;
+    const size = Math.min(Math.max(sizeRaw, 1), 100);
 
-      const orderByProp =
-        dto.orderBy === 'created_at' ? 'c.createdAt' : 'c.contractDate';
-      const orderDir: 'ASC' | 'DESC' = dto.orderDir === 'ASC' ? 'ASC' : 'DESC';
+    const orderBy =
+      dto.orderBy === 'created_at' ? 'c.createdAt' : 'c.contractDate';
+    const orderDir: 'ASC' | 'DESC' = dto.orderDir === 'ASC' ? 'ASC' : 'DESC';
 
-      const baseQb = this.contractRepository
-        .createQueryBuilder('c')
-        .leftJoinAndSelect('c.salesperson', 'sp');
+    return { page, size, orderBy, orderDir };
+  }
 
-      // ---- 필터들 ----
-      if (typeof dto.pinId === 'number') {
-        baseQb.andWhere('c.pinId = :pinId', { pinId: dto.pinId });
-      }
-      if (dto.q?.trim()) {
-        baseQb.andWhere('(c.customer_name LIKE :kw OR sp.name LIKE :kw)', {
-          kw: `%${dto.q.trim()}%`,
-        });
-      }
-      if (dto.dateFrom)
-        baseQb.andWhere('c.contract_date >= :df', { df: dto.dateFrom });
-      if (dto.dateTo)
-        baseQb.andWhere('c.contract_date <= :dt', { dt: dto.dateTo });
-      if (dto.status) baseQb.andWhere('c.status = :st', { st: dto.status });
+  private assertAssigneesRule(
+    companyPercent: number,
+    assignees?: Array<{ sharePercent: number }>,
+  ) {
+    if (!(companyPercent >= 0 && companyPercent <= 100)) {
+      throw new BadRequestException('companyPercent는 0~100 사이여야 합니다.');
+    }
 
-      if (typeof dto.assigneeId === 'number') {
-        baseQb.andWhere(
-          `EXISTS (
-           SELECT 1 FROM contract_assignees a
-           WHERE a.contract_id = c.id AND a.account_id = :aid
-         )`,
-          { aid: dto.assigneeId },
-        );
-      }
+    if (!assignees || assignees.length === 0) return;
 
-      if (typeof dto.hasFiles === 'boolean') {
-        if (dto.hasFiles) {
-          baseQb.andWhere(
-            `EXISTS (SELECT 1 FROM contract_files f WHERE f.contract_id = c.id)`,
-          );
-        } else {
-          baseQb.andWhere(
-            `NOT EXISTS (SELECT 1 FROM contract_files f WHERE f.contract_id = c.id)`,
-          );
-        }
-      }
-
-      const dataQb = baseQb
-        .clone()
-        .orderBy(orderByProp, orderDir)
-        .skip((page - 1) * size)
-        .take(size);
-
-      const countQb = baseQb.clone().orderBy().skip(0).take(0);
-
-      const [items, total] = await Promise.all([
-        dataQb.getMany(),
-        countQb.getCount(),
-      ]);
-
-      // ---- 파일 개수 매핑 (의존성 리포지토리 한 방 그룹쿼리) ----
-      if (items.length > 0) {
-        const ids = items.map((c) => c.id);
-
-        // this.fileRepository 는 @InjectRepository(ContractFile) 로 주입되어 있어야 함
-        const rows = await this.fileRepository
-          .createQueryBuilder('f')
-          .select('f.contract_id', 'contractId')
-          .addSelect('COUNT(*)', 'cnt')
-          .where('f.contract_id IN (:...ids)', { ids })
-          .groupBy('f.contract_id')
-          .getRawMany<{ contractId: string; cnt: string }>();
-
-        const countMap = new Map<number, number>(
-          rows.map((r) => [Number(r.contractId), Number(r.cnt)]),
-        );
-
-        for (const it of items as ContractWithCount[]) {
-          it.fileCount = countMap.get(it.id) ?? 0;
-        }
-      }
-
-      return { items: items as ContractWithCount[], total };
-    } catch (err) {
-      console.error('findAll() 에러:', err);
-      throw new Error(
-        `계약 목록 조회 실패: ${err instanceof Error ? err.message : String(err)}`,
+    const sum = assignees.reduce(
+      (s, a) => s + (Number.isFinite(a.sharePercent) ? a.sharePercent : 0),
+      0,
+    );
+    if (Math.abs(sum - 100) > 0.0001) {
+      throw new BadRequestException(
+        'assignees sharePercent 합계는 100이어야 합니다.',
+      );
+    }
+    if (companyPercent >= 100) {
+      throw new BadRequestException(
+        'companyPercent가 100이면 assignees를 둘 수 없습니다.',
       );
     }
   }
 
-  async findOne(id: number): Promise<Contract> {
-    if (!Number.isInteger(id)) {
-      throw new BadRequestException('id는 number여야 합니다.');
-    }
-    const data = await this.contractRepository.findOne({
-      where: { id },
-      relations: ['salesperson'], // 담당자 표시용
-    });
-    if (!data) throw new NotFoundException('계약을 찾을 수 없습니다.');
-    return data;
+  private canAccessContractAsStaff(
+    myAccountId: string,
+    contract: Contract,
+    assigneeExists: boolean,
+  ) {
+    const isCreator =
+      String(contract.createdByAccountId ?? '') === String(myAccountId);
+    return isCreator || assigneeExists;
   }
 
-  async update(id: number, dto: UpdateContractDto): Promise<number> {
-    id = Number(id);
-    if (!Number.isInteger(id))
-      throw new BadRequestException('id는 number여야 합니다.');
+  private canUpdateContractAsStaff(myAccountId: string, contract: Contract) {
+    // staff는 "본인 생성 계약"만 수정 가능
+    return String(contract.createdByAccountId ?? '') === String(myAccountId);
+  }
 
-    const found = await this.contractRepository.findOne({ where: { id } });
+  async create(
+    credentialId: string,
+    dto: CreateContractDto,
+  ): Promise<{ id: number; contractNo: string }> {
+    const me = await this.resolveAccountByCredentialIdOrThrow(credentialId);
+
+    this.assertAssigneesRule(dto.companyPercent, dto.assignees);
+
+    const savedId = await this.dataSource.transaction(async (m) => {
+      const cRepo = m.getRepository(Contract);
+      const aRepo = m.getRepository(ContractAssignee);
+      const fRepo = m.getRepository(ContractFile);
+
+      // 1) 계약 먼저 저장 (contractNo TEMP)
+      const created = cRepo.create({
+        contractNo: 'TEMP',
+        createdBy: { id: String(me.id) } as Account,
+
+        customerName: dto.customerName,
+        customerPhone: dto.customerPhone,
+
+        brokerageFee: dto.brokerageFee,
+        vatEnabled: dto.vat,
+        rebateUnits: dto.rebate,
+        supportAmount: dto.supportAmount,
+        isTaxed: dto.isTaxed,
+        calcMemo: dto.calcMemo ?? null,
+
+        companyPercent: dto.companyPercent,
+
+        contractDate: dto.contractDate,
+        finalPaymentDate: dto.finalPaymentDate,
+        status: dto.status ?? 'ongoing',
+
+        siteAddress: dto.siteAddress,
+        siteName: dto.siteName,
+        salesTeamPhone: dto.salesTeamPhone,
+      });
+
+      const saved = await cRepo.save(created);
+
+      // 2) contractNo 업데이트
+      const yyyymmdd = dto.contractDate.replaceAll('-', '');
+      const contractNo = this.buildContractNo(yyyymmdd, Number(saved.id));
+      await cRepo.update({ id: saved.id }, { contractNo });
+
+      // 3) assignees 저장(원본만)
+      if (dto.assignees?.length) {
+        const rows = dto.assignees.map((a, idx) =>
+          aRepo.create({
+            contract: { id: saved.id } as any,
+            account: { id: String(a.accountId) } as any,
+            sharePercent: a.sharePercent,
+            sortOrder: a.sortOrder ?? idx,
+          }),
+        );
+        await aRepo.save(rows);
+      }
+
+      // 4) urls 저장
+      if (dto.urls?.length) {
+        const rows = dto.urls.map((url, idx) =>
+          fRepo.create({
+            contract: { id: saved.id } as any,
+            url,
+            sortOrder: idx,
+          }),
+        );
+        await fRepo.save(rows);
+      }
+
+      return Number(saved.id);
+    });
+
+    const contract = await this.contractRepo.findOne({
+      where: { id: savedId },
+    });
+    return { id: savedId, contractNo: contract?.contractNo ?? '' };
+  }
+
+  async listAll(
+    role: Role,
+    dto: ListContractsDto,
+  ): Promise<{ items: ListItem[]; total: number }> {
+    if (role === 'staff')
+      throw new ForbiddenException('전체 리스트 권한이 없습니다.');
+
+    const { page, size, orderBy, orderDir } = this.normalizePaging(dto);
+
+    const qb = this.contractRepo
+      .createQueryBuilder('c')
+      .leftJoin('c.createdBy', 'cb')
+      .addSelect(['cb.id', 'cb.name']);
+
+    if (dto.q?.trim()) {
+      const kw = `%${dto.q.trim()}%`;
+      qb.andWhere(
+        `(c.contractNo LIKE :kw
+          OR c.customerName LIKE :kw
+          OR c.customerPhone LIKE :kw
+          OR c.siteName LIKE :kw
+          OR c.siteAddress LIKE :kw)`,
+        { kw },
+      );
+    }
+
+    if (dto.status) qb.andWhere('c.status = :st', { st: dto.status });
+    if (dto.dateFrom)
+      qb.andWhere('c.contractDate >= :df', { df: dto.dateFrom });
+    if (dto.dateTo) qb.andWhere('c.contractDate <= :dt', { dt: dto.dateTo });
+
+    const dataQb = qb
+      .clone()
+      .orderBy(orderBy, orderDir)
+      .skip((page - 1) * size)
+      .take(size);
+    const countQb = qb.clone().orderBy().skip(0).take(0);
+
+    const [items, total] = await Promise.all([
+      dataQb.getMany(),
+      countQb.getCount(),
+    ]);
+
+    const mapped: ListItem[] = items.map((c) => {
+      const calc = calcContractMoney({
+        brokerageFee: c.brokerageFee,
+        vatEnabled: c.vatEnabled,
+        rebateUnits: c.rebateUnits,
+        supportAmount: c.supportAmount,
+        isTaxed: c.isTaxed,
+        companyPercent: Number(c.companyPercent),
+      });
+
+      return {
+        id: Number(c.id),
+        contractNo: c.contractNo,
+
+        createdByAccountId: c.createdByAccountId,
+        createdByName: (c.createdBy as any)?.name ?? null,
+
+        customerName: c.customerName,
+        customerPhone: c.customerPhone,
+
+        contractDate: c.contractDate,
+        finalPaymentDate: c.finalPaymentDate,
+        status: c.status,
+
+        siteName: c.siteName,
+        siteAddress: c.siteAddress,
+
+        brokerageFee: c.brokerageFee,
+        vatEnabled: c.vatEnabled,
+        rebateUnits: c.rebateUnits,
+        supportAmount: c.supportAmount,
+        isTaxed: c.isTaxed,
+        companyPercent: Number(c.companyPercent),
+
+        vatAmount: calc.vatAmount,
+        rebateAmount: calc.rebateAmount,
+        grandTotal: calc.grandTotal,
+        companyAmount: calc.companyAmount,
+      };
+    });
+
+    return { items: mapped, total };
+  }
+
+  async listMe(
+    credentialId: string,
+    dto: ListContractsDto,
+  ): Promise<{ items: ListItem[]; total: number }> {
+    const me = await this.resolveAccountByCredentialIdOrThrow(credentialId);
+    const { page, size, orderBy, orderDir } = this.normalizePaging(dto);
+
+    const qb = this.contractRepo
+      .createQueryBuilder('c')
+      .leftJoin('c.createdBy', 'cb')
+      .addSelect(['cb.id', 'cb.name'])
+      .leftJoin('contract_assignees', 'a', 'a.contract_id = c.id')
+      .where('(c.created_by_account_id = :me OR a.account_id = :me)', {
+        me: String(me.id),
+      })
+      .distinct(true);
+
+    if (dto.q?.trim()) {
+      const kw = `%${dto.q.trim()}%`;
+      qb.andWhere(
+        `(c.contractNo LIKE :kw
+          OR c.customerName LIKE :kw
+          OR c.customerPhone LIKE :kw
+          OR c.siteName LIKE :kw
+          OR c.siteAddress LIKE :kw)`,
+        { kw },
+      );
+    }
+
+    if (dto.status) qb.andWhere('c.status = :st', { st: dto.status });
+    if (dto.dateFrom)
+      qb.andWhere('c.contractDate >= :df', { df: dto.dateFrom });
+    if (dto.dateTo) qb.andWhere('c.contractDate <= :dt', { dt: dto.dateTo });
+
+    const dataQb = qb
+      .clone()
+      .orderBy(orderBy, orderDir)
+      .skip((page - 1) * size)
+      .take(size);
+    const countQb = qb.clone().orderBy().skip(0).take(0);
+
+    const [contracts, total] = await Promise.all([
+      dataQb.getMany(),
+      countQb.getCount(),
+    ]);
+
+    const ids = contracts.map((c) => Number(c.id));
+
+    // 내 sharePercent 맵(한 방)
+    const myRows =
+      ids.length === 0
+        ? []
+        : await this.assigneeRepo
+            .createQueryBuilder('a')
+            .select('a.contract_id', 'contractId')
+            .addSelect('a.sharePercent', 'sharePercent')
+            .where('a.contract_id IN (:...ids)', { ids })
+            .andWhere('a.account_id = :me', { me: String(me.id) })
+            .getRawMany<{ contractId: string; sharePercent: string }>();
+
+    const myShareMap = new Map<number, number>(
+      myRows.map((r) => [Number(r.contractId), Number(r.sharePercent)]),
+    );
+
+    const mapped: ListItem[] = contracts.map((c) => {
+      const calc = calcContractMoney({
+        brokerageFee: c.brokerageFee,
+        vatEnabled: c.vatEnabled,
+        rebateUnits: c.rebateUnits,
+        supportAmount: c.supportAmount,
+        isTaxed: c.isTaxed,
+        companyPercent: Number(c.companyPercent),
+      });
+
+      const mySharePercent = myShareMap.get(Number(c.id)) ?? 0;
+      const myAmount = Math.round(
+        calc.staffPoolAmount * (mySharePercent / 100),
+      );
+
+      return {
+        id: Number(c.id),
+        contractNo: c.contractNo,
+
+        createdByAccountId: c.createdByAccountId,
+        createdByName: (c.createdBy as any)?.name ?? null,
+
+        customerName: c.customerName,
+        customerPhone: c.customerPhone,
+
+        contractDate: c.contractDate,
+        finalPaymentDate: c.finalPaymentDate,
+        status: c.status,
+
+        siteName: c.siteName,
+        siteAddress: c.siteAddress,
+
+        brokerageFee: c.brokerageFee,
+        vatEnabled: c.vatEnabled,
+        rebateUnits: c.rebateUnits,
+        supportAmount: c.supportAmount,
+        isTaxed: c.isTaxed,
+        companyPercent: Number(c.companyPercent),
+
+        vatAmount: calc.vatAmount,
+        rebateAmount: calc.rebateAmount,
+        grandTotal: calc.grandTotal,
+        companyAmount: calc.companyAmount,
+
+        mySharePercent,
+        myAmount,
+      };
+    });
+
+    return { items: mapped, total };
+  }
+
+  async getDetailById(credentialId: string, role: Role, id: number) {
+    const me = await this.resolveAccountByCredentialIdOrThrow(credentialId);
+
+    const contract = await this.contractRepo.findOne({
+      where: { id: Number(id) },
+      relations: ['createdBy'],
+    });
+    if (!contract) throw new NotFoundException('계약을 찾을 수 없습니다.');
+
+    if (role === 'staff') {
+      const assigneeExists = await this.assigneeRepo.exist({
+        where: {
+          contract: { id: Number(id) } as any,
+          account: { id: String(me.id) } as any,
+        },
+      });
+
+      if (
+        !this.canAccessContractAsStaff(String(me.id), contract, assigneeExists)
+      ) {
+        throw new ForbiddenException('접근 권한이 없습니다.');
+      }
+    }
+
+    const [assignees, files] = await Promise.all([
+      this.assigneeRepo.find({
+        where: { contract: { id: Number(id) } as any },
+        relations: ['account'],
+        order: { sortOrder: 'ASC', id: 'ASC' },
+      }),
+      this.fileRepo.find({
+        where: { contract: { id: Number(id) } as any },
+        order: { sortOrder: 'ASC', id: 'ASC' },
+      }),
+    ]);
+
+    const calc = calcContractMoney({
+      brokerageFee: contract.brokerageFee,
+      vatEnabled: contract.vatEnabled,
+      rebateUnits: contract.rebateUnits,
+      supportAmount: contract.supportAmount,
+      isTaxed: contract.isTaxed,
+      companyPercent: Number(contract.companyPercent),
+    });
+
+    const my = assignees.find(
+      (a) => String(a.accountId ?? '') === String(me.id),
+    );
+    const mySharePercent = my ? Number(my.sharePercent) : 0;
+    const myAmount = Math.round(calc.staffPoolAmount * (mySharePercent / 100));
+
+    return {
+      id: Number(contract.id),
+      contractNo: contract.contractNo,
+
+      createdBy: {
+        accountId: contract.createdByAccountId,
+        name: (contract.createdBy as any)?.name ?? null,
+      },
+
+      // 원본 바디 + contractNo
+      customerName: contract.customerName,
+      customerPhone: contract.customerPhone,
+
+      brokerageFee: contract.brokerageFee,
+      vat: contract.vatEnabled,
+      rebate: contract.rebateUnits,
+      supportAmount: contract.supportAmount,
+      isTaxed: contract.isTaxed,
+      calcMemo: contract.calcMemo,
+
+      companyPercent: Number(contract.companyPercent),
+
+      contractDate: contract.contractDate,
+      finalPaymentDate: contract.finalPaymentDate,
+      status: contract.status,
+
+      siteAddress: contract.siteAddress,
+      siteName: contract.siteName,
+      salesTeamPhone: contract.salesTeamPhone,
+
+      urls: files.map((f) => f.url),
+
+      assignees: assignees.map((a) => ({
+        accountId: a.accountId,
+        name: (a.account as any)?.name ?? null,
+        sharePercent: Number(a.sharePercent),
+        sortOrder: Number(a.sortOrder),
+      })),
+
+      derived: {
+        vatAmount: calc.vatAmount,
+        rebateAmount: calc.rebateAmount,
+        grandTotal: calc.grandTotal,
+        companyAmount: calc.companyAmount,
+        staffPoolAmount: calc.staffPoolAmount,
+        mySharePercent,
+        myAmount,
+      },
+
+      createdAt: contract.createdAt,
+      updatedAt: contract.updatedAt,
+    };
+  }
+
+  async getDetailByContractNo(
+    credentialId: string,
+    role: Role,
+    contractNo: string,
+  ) {
+    const contract = await this.contractRepo.findOne({ where: { contractNo } });
+    if (!contract) throw new NotFoundException('계약을 찾을 수 없습니다.');
+    return this.getDetailById(credentialId, role, Number(contract.id));
+  }
+
+  async update(
+    credentialId: string,
+    role: Role,
+    id: number,
+    dto: UpdateContractDto,
+  ): Promise<{ id: number }> {
+    const me = await this.resolveAccountByCredentialIdOrThrow(credentialId);
+
+    const found = await this.contractRepo.findOne({
+      where: { id: Number(id) },
+      relations: ['createdBy'],
+    });
     if (!found) throw new NotFoundException('계약을 찾을 수 없습니다.');
 
-    const accountRepo = this.dataSource.getRepository(Account);
-
-    let salespersonRel: Account | null | undefined = undefined;
-    if (dto.salespersonAccountId !== undefined) {
-      if (dto.salespersonAccountId === null) {
-        salespersonRel = null;
-      } else {
-        const acct = await accountRepo.findOne({
-          where: { id: String(dto.salespersonAccountId) },
-        });
-        if (!acct)
-          throw new BadRequestException(
-            'salespersonAccountId가 유효하지 않습니다.',
-          );
-        salespersonRel = acct;
+    if (role === 'staff') {
+      if (!this.canUpdateContractAsStaff(String(me.id), found)) {
+        throw new ForbiddenException('수정 권한이 없습니다.');
       }
     }
 
-    let createdByRel: Account | null | undefined = undefined;
-    if (dto.createdByAccountId !== undefined) {
-      if (dto.createdByAccountId === null) {
-        createdByRel = null;
-      } else {
-        const acct = await accountRepo.findOne({
-          where: { id: String(dto.createdByAccountId) },
+    // companyPercent/assignees 규칙 검증
+    const companyPercent = dto.companyPercent ?? Number(found.companyPercent);
+    const assigneesForCheck = dto.assignees ?? undefined;
+    if (assigneesForCheck !== undefined) {
+      this.assertAssigneesRule(companyPercent, assigneesForCheck);
+    } else {
+      // assignees를 안 보냈어도 companyPercent만 변경될 수 있으니,
+      // 기존 assignees가 존재하는 경우 companyPercent=100 같은 걸 막기 위해 check
+      if (dto.companyPercent !== undefined) {
+        const existingCount = await this.assigneeRepo.count({
+          where: { contract: { id: Number(id) } as any },
         });
-        if (!acct)
+        if (existingCount > 0 && companyPercent >= 100) {
           throw new BadRequestException(
-            'createdByAccountId가 유효하지 않습니다.',
+            'assignees가 존재하는 계약은 companyPercent를 100으로 설정할 수 없습니다.',
           );
-        createdByRel = acct;
+        }
       }
     }
 
-    // 스칼라 + relation 머지
-    const toSave: Partial<Contract> = {
-      id,
-      pinId: dto.pinId ?? found.pinId,
+    await this.dataSource.transaction(async (m) => {
+      const cRepo = m.getRepository(Contract);
+      const aRepo = m.getRepository(ContractAssignee);
+      const fRepo = m.getRepository(ContractFile);
 
-      customerName: dto.customerName ?? found.customerName,
-      customerPhone: dto.customerPhone ?? found.customerPhone,
+      // 1) 계약 원본 필드 patch
+      const patch: Partial<Contract> = {
+        id: Number(id) as any,
 
-      brokerageFee: dto.brokerageFee ?? found.brokerageFee,
-      vat: dto.vat ?? found.vat,
-      brokerageTotal: dto.brokerageTotal ?? found.brokerageTotal,
-      rebateTotal: dto.rebateTotal ?? found.rebateTotal,
-      supportAmount: dto.supportAmount ?? found.supportAmount,
+        customerName: dto.customerName ?? found.customerName,
+        customerPhone: dto.customerPhone ?? found.customerPhone,
 
-      isTaxed: typeof dto.isTaxed === 'boolean' ? dto.isTaxed : found.isTaxed,
-      calcMemo: dto.calcMemo ?? found.calcMemo,
+        brokerageFee: dto.brokerageFee ?? found.brokerageFee,
+        vatEnabled: dto.vat ?? found.vatEnabled,
+        rebateUnits: dto.rebate ?? found.rebateUnits,
+        supportAmount: dto.supportAmount ?? found.supportAmount,
+        isTaxed: dto.isTaxed ?? found.isTaxed,
+        calcMemo: dto.calcMemo ?? found.calcMemo,
 
-      contractDate: dto.contractDate ?? found.contractDate,
-      status: dto.status ?? found.status,
+        companyPercent: (dto.companyPercent ??
+          Number(found.companyPercent)) as any,
 
-      grandTotal: dto.grandTotal ?? found.grandTotal,
-    };
+        contractDate: dto.contractDate ?? found.contractDate,
+        finalPaymentDate: dto.finalPaymentDate ?? found.finalPaymentDate,
+        status: (dto.status ?? found.status) as any,
 
-    if (salespersonRel !== undefined) toSave.salesperson = salespersonRel;
-    if (createdByRel !== undefined) toSave.createdBy = createdByRel;
+        siteAddress: dto.siteAddress ?? found.siteAddress,
+        siteName: dto.siteName ?? found.siteName,
+        salesTeamPhone: dto.salesTeamPhone ?? found.salesTeamPhone,
+      };
 
-    await this.contractRepository.save(toSave);
-    return id;
+      await cRepo.save(patch);
+
+      // 2) assignees 교체(넘어온 경우만)
+      if (dto.assignees !== undefined) {
+        await aRepo.delete({ contract: { id: Number(id) } as any });
+
+        if (dto.assignees.length > 0) {
+          const rows = dto.assignees.map((a, idx) =>
+            aRepo.create({
+              contract: { id: Number(id) } as any,
+              account: { id: String(a.accountId) } as any,
+              sharePercent: a.sharePercent,
+              sortOrder: a.sortOrder ?? idx,
+            }),
+          );
+          await aRepo.save(rows);
+        }
+      }
+
+      // 3) urls 교체(넘어온 경우만)
+      if (dto.urls !== undefined) {
+        await fRepo.delete({ contract: { id: Number(id) } as any });
+
+        if (dto.urls.length > 0) {
+          const rows = dto.urls.map((url, idx) =>
+            fRepo.create({
+              contract: { id: Number(id) } as any,
+              url,
+              sortOrder: idx,
+            }),
+          );
+          await fRepo.save(rows);
+        }
+      }
+    });
+
+    return { id: Number(id) };
   }
 
-  async remove(id: number): Promise<void> {
-    if (!Number.isInteger(id))
-      throw new BadRequestException('id는 number여야 합니다.');
-    await this.contractRepository.delete({ id });
+  async remove(role: Role, id: number): Promise<void> {
+    if (role === 'staff') throw new ForbiddenException('삭제 권한이 없습니다.');
+    const found = await this.contractRepo.findOne({
+      where: { id: Number(id) },
+    });
+    if (!found) throw new NotFoundException('계약을 찾을 수 없습니다.');
+    await this.contractRepo.delete({ id: Number(id) } as any);
   }
 }
