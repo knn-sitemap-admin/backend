@@ -59,4 +59,20 @@ export class EmployeeInfoController {
     const list = await this.service.findUnassignedEmployees();
     return { message: '무소속 사용자 목록', data: list };
   }
+
+  @UseGuards(SessionAuthGuard)
+  @Get('employees/picklist')
+  async employeePicklist(@Req() req: any) {
+    const myCredentialId = req.session?.user?.credentialId as
+      | string
+      | undefined;
+    if (!myCredentialId) {
+      return { success: false, message: '세션이 없습니다', statusCode: 401 };
+    }
+
+    const data =
+      await this.service.getEmployeePicklistExcludeAdminAndMe(myCredentialId);
+
+    return { success: true, message: '사원 리스트', data };
+  }
 }

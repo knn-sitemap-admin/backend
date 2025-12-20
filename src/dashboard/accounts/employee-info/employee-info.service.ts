@@ -27,6 +27,11 @@ type UpsertInput = {
   docUrlFamilyRelation?: string | null;
 };
 
+export type EmployeePickItemDto = {
+  accountId: string;
+  name: string;
+};
+
 @Injectable()
 export class EmployeeInfoService {
   constructor(
@@ -236,6 +241,36 @@ export class EmployeeInfoService {
       disabled: !!r.disabled,
       name: r.name ?? null,
       phone: r.phone ?? null,
+    }));
+  }
+
+  private async resolveMyAccountId(credentialId: string): Promise<string> {
+    const row = await this.accountRepository
+      .createQueryBuilder('a')
+      .select(['a.id AS id'])
+      .where('a.credentialId = :cid', { cid: credentialId })
+      .getRawOne<{ id: string }>();
+
+    return row?.id ?? '';
+  }
+
+  async getEmployeePicklistExcludeAdminAndMe(
+    myCredentialId: string,
+  ): Promise<EmployeePickItemDto[]> {
+    const myAccountId = await this.resolveMyAccountId(myCredentialId);
+
+    const rows = await this.accountRepository
+      .createQueryBuilder('a')
+      .innerJoin(AccountCredential, 'c', 'c.id = a.credentialId')
+      .select(['a.id AS accountId', 'a.name AS name'])
+      .where('c.role != :admin', { admin: 'admin' })
+      .andWhere('a.id != :me', { me: myAccountId })
+      .orderBy('a.name', 'ASC')
+      .getRawMany<{ accountId: string; name: string }>();
+
+    return rows.map((r) => ({
+      accountId: String(r.accountId),
+      name: r.name,
     }));
   }
 }
