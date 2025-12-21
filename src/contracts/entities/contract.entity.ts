@@ -92,6 +92,12 @@ export class Contract {
   @Column({ type: 'varchar', length: 30 })
   salesTeamPhone!: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  bank!: string | null;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  account!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

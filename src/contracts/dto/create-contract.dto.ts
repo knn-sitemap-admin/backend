@@ -99,6 +99,16 @@ export class CreateContractDto {
   salesTeamPhone!: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  bank?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  account?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(50)
   @IsUrl({ require_protocol: true }, { each: true })

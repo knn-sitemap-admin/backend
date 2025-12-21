@@ -56,6 +56,8 @@ type ListItem = {
   // me list에서만 내려줌
   mySharePercent?: number;
   myAmount?: number;
+  bank?: string | null;
+  account?: string | null;
 };
 
 @Injectable()
@@ -115,24 +117,37 @@ export class ContractsService {
     companyPercent: number,
     assignees?: Array<{ sharePercent: number }>,
   ) {
-    if (!(companyPercent >= 0 && companyPercent <= 100)) {
+    // 1) companyPercent 범위
+    if (
+      !Number.isFinite(companyPercent) ||
+      companyPercent < 0 ||
+      companyPercent > 100
+    ) {
       throw new BadRequestException('companyPercent는 0~100 사이여야 합니다.');
     }
 
+    // assignees가 없으면 OK (회사 비율만으로도 계약 생성 가능)
     if (!assignees || assignees.length === 0) return;
 
-    const sum = assignees.reduce(
-      (s, a) => s + (Number.isFinite(a.sharePercent) ? a.sharePercent : 0),
-      0,
-    );
-    if (Math.abs(sum - 100) > 0.0001) {
-      throw new BadRequestException(
-        'assignees sharePercent 합계는 100이어야 합니다.',
-      );
-    }
+    // 2) companyPercent가 100이면 직원 배정 불가
     if (companyPercent >= 100) {
       throw new BadRequestException(
         'companyPercent가 100이면 assignees를 둘 수 없습니다.',
+      );
+    }
+
+    // 3) 직원 퍼센트 합계는 (100 - companyPercent) 이어야 함
+    const expected = 100 - companyPercent;
+
+    const sum = assignees.reduce((s, a) => {
+      const v = Number.isFinite(a.sharePercent) ? a.sharePercent : 0;
+      return s + v;
+    }, 0);
+
+    // 소수점 오차 허용
+    if (Math.abs(sum - expected) > 0.0001) {
+      throw new BadRequestException(
+        `assignees sharePercent 합계는 ${expected}이어야 합니다. (companyPercent=${companyPercent})`,
       );
     }
   }
@@ -189,6 +204,8 @@ export class ContractsService {
         siteAddress: dto.siteAddress,
         siteName: dto.siteName,
         salesTeamPhone: dto.salesTeamPhone,
+        bank: dto.bank ?? null,
+        account: dto.account ?? null,
       });
 
       const saved = await cRepo.save(created);
@@ -302,6 +319,9 @@ export class ContractsService {
         siteName: c.siteName,
         siteAddress: c.siteAddress,
 
+        bank: c.bank ?? null,
+        account: c.account ?? null,
+
         brokerageFee: c.brokerageFee,
         vatEnabled: c.vatEnabled,
         rebateUnits: c.rebateUnits,
@@ -403,7 +423,7 @@ export class ContractsService {
         contractNo: c.contractNo,
 
         createdByAccountId: c.createdByAccountId,
-        createdByName: (c.createdBy as any)?.name ?? null,
+        createdByName: c.createdBy?.name ?? null,
 
         customerName: c.customerName,
         customerPhone: c.customerPhone,
@@ -414,6 +434,9 @@ export class ContractsService {
 
         siteName: c.siteName,
         siteAddress: c.siteAddress,
+
+        bank: c.bank ?? null,
+        account: c.account ?? null,
 
         brokerageFee: c.brokerageFee,
         vatEnabled: c.vatEnabled,
@@ -516,11 +539,14 @@ export class ContractsService {
       siteName: contract.siteName,
       salesTeamPhone: contract.salesTeamPhone,
 
+      bank: contract.bank ?? null,
+      account: contract.account ?? null,
+
       urls: files.map((f) => f.url),
 
       assignees: assignees.map((a) => ({
         accountId: a.accountId,
-        name: (a.account as any)?.name ?? null,
+        name: a.account?.name ?? null,
         sharePercent: Number(a.sharePercent),
         sortOrder: Number(a.sortOrder),
       })),
@@ -619,6 +645,8 @@ export class ContractsService {
         siteAddress: dto.siteAddress ?? found.siteAddress,
         siteName: dto.siteName ?? found.siteName,
         salesTeamPhone: dto.salesTeamPhone ?? found.salesTeamPhone,
+        bank: dto.bank ?? found.bank ?? null,
+        account: dto.account ?? found.account ?? null,
       };
 
       await cRepo.save(patch);
