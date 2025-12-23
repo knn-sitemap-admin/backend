@@ -43,7 +43,7 @@ export class TeamController {
     return { message: '팀 상세', data: team };
   }
 
-  @Roles(SystemRole.ADMIN)
+  @Roles(SystemRole.ADMIN, SystemRole.MANAGER)
   @Patch(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateTeamDto) {
     const updated = await this.service.update(id, dto);
