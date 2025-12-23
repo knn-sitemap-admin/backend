@@ -43,13 +43,7 @@ export class GroupController {
     } catch (e: any) {
       console.error('[GroupController.getGroups] error', {
         includeItems,
-        hasSession: !!(req as any)?.session,
-        hasUser: !!(req as any)?.session?.user,
-        credentialId: String((req as any)?.session?.user?.credentialId ?? ''),
-        errName: String(e?.name ?? ''),
         errMessage: String(e?.message ?? e),
-        errCode: e && (e.code ?? e.errno) ? String(e.code ?? e.errno) : '',
-        stack: e?.stack ? String(e.stack) : '',
       });
       throw e;
     }
