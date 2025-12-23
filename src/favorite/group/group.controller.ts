@@ -34,11 +34,25 @@ export class GroupController {
     @Query('includeItems') includeItems: string,
     @Req() req: { session: SessionData },
   ) {
-    const credentialId = this.getCredentialId(req);
-    const withItems = includeItems === '1' || includeItems === 'true';
+    try {
+      const credentialId = this.getCredentialId(req);
+      const withItems = includeItems === '1' || includeItems === 'true';
 
-    const data = await this.service.getGroups(credentialId, withItems);
-    return { message: '조회 성공', data };
+      const data = await this.service.getGroups(credentialId, withItems);
+      return { message: '조회 성공', data };
+    } catch (e: any) {
+      console.error('[GroupController.getGroups] error', {
+        includeItems,
+        hasSession: !!(req as any)?.session,
+        hasUser: !!(req as any)?.session?.user,
+        credentialId: String((req as any)?.session?.user?.credentialId ?? ''),
+        errName: String(e?.name ?? ''),
+        errMessage: String(e?.message ?? e),
+        errCode: e && (e.code ?? e.errno) ? String(e.code ?? e.errno) : '',
+        stack: e?.stack ? String(e.stack) : '',
+      });
+      throw e;
+    }
   }
 
   @Patch(':groupId')
