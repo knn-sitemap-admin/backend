@@ -17,14 +17,16 @@ export class GroupService {
 
   /** credentialId → account.id */
   private async resolveAccountId(
-    m: DataSource | any,
+    m: any,
     credentialId: string,
   ): Promise<string> {
     const accountRepo = m.getRepository(Account);
+
     const account = await accountRepo.findOne({
-      where: { credentialId },
-      select: ['id'],
+      where: { credential_id: credentialId },
+      select: { id: true },
     });
+
     if (!account) throw new NotFoundException('계정을 찾을 수 없습니다');
     return String(account.id);
   }
