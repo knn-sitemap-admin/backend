@@ -5,28 +5,28 @@ export class ListContractsDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  page?: number;
+  page?: number; //페이징
 
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  size?: number;
+  size?: number; //페이징
 
   @IsOptional()
   @IsString()
-  q?: string;
+  q?: string; //검색어
 
   @IsOptional()
   @IsString()
-  dateFrom?: string; // YYYY-MM-DD
+  dateFrom?: string; // YYYY-MM-DD //시작일
 
   @IsOptional()
   @IsString()
-  dateTo?: string;
+  dateTo?: string; //끝나는일
 
   @IsOptional()
   @IsIn(['ongoing', 'done', 'canceled', 'rejected'])
-  status?: 'ongoing' | 'done' | 'canceled' | 'rejected';
+  status?: 'ongoing' | 'done' | 'canceled' | 'rejected'; //상태
 
   @IsOptional()
   @IsIn(['contract_date', 'created_at'])
@@ -35,4 +35,8 @@ export class ListContractsDto {
   @IsOptional()
   @IsIn(['ASC', 'DESC'])
   orderDir?: 'ASC' | 'DESC';
+
+  //팀
+
+  //계정
 }

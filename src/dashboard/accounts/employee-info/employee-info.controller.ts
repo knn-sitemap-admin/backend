@@ -4,7 +4,9 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { SessionAuthGuard } from '../../auth/guards/session-auth.guard';
@@ -13,6 +15,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { SystemRole } from '../types/roles';
 import { UpsertEmployeeInfoDto } from '../dto/upsert-employee-info.dto';
 import { EmployeeInfoService } from './employee-info.service';
+import { EmployeeListQueryDto } from '../dto/employee-list-query.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Controller('dashboard/accounts')
@@ -67,12 +70,19 @@ export class EmployeeInfoController {
       | string
       | undefined;
     if (!myCredentialId) {
-      return { success: false, message: '세션이 없습니다', statusCode: 401 };
+      throw new UnauthorizedException('세션이 없습니다');
     }
 
     const data =
       await this.service.getEmployeePicklistExcludeAdminAndMe(myCredentialId);
 
-    return { success: true, message: '사원 리스트', data };
+    return { message: '사원 리스트', data };
+  }
+
+  @Roles(SystemRole.ADMIN, SystemRole.MANAGER)
+  @Get('employees')
+  async getEmployees(@Query() query: EmployeeListQueryDto) {
+    const data = await this.service.getEmployeeList(query);
+    return { message: '계정 리스트', data };
   }
 }

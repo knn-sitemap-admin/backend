@@ -118,7 +118,6 @@ export class SurveyReservationsService {
     });
   }
 
-  // 내 답사예정
   async listScheduled(meCredentialId: string) {
     const myAccountId = await this.resolveMyAccountId(meCredentialId);
 
@@ -126,24 +125,34 @@ export class SurveyReservationsService {
       .getRepository(SurveyReservation)
       .createQueryBuilder('r')
       .innerJoinAndSelect('r.pinDraft', 'd')
-      .where('r.assignee_id = :me', { me: myAccountId })
-      .andWhere('r.is_deleted = 0')
-      .orderBy('r.sort_order', 'ASC')
-      .addOrderBy('r.reserved_date', 'ASC')
+      .innerJoinAndSelect('r.assignee', 'a')
+      .where('r.is_deleted = 0')
+      .orderBy('r.reserved_date', 'ASC')
+      .addOrderBy('r.sort_order', 'ASC')
       .addOrderBy('r.id', 'ASC')
       .getMany();
 
-    return rows.map((r) => ({
-      id: Number(r.id),
-      pin_draft_id: Number(r.pinDraft.id),
-      lat: Number(r.pinDraft.lat),
-      lng: Number(r.pinDraft.lng),
-      addressLine: r.pinDraft.addressLine,
-      reservedDate: r.reservedDate, // 'YYYY-MM-DD'
-      sortOrder: r.sortOrder,
-      isActive: r.pinDraft.isActive,
-      createdAt: r.pinDraft.createdAt,
-    }));
+    return rows.map((r) => {
+      const assigneeId = String(r.assignee?.id ?? '');
+      const isMine = assigneeId === String(myAccountId);
+
+      return {
+        id: Number(r.id),
+        pin_draft_id: Number(r.pinDraft.id),
+        lat: Number(r.pinDraft.lat),
+        lng: Number(r.pinDraft.lng),
+        addressLine: r.pinDraft.addressLine,
+        reservedDate: r.reservedDate, // 'YYYY-MM-DD'
+        sortOrder: r.sortOrder,
+        isActive: r.pinDraft.isActive,
+        createdAt: r.pinDraft.createdAt,
+
+        // 추가 3개
+        isMine,
+        assigneeId,
+        assigneeName: r.assignee?.name ?? null,
+      };
+    });
   }
 
   async cancel(id: number, meCredentialId: string) {
