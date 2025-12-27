@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { PerformanceService } from './performance.service';
 import { PerformanceFilterDto } from './dto/performance-filter.dto';
 
-@Controller('owner/performance')
+@Controller('performance')
 export class PerformanceController {
   constructor(private readonly service: PerformanceService) {}
 

@@ -291,7 +291,8 @@ export class PerformanceService {
     );
     const myAmountExpr = this.sqlMyAmountExpr(staffPoolExpr);
 
-    // 팀 소속 멤버 + 그 멤버가 참여한 완료 계약(잔금일 기준) 집계
+    // - 기준: team_members + accounts
+    // - 계약 필터(완료/기간)는 Contract LEFT JOIN의 ON에 붙여야 0이 살아있음
     const rows = await this.accountRepo
       .createQueryBuilder('acc')
       .innerJoin(
@@ -301,23 +302,36 @@ export class PerformanceService {
         { tid: String(teamId) },
       )
       .leftJoin(AccountCredential, 'cr', 'cr.id = acc.credential_id')
-      .innerJoin(ContractAssignee, 'a', 'a.account_id = acc.id')
-      .innerJoin(Contract, 'c', 'c.id = a.contract_id')
+      .leftJoin(ContractAssignee, 'a', 'a.account_id = acc.id')
+      .leftJoin(
+        Contract,
+        'c',
+        `
+        c.id = a.contract_id
+        AND c.status = :done
+        AND c.final_payment_date >= :s
+        AND c.final_payment_date <= :e
+      `,
+        {
+          done: 'done',
+          s: range.startDate,
+          e: range.endDate,
+        },
+      )
       .select('acc.id', 'accountId')
       .addSelect('acc.name', 'name')
       .addSelect('acc.position_rank', 'positionRank')
       .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
       .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
-      .where('c.status = :done', { done: 'done' })
-      .andWhere('c.final_payment_date >= :s AND c.final_payment_date <= :e', {
-        s: range.startDate,
-        e: range.endDate,
-      })
-      .andWhere('(cr.is_disabled = 0 OR cr.is_disabled IS NULL)') // 혹시 legacy 데이터 대비
+      // 팀원 리스트는 다 보여주되, 비활성 credential은 제외(너가 "비활성은 사실상 안 쓰지만"이라고 했으니 최소 안전장치)
+      .where('(cr.is_disabled = 0 OR cr.is_disabled IS NULL)')
       .groupBy('acc.id')
       .addGroupBy('acc.name')
       .addGroupBy('acc.position_rank')
+      // 정렬: 실적 높은 순, 동률이면 이름/ID로 안정 정렬
       .orderBy('finalPayout', 'DESC')
+      .addOrderBy('acc.name', 'ASC')
+      .addOrderBy('acc.id', 'ASC')
       .getRawMany<{
         accountId: string;
         name: string | null;
