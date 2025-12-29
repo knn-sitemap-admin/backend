@@ -119,19 +119,21 @@ export class PerformanceService {
   }
 
   private sqlGrandTotalExpr(): string {
-    // grandTotal = brokerageFee + vatAmount + taxedDelta
-    // vatAmount = vatEnabled ? round(brokerageFee*0.1) : 0
-    // delta = (rebateUnits*1,000,000) - supportAmount
-    // taxedDelta = isTaxed ? round(delta*0.967) : delta
-    // ※ contracts.calc와 최대한 동일하게 맞춤(ROUND 사용)
+    const deltaExpr = `
+      (
+        (CAST(c.rebateUnits AS DECIMAL(18,0)) * ${REBATE_UNIT_AMOUNT})
+        - CAST(c.supportAmount AS DECIMAL(18,0))
+      )
+    `;
+
     return `
       (
         c.brokerageFee
         + (CASE WHEN c.vatEnabled = 1 THEN ROUND(c.brokerageFee * ${VAT_RATE}) ELSE 0 END)
         + (
             CASE
-              WHEN c.isTaxed = 1 THEN ROUND( ( (c.rebateUnits * ${REBATE_UNIT_AMOUNT}) - c.supportAmount ) * ${TAX_FACTOR} )
-              ELSE ( (c.rebateUnits * ${REBATE_UNIT_AMOUNT}) - c.supportAmount )
+              WHEN c.isTaxed = 1 THEN ROUND( (${deltaExpr}) * ${TAX_FACTOR} )
+              ELSE (${deltaExpr})
             END
           )
       )
