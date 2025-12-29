@@ -584,74 +584,71 @@ export class ContractsService {
   ): Promise<{ id: number }> {
     const me = await this.resolveAccountByCredentialIdOrThrow(credentialId);
 
-    const found = await this.contractRepo.findOne({
-      where: { id: Number(id) },
-      relations: ['createdBy'],
-    });
-    if (!found) throw new NotFoundException('계약을 찾을 수 없습니다.');
-
-    if (role === 'staff') {
-      if (!this.canUpdateContractAsStaff(String(me.id), found)) {
-        throw new ForbiddenException('수정 권한이 없습니다.');
-      }
-    }
-
-    // companyPercent/assignees 규칙 검증
-    const companyPercent = dto.companyPercent ?? Number(found.companyPercent);
-    const assigneesForCheck = dto.assignees ?? undefined;
-    if (assigneesForCheck !== undefined) {
-      this.assertAssigneesRule(companyPercent, assigneesForCheck);
-    } else {
-      // assignees를 안 보냈어도 companyPercent만 변경될 수 있으니,
-      // 기존 assignees가 존재하는 경우 companyPercent=100 같은 걸 막기 위해 check
-      if (dto.companyPercent !== undefined) {
-        const existingCount = await this.assigneeRepo.count({
-          where: { contract: { id: Number(id) } as any },
-        });
-        if (existingCount > 0 && companyPercent >= 100) {
-          throw new BadRequestException(
-            'assignees가 존재하는 계약은 companyPercent를 100으로 설정할 수 없습니다.',
-          );
-        }
-      }
-    }
-
     await this.dataSource.transaction(async (m) => {
       const cRepo = m.getRepository(Contract);
       const aRepo = m.getRepository(ContractAssignee);
       const fRepo = m.getRepository(ContractFile);
 
-      // 1) 계약 원본 필드 patch
-      const patch: Partial<Contract> = {
-        id: Number(id) as any,
+      const contract = await cRepo
+        .createQueryBuilder('c')
+        .leftJoinAndSelect('c.createdBy', 'createdBy')
+        .setLock('pessimistic_write')
+        .where('c.id = :id', { id: Number(id) })
+        .getOne();
 
-        customerName: dto.customerName ?? found.customerName,
-        customerPhone: dto.customerPhone ?? found.customerPhone,
+      if (!contract) throw new NotFoundException('계약을 찾을 수 없습니다.');
 
-        brokerageFee: dto.brokerageFee ?? found.brokerageFee,
-        vatEnabled: dto.vat ?? found.vatEnabled,
-        rebateUnits: dto.rebate ?? found.rebateUnits,
-        supportAmount: dto.supportAmount ?? found.supportAmount,
-        isTaxed: dto.isTaxed ?? found.isTaxed,
-        calcMemo: dto.calcMemo ?? found.calcMemo,
+      if (role === 'staff') {
+        if (!this.canUpdateContractAsStaff(String(me.id), contract)) {
+          throw new ForbiddenException('수정 권한이 없습니다.');
+        }
+      }
 
-        companyPercent: (dto.companyPercent ??
-          Number(found.companyPercent)) as any,
+      const nextCompanyPercent = Number(
+        dto.companyPercent ?? Number(contract.companyPercent),
+      );
 
-        contractDate: dto.contractDate ?? found.contractDate,
-        finalPaymentDate: dto.finalPaymentDate ?? found.finalPaymentDate,
-        status: (dto.status ?? found.status) as any,
+      if (dto.assignees !== undefined) {
+        this.assertAssigneesRule(nextCompanyPercent, dto.assignees);
+      } else {
+        if (dto.companyPercent !== undefined) {
+          const existingCount = await aRepo.count({
+            where: { contract: { id: Number(id) } as any },
+          });
 
-        siteAddress: dto.siteAddress ?? found.siteAddress,
-        siteName: dto.siteName ?? found.siteName,
-        salesTeamPhone: dto.salesTeamPhone ?? found.salesTeamPhone,
-        bank: dto.bank ?? found.bank ?? null,
-        account: dto.account ?? found.account ?? null,
-      };
+          if (existingCount > 0 && nextCompanyPercent >= 100) {
+            throw new BadRequestException(
+              'assignees가 존재하는 계약은 companyPercent를 100으로 설정할 수 없습니다.',
+            );
+          }
+        }
+      }
 
-      await cRepo.save(patch);
+      contract.customerName = dto.customerName ?? contract.customerName;
+      contract.customerPhone = dto.customerPhone ?? contract.customerPhone;
 
-      // 2) assignees 교체(넘어온 경우만)
+      contract.brokerageFee = dto.brokerageFee ?? contract.brokerageFee;
+      contract.vatEnabled = dto.vat ?? contract.vatEnabled;
+      contract.rebateUnits = dto.rebate ?? contract.rebateUnits;
+      contract.supportAmount = dto.supportAmount ?? contract.supportAmount;
+      contract.isTaxed = dto.isTaxed ?? contract.isTaxed;
+      contract.calcMemo = dto.calcMemo ?? contract.calcMemo;
+
+      contract.companyPercent = nextCompanyPercent;
+
+      contract.contractDate = dto.contractDate ?? contract.contractDate;
+      contract.finalPaymentDate =
+        dto.finalPaymentDate ?? contract.finalPaymentDate;
+      contract.status = (dto.status ?? contract.status) as any;
+
+      contract.siteAddress = dto.siteAddress ?? contract.siteAddress;
+      contract.siteName = dto.siteName ?? contract.siteName;
+      contract.salesTeamPhone = dto.salesTeamPhone ?? contract.salesTeamPhone;
+
+      contract.bank = dto.bank ?? contract.bank ?? null;
+      contract.account = dto.account ?? contract.account ?? null;
+
+      await cRepo.save(contract);
       if (dto.assignees !== undefined) {
         await aRepo.delete({ contract: { id: Number(id) } as any });
 
@@ -668,7 +665,6 @@ export class ContractsService {
         }
       }
 
-      // 3) urls 교체(넘어온 경우만)
       if (dto.urls !== undefined) {
         await fRepo.delete({ contract: { id: Number(id) } as any });
 
