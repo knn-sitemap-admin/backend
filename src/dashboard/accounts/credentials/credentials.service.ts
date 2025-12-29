@@ -213,7 +213,7 @@ export class CredentialsService {
         'acc',
         'acc.credential_id = cred.id',
       )
-      .orderBy('cred.created_at', 'DESC')
+      .orderBy('cred.id', 'DESC')
       .getMany();
 
     return rows.map((c: any) => ({
