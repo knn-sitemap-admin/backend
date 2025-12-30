@@ -13,6 +13,9 @@ import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { AdminResetDto } from './dto/admin-reset.dto';
 import { detectDeviceType } from '../../common/utils/device-type.util';
 import { SessionAuthGuard } from './guards/session-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { SystemRole } from '../accounts/types/roles';
+import { Roles } from './decorators/roles.decorator';
 
 function destroySessionById(store: any, sid: string): Promise<void> {
   return new Promise((resolve) => {
@@ -113,6 +116,8 @@ export class AuthController {
    * https://www.notion.so/2948186df78b80b1864ed84e03a42ef8?source=copy_link
    * 로그아웃
    */
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles(SystemRole.ADMIN)
   @Post('signout')
   async signout(@Req() req: any) {
     const sid = String(req.sessionID ?? '');
@@ -162,9 +167,6 @@ export class AuthController {
   @Post('admin/force-reset-password')
   async forceResetByAdmin(@Body() dto: AdminResetDto, @Req() req: any) {
     const me = req.session?.user;
-    if (!me || me.role !== 'admin') {
-      throw new ForbiddenException('관리자만 실행할 수 있습니다.');
-    }
     const data = await this.service.forceResetPasswordByAdmin(
       dto.email,
       dto.newPassword,

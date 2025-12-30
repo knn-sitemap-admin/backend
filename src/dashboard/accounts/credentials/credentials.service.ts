@@ -7,20 +7,32 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AccountCredential } from '../entities/account-credential.entity';
-import { Account } from '../entities/account.entity';
+import { Account, PositionRank } from '../entities/account.entity';
 import { Team } from '../entities/team.entity';
 import { TeamMember } from '../entities/team-member.entity';
 import { CreateAccountDto } from '../dto/create-account.dto';
 import { BcryptService } from '../../../common/hashing/bcrypt.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
 import { AccountSession } from '../../auth/entities/account-session.entity';
+import { UpsertEmployeeInfoDto } from '../dto/upsert-employee-info.dto';
+
+type Role = 'admin' | 'manager' | 'staff';
 
 type SafeCredential = {
   id: string;
   email: string;
-  role: 'admin' | 'manager' | 'staff';
+  role: Role;
   is_disabled: boolean;
 };
+
+// createEmployee가 실제로 반환하는 값에 맞춘 타입
+type CreateEmployeeResult = SafeCredential & {
+  accountId: string;
+  positionRank: PositionRank | null;
+  team: { id: string; name: string; code: string } | null;
+};
+
+type NormalizedInfo = Partial<UpsertEmployeeInfoDto>;
 
 @Injectable()
 export class CredentialsService {
@@ -139,67 +151,241 @@ export class CredentialsService {
   //   });
   // }
 
-  async createEmployee(dto: CreateEmployeeDto): Promise<SafeCredential> {
-    return this.dataSource.transaction(async (tx) => {
-      const accountCredentialRepo = tx.getRepository(AccountCredential);
-      const accountRepo = tx.getRepository(Account);
-      const teamRepo = tx.getRepository(Team);
-      const teamMemberRepo = tx.getRepository(TeamMember);
+  private isManagerRank(rank: PositionRank | null | undefined): boolean {
+    return rank === PositionRank.TEAM_LEADER || rank === PositionRank.DIRECTOR;
+  }
 
-      const dup = await accountCredentialRepo.findOne({
-        where: { email: dto.email },
-      });
+  private toRoleFromRank(
+    rank: PositionRank | null | undefined,
+  ): 'manager' | 'staff' {
+    return this.isManagerRank(rank) ? 'manager' : 'staff';
+  }
+
+  private normalizeInfo(dto?: UpsertEmployeeInfoDto): NormalizedInfo {
+    if (!dto) return {};
+
+    return {
+      name: dto.name ?? undefined,
+      phone: dto.phone ?? undefined,
+      emergencyContact: dto.emergencyContact ?? undefined,
+      addressLine: dto.addressLine ?? undefined,
+      salaryBankName: dto.salaryBankName ?? undefined,
+      salaryAccount: dto.salaryAccount ?? undefined,
+      profileUrl: dto.profileUrl ?? undefined,
+      positionRank: dto.positionRank ?? undefined,
+      docUrlResidentRegistration: dto.docUrlResidentRegistration ?? undefined,
+      docUrlResidentAbstract: dto.docUrlResidentAbstract ?? undefined,
+      docUrlIdCard: dto.docUrlIdCard ?? undefined,
+      docUrlFamilyRelation: dto.docUrlFamilyRelation ?? undefined,
+    };
+  }
+
+  async createEmployee(dto: CreateEmployeeDto): Promise<CreateEmployeeResult> {
+    return this.dataSource.transaction(async (tx) => {
+      const credRepo = tx.getRepository(AccountCredential);
+      const accRepo = tx.getRepository(Account);
+      const teamRepo = tx.getRepository(Team);
+      const tmRepo = tx.getRepository(TeamMember);
+
+      const dup = await credRepo.findOne({ where: { email: dto.email } });
       if (dup) throw new ConflictException('이미 존재하는 이메일입니다.');
 
+      const info = this.normalizeInfo(dto.info);
+
+      const positionRank: PositionRank | null =
+        info.positionRank !== undefined ? info.positionRank : null;
+
+      const role = this.toRoleFromRank(positionRank); // 'manager' | 'staff'
+
       const hashed = await this.bcrypt.hash(dto.password);
-      const cred = accountCredentialRepo.create({
+      const cred = credRepo.create({
         email: dto.email,
         password: hashed,
-        role: dto.role,
+        role,
         is_disabled: dto.isDisabled ?? false,
       });
-      await accountCredentialRepo.save(cred);
+      await credRepo.save(cred);
 
-      const account = accountRepo.create({
-        credential_id: cred.id,
+      const account = accRepo.create({
+        credential_id: String(cred.id),
         is_profile_completed: false,
+
+        name: info.name ?? null,
+        phone: info.phone ?? null,
+        emergency_contact: info.emergencyContact ?? null,
+        address_line: info.addressLine ?? null,
+        salary_bank_name: info.salaryBankName ?? null,
+        salary_account: info.salaryAccount ?? null,
+        profile_url: info.profileUrl ?? null,
+        doc_url_resident_registration: info.docUrlResidentRegistration ?? null,
+        doc_url_resident_abstract: info.docUrlResidentAbstract ?? null,
+        doc_url_id_card: info.docUrlIdCard ?? null,
+        doc_url_family_relation: info.docUrlFamilyRelation ?? null,
+
+        position_rank: positionRank,
       });
-      await accountRepo.save(account);
 
-      // 팀 배정
-      const teamId = dto.team?.teamId;
-      if (teamId) {
-        const team = await teamRepo.findOne({
-          where: { id: teamId, is_active: true },
+      if (account.phone) {
+        const dupPhone = await accRepo.findOne({
+          where: { phone: account.phone },
         });
-        if (!team) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
+        if (dupPhone)
+          throw new ConflictException('이미 사용 중인 연락처입니다');
+      }
+      if (account.salary_account) {
+        const dupSalary = await accRepo.findOne({
+          where: { salary_account: account.salary_account },
+        });
+        if (dupSalary)
+          throw new ConflictException('이미 사용 중인 급여 계좌번호입니다');
+      }
 
-        const wantPrimary = dto.team?.isPrimary !== false;
-        if (wantPrimary) {
-          const alreadyPrimary = await teamMemberRepo.findOne({
-            where: { account_id: account.id, is_primary: true },
-          });
-          if (alreadyPrimary) {
-            throw new ConflictException('이미 주팀이 설정되어 있습니다.');
+      account.is_profile_completed =
+        !!account.name &&
+        !!account.phone &&
+        !!account.emergency_contact &&
+        !!account.address_line &&
+        !!account.salary_bank_name &&
+        !!account.salary_account;
+
+      await accRepo.save(account);
+
+      let createdOrAssignedTeam: {
+        id: string;
+        name: string;
+        code: string;
+      } | null = null;
+
+      const isTeamLeader = positionRank === PositionRank.TEAM_LEADER;
+
+      if (isTeamLeader) {
+        await tmRepo
+          .createQueryBuilder()
+          .delete()
+          .from(TeamMember)
+          .where('account_id = :aid', { aid: String(account.id) })
+          .execute();
+
+        let team = await teamRepo.findOne({
+          where: { leader_account_id: String(account.id) },
+        });
+
+        if (!team) {
+          const baseName =
+            (dto.teamName && dto.teamName.trim()) ||
+            (account.name ? `${account.name} 팀` : `팀-${account.id}`);
+
+          const makeCode = () =>
+            `TL-${account.id}-${Date.now().toString(36)}`.toUpperCase();
+          let code = makeCode();
+
+          for (let i = 0; i < 3; i++) {
+            const exists = await teamRepo.findOne({ where: { code } });
+            if (!exists) break;
+            code = makeCode();
           }
+
+          let finalName = baseName;
+          const nameDup = await teamRepo.findOne({
+            where: { name: finalName },
+          });
+          if (nameDup) finalName = `${baseName}-${account.id}`;
+
+          team = await teamRepo.save(
+            teamRepo.create({
+              leader_account_id: String(account.id),
+              name: finalName,
+              code,
+              description: null,
+              is_active: true,
+            }),
+          );
+        } else if (!team.is_active) {
+          team.is_active = true;
+          team = await teamRepo.save(team);
         }
 
-        const teamMember = teamMemberRepo.create({
-          team_id: team.id,
-          account_id: account.id,
-          team_role: 'staff', // 이제 manager 배정 금지
-          is_primary: dto.team?.isPrimary !== false,
-          joined_at:
-            dto.team?.joinedAt ?? new Date().toISOString().slice(0, 10),
+        const leaderMember = await tmRepo.findOne({
+          where: {
+            team_id: String(team.id),
+            account_id: String(account.id),
+            team_role: 'manager',
+          } as any,
         });
-        await teamMemberRepo.save(teamMember);
+
+        if (!leaderMember) {
+          await tmRepo.save(
+            tmRepo.create({
+              team_id: String(team.id),
+              account_id: String(account.id),
+              team_role: 'manager',
+              is_primary: true,
+              joined_at: new Date().toISOString().slice(0, 10),
+            }),
+          );
+        }
+
+        await tmRepo
+          .createQueryBuilder()
+          .delete()
+          .from(TeamMember)
+          .where('account_id = :aid AND team_id <> :tid', {
+            aid: String(account.id),
+            tid: String(team.id),
+          })
+          .execute();
+
+        createdOrAssignedTeam = {
+          id: String(team.id),
+          name: team.name,
+          code: team.code,
+        };
+      } else {
+        const teamId = dto.team?.teamId;
+        if (teamId) {
+          const team = await teamRepo.findOne({
+            where: { id: teamId, is_active: true },
+          });
+          if (!team)
+            throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
+
+          const wantPrimary = dto.team?.isPrimary !== false;
+
+          if (wantPrimary) {
+            const alreadyPrimary = await tmRepo.findOne({
+              where: { account_id: String(account.id), is_primary: true },
+            });
+            if (alreadyPrimary)
+              throw new ConflictException('이미 주팀이 설정되어 있습니다.');
+          }
+
+          await tmRepo.save(
+            tmRepo.create({
+              team_id: String(team.id),
+              account_id: String(account.id),
+              team_role: 'staff',
+              is_primary: wantPrimary,
+              joined_at:
+                dto.team?.joinedAt ?? new Date().toISOString().slice(0, 10),
+            }),
+          );
+
+          createdOrAssignedTeam = {
+            id: String(team.id),
+            name: team.name,
+            code: team.code,
+          };
+        }
       }
 
       return {
-        id: cred.id,
+        id: String(cred.id),
         email: cred.email,
         role: cred.role,
         is_disabled: cred.is_disabled,
+        accountId: String(account.id),
+        positionRank: account.position_rank ?? null,
+        team: createdOrAssignedTeam,
       };
     });
   }
@@ -330,207 +516,207 @@ export class CredentialsService {
     };
   }
 
-  private isManagerRank(rank: string): boolean {
-    return rank === 'TEAM_LEADER' || rank === 'DIRECTOR';
-  }
+  // private isManagerRank(rank: string): boolean {
+  //   return rank === 'TEAM_LEADER' || rank === 'DIRECTOR';
+  // }
+  //
+  // private toRoleFromRank(rank: string): 'manager' | 'staff' {
+  //   return this.isManagerRank(rank) ? 'manager' : 'staff';
+  // }
 
-  private toRoleFromRank(rank: string): 'manager' | 'staff' {
-    return this.isManagerRank(rank) ? 'manager' : 'staff';
-  }
-
-  async setAccountPositionRankAndSyncRole(
-    credentialId: string,
-    positionRank: any, // enum 바뀌는 중이면 any 유지
-    teamName?: string,
-  ) {
-    return this.dataSource.transaction(async (tx) => {
-      const credRepo = tx.getRepository(AccountCredential);
-      const accRepo = tx.getRepository(Account);
-      const teamRepo = tx.getRepository(Team);
-      const teamMemberRepo = tx.getRepository(TeamMember);
-      const sessionRepo = tx.getRepository(AccountSession);
-
-      const cred = await credRepo.findOne({
-        where: { id: String(credentialId) },
-      });
-      if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
-
-      const acc = await accRepo.findOne({
-        where: { credential_id: String(credentialId) },
-      });
-      if (!acc)
-        throw new NotFoundException('연결된 Account를 찾을 수 없습니다.');
-
-      const prevRank = acc.position_rank ? String(acc.position_rank) : null;
-      const nextRank = positionRank ? String(positionRank) : null;
-
-      // 1) 직급 업데이트
-      acc.position_rank = positionRank;
-      await accRepo.save(acc);
-
-      // 2) admin이 아니면 role 동기화
-      let changedRole: 'admin' | 'manager' | 'staff' = cred.role;
-      if (cred.role !== 'admin') {
-        const nextRole = this.toRoleFromRank(String(positionRank));
-        if (cred.role !== nextRole) {
-          cred.role = nextRole;
-          await credRepo.save(cred);
-          changedRole = nextRole;
-        }
-      }
-
-      // 3) TEAM_LEADER 승급/강등에 따른 팀/팀멤버 동기화
-      const becameTeamLeader =
-        nextRank === 'TEAM_LEADER' && prevRank !== 'TEAM_LEADER';
-      const leftTeamLeader =
-        prevRank === 'TEAM_LEADER' && nextRank !== 'TEAM_LEADER';
-
-      // 3-A) 팀장으로 "승급"된 경우: 팀 자동 생성 + 팀장 team_member 자동 생성
-      if (becameTeamLeader) {
-        // 팀장 계정은 어떤 팀에도 소속되면 안 됨 (기존 소속 제거)
-        // - 정책: 팀장 되는 순간 모든 team_members 제거
-        await teamMemberRepo
-          .createQueryBuilder()
-          .delete()
-          .from(TeamMember)
-          .where('account_id = :aid', { aid: String(acc.id) })
-          .execute();
-
-        // 이미 내 팀이 있는지 확인 (중복 생성 방지)
-        const myTeam = await teamRepo.findOne({
-          where: { leader_account_id: String(acc.id) },
-        });
-
-        if (!myTeam) {
-          // teamName 없으면 기본값
-          const name =
-            (teamName && teamName.trim()) ||
-            (acc.name ? `${acc.name} 팀` : `팀-${acc.id}`);
-
-          // code 생성: 충돌 방지 위해 짧게 + 루프
-          const makeCode = () =>
-            `TL-${acc.id}-${Date.now().toString(36)}`.toUpperCase();
-          let code = makeCode();
-
-          // code unique 충돌 가능성 낮지만, 안정적으로 3번 재시도
-          for (let i = 0; i < 3; i++) {
-            const exists = await teamRepo.findOne({ where: { code } });
-            if (!exists) break;
-            code = makeCode();
-          }
-
-          // name unique 충돌 가능: 충돌 시 뒤에 suffix
-          let finalName = name;
-          const nameDup = await teamRepo.findOne({
-            where: { name: finalName },
-          });
-          if (nameDup) {
-            finalName = `${name}-${acc.id}`;
-          }
-
-          const createdTeam = teamRepo.create({
-            leader_account_id: String(acc.id),
-            name: finalName,
-            code,
-            description: null,
-            is_active: true,
-          });
-          const savedTeam = await teamRepo.save(createdTeam);
-
-          // 팀장 멤버 자동 생성 (team_role=manager)
-          const leaderMember = teamMemberRepo.create({
-            team_id: String(savedTeam.id),
-            account_id: String(acc.id),
-            team_role: 'manager',
-            is_primary: true,
-            joined_at: new Date().toISOString().slice(0, 10),
-          });
-          await teamMemberRepo.save(leaderMember);
-        } else {
-          // 내 팀이 이미 있으면: 팀이 inactive면 활성화, 팀장 멤버가 없으면 생성
-          if (!myTeam.is_active) {
-            myTeam.is_active = true;
-            await teamRepo.save(myTeam);
-          }
-
-          const existsLeaderMember = await teamMemberRepo.findOne({
-            where: {
-              team_id: String(myTeam.id),
-              account_id: String(acc.id),
-              team_role: 'manager',
-            } as any,
-          });
-
-          if (!existsLeaderMember) {
-            const leaderMember = teamMemberRepo.create({
-              team_id: String(myTeam.id),
-              account_id: String(acc.id),
-              team_role: 'manager',
-              is_primary: true,
-              joined_at: new Date().toISOString().slice(0, 10),
-            });
-            await teamMemberRepo.save(leaderMember);
-          }
-
-          // 혹시 남아있는 다른 팀 소속이 있다면 제거(안전)
-          await teamMemberRepo
-            .createQueryBuilder()
-            .delete()
-            .from(TeamMember)
-            .where('account_id = :aid AND team_id <> :tid', {
-              aid: String(acc.id),
-              tid: String(myTeam.id),
-            })
-            .execute();
-        }
-      }
-
-      // 3-B) 팀장 "강등"된 경우: 내 팀 비활성화(정책) + 팀장 멤버 제거
-      if (leftTeamLeader) {
-        const myTeam = await teamRepo.findOne({
-          where: { leader_account_id: String(acc.id) },
-        });
-
-        if (myTeam) {
-          // 정책: 팀 비활성화
-          myTeam.is_active = false;
-          await teamRepo.save(myTeam);
-
-          // 팀장 멤버 제거(팀장 강등이니 manager 멤버 제거)
-          await teamMemberRepo
-            .createQueryBuilder()
-            .delete()
-            .from(TeamMember)
-            .where('team_id = :tid AND account_id = :aid AND team_role = :r', {
-              tid: String(myTeam.id),
-              aid: String(acc.id),
-              r: 'manager',
-            })
-            .execute();
-        }
-      }
-
-      // 4) 세션 즉시 종료
-      const now = new Date();
-      await sessionRepo
-        .createQueryBuilder()
-        .update(AccountSession)
-        .set({ is_active: false, deactivated_at: now })
-        .where('credential_id = :cid', { cid: String(credentialId) })
-        .andWhere('is_active = 1')
-        .execute();
-
-      return {
-        credentialId: String(credentialId),
-        prevPositionRank: prevRank,
-        positionRank: nextRank,
-        role: changedRole,
-        // 디버깅/프론트 반영에 도움 되는 플래그
-        becameTeamLeader,
-        leftTeamLeader,
-      };
-    });
-  }
+  // async setAccountPositionRankAndSyncRole(
+  //   credentialId: string,
+  //   positionRank: any, // enum 바뀌는 중이면 any 유지
+  //   teamName?: string,
+  // ) {
+  //   return this.dataSource.transaction(async (tx) => {
+  //     const credRepo = tx.getRepository(AccountCredential);
+  //     const accRepo = tx.getRepository(Account);
+  //     const teamRepo = tx.getRepository(Team);
+  //     const teamMemberRepo = tx.getRepository(TeamMember);
+  //     const sessionRepo = tx.getRepository(AccountSession);
+  //
+  //     const cred = await credRepo.findOne({
+  //       where: { id: String(credentialId) },
+  //     });
+  //     if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+  //
+  //     const acc = await accRepo.findOne({
+  //       where: { credential_id: String(credentialId) },
+  //     });
+  //     if (!acc)
+  //       throw new NotFoundException('연결된 Account를 찾을 수 없습니다.');
+  //
+  //     const prevRank = acc.position_rank ? String(acc.position_rank) : null;
+  //     const nextRank = positionRank ? String(positionRank) : null;
+  //
+  //     // 1) 직급 업데이트
+  //     acc.position_rank = positionRank;
+  //     await accRepo.save(acc);
+  //
+  //     // 2) admin이 아니면 role 동기화
+  //     let changedRole: 'admin' | 'manager' | 'staff' = cred.role;
+  //     if (cred.role !== 'admin') {
+  //       const nextRole = this.toRoleFromRank(String(positionRank));
+  //       if (cred.role !== nextRole) {
+  //         cred.role = nextRole;
+  //         await credRepo.save(cred);
+  //         changedRole = nextRole;
+  //       }
+  //     }
+  //
+  //     // 3) TEAM_LEADER 승급/강등에 따른 팀/팀멤버 동기화
+  //     const becameTeamLeader =
+  //       nextRank === 'TEAM_LEADER' && prevRank !== 'TEAM_LEADER';
+  //     const leftTeamLeader =
+  //       prevRank === 'TEAM_LEADER' && nextRank !== 'TEAM_LEADER';
+  //
+  //     // 3-A) 팀장으로 "승급"된 경우: 팀 자동 생성 + 팀장 team_member 자동 생성
+  //     if (becameTeamLeader) {
+  //       // 팀장 계정은 어떤 팀에도 소속되면 안 됨 (기존 소속 제거)
+  //       // - 정책: 팀장 되는 순간 모든 team_members 제거
+  //       await teamMemberRepo
+  //         .createQueryBuilder()
+  //         .delete()
+  //         .from(TeamMember)
+  //         .where('account_id = :aid', { aid: String(acc.id) })
+  //         .execute();
+  //
+  //       // 이미 내 팀이 있는지 확인 (중복 생성 방지)
+  //       const myTeam = await teamRepo.findOne({
+  //         where: { leader_account_id: String(acc.id) },
+  //       });
+  //
+  //       if (!myTeam) {
+  //         // teamName 없으면 기본값
+  //         const name =
+  //           (teamName && teamName.trim()) ||
+  //           (acc.name ? `${acc.name} 팀` : `팀-${acc.id}`);
+  //
+  //         // code 생성: 충돌 방지 위해 짧게 + 루프
+  //         const makeCode = () =>
+  //           `TL-${acc.id}-${Date.now().toString(36)}`.toUpperCase();
+  //         let code = makeCode();
+  //
+  //         // code unique 충돌 가능성 낮지만, 안정적으로 3번 재시도
+  //         for (let i = 0; i < 3; i++) {
+  //           const exists = await teamRepo.findOne({ where: { code } });
+  //           if (!exists) break;
+  //           code = makeCode();
+  //         }
+  //
+  //         // name unique 충돌 가능: 충돌 시 뒤에 suffix
+  //         let finalName = name;
+  //         const nameDup = await teamRepo.findOne({
+  //           where: { name: finalName },
+  //         });
+  //         if (nameDup) {
+  //           finalName = `${name}-${acc.id}`;
+  //         }
+  //
+  //         const createdTeam = teamRepo.create({
+  //           leader_account_id: String(acc.id),
+  //           name: finalName,
+  //           code,
+  //           description: null,
+  //           is_active: true,
+  //         });
+  //         const savedTeam = await teamRepo.save(createdTeam);
+  //
+  //         // 팀장 멤버 자동 생성 (team_role=manager)
+  //         const leaderMember = teamMemberRepo.create({
+  //           team_id: String(savedTeam.id),
+  //           account_id: String(acc.id),
+  //           team_role: 'manager',
+  //           is_primary: true,
+  //           joined_at: new Date().toISOString().slice(0, 10),
+  //         });
+  //         await teamMemberRepo.save(leaderMember);
+  //       } else {
+  //         // 내 팀이 이미 있으면: 팀이 inactive면 활성화, 팀장 멤버가 없으면 생성
+  //         if (!myTeam.is_active) {
+  //           myTeam.is_active = true;
+  //           await teamRepo.save(myTeam);
+  //         }
+  //
+  //         const existsLeaderMember = await teamMemberRepo.findOne({
+  //           where: {
+  //             team_id: String(myTeam.id),
+  //             account_id: String(acc.id),
+  //             team_role: 'manager',
+  //           } as any,
+  //         });
+  //
+  //         if (!existsLeaderMember) {
+  //           const leaderMember = teamMemberRepo.create({
+  //             team_id: String(myTeam.id),
+  //             account_id: String(acc.id),
+  //             team_role: 'manager',
+  //             is_primary: true,
+  //             joined_at: new Date().toISOString().slice(0, 10),
+  //           });
+  //           await teamMemberRepo.save(leaderMember);
+  //         }
+  //
+  //         // 혹시 남아있는 다른 팀 소속이 있다면 제거(안전)
+  //         await teamMemberRepo
+  //           .createQueryBuilder()
+  //           .delete()
+  //           .from(TeamMember)
+  //           .where('account_id = :aid AND team_id <> :tid', {
+  //             aid: String(acc.id),
+  //             tid: String(myTeam.id),
+  //           })
+  //           .execute();
+  //       }
+  //     }
+  //
+  //     // 3-B) 팀장 "강등"된 경우: 내 팀 비활성화(정책) + 팀장 멤버 제거
+  //     if (leftTeamLeader) {
+  //       const myTeam = await teamRepo.findOne({
+  //         where: { leader_account_id: String(acc.id) },
+  //       });
+  //
+  //       if (myTeam) {
+  //         // 정책: 팀 비활성화
+  //         myTeam.is_active = false;
+  //         await teamRepo.save(myTeam);
+  //
+  //         // 팀장 멤버 제거(팀장 강등이니 manager 멤버 제거)
+  //         await teamMemberRepo
+  //           .createQueryBuilder()
+  //           .delete()
+  //           .from(TeamMember)
+  //           .where('team_id = :tid AND account_id = :aid AND team_role = :r', {
+  //             tid: String(myTeam.id),
+  //             aid: String(acc.id),
+  //             r: 'manager',
+  //           })
+  //           .execute();
+  //       }
+  //     }
+  //
+  //     // 4) 세션 즉시 종료
+  //     const now = new Date();
+  //     await sessionRepo
+  //       .createQueryBuilder()
+  //       .update(AccountSession)
+  //       .set({ is_active: false, deactivated_at: now })
+  //       .where('credential_id = :cid', { cid: String(credentialId) })
+  //       .andWhere('is_active = 1')
+  //       .execute();
+  //
+  //     return {
+  //       credentialId: String(credentialId),
+  //       prevPositionRank: prevRank,
+  //       positionRank: nextRank,
+  //       role: changedRole,
+  //       // 디버깅/프론트 반영에 도움 되는 플래그
+  //       becameTeamLeader,
+  //       leftTeamLeader,
+  //     };
+  //   });
+  // }
 
   async listUnassignedEmployees() {
     const qb = this.accountCredentialRepository

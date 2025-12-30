@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Account, PositionRank } from '../entities/account.entity';
 import { AccountCredential } from '../entities/account-credential.entity';
 import { UpsertEmployeeInfoDto } from '../dto/upsert-employee-info.dto';
@@ -19,6 +19,7 @@ import { ContractAssignee } from '../../../contracts/assignees/entities/assignee
 import { EmployeeListItemDto } from '../dto/employee-list.dto';
 import { PinDraft } from '../../../survey-reservations/entities/pin-draft.entity';
 import { EmployeeListQueryDto } from '../dto/employee-list-query.dto';
+import { AccountSession } from '../../auth/entities/account-session.entity';
 
 type UpsertInput = {
   name?: string;
@@ -45,6 +46,7 @@ export type EmployeePickItemDto = {
 @Injectable()
 export class EmployeeInfoService {
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(Account)
     private readonly accountRepository: Repository<Account>,
     @InjectRepository(AccountCredential)
@@ -102,101 +104,287 @@ export class EmployeeInfoService {
     };
   }
 
+  private isManagerRank(rank: PositionRank | null | undefined): boolean {
+    return rank === PositionRank.TEAM_LEADER || rank === PositionRank.DIRECTOR;
+  }
+
+  private toRoleFromRank(
+    rank: PositionRank | null | undefined,
+  ): 'manager' | 'staff' {
+    return this.isManagerRank(rank) ? 'manager' : 'staff';
+  }
+
   async upsertByCredentialId(credentialId: string, dto: UpsertEmployeeInfoDto) {
-    const credential = await this.accountCredentialRepository.findOne({
-      where: { id: credentialId },
-    });
-    if (!credential) throw new NotFoundException('계정을 찾을 수 없습니다');
+    return this.dataSource.transaction(async (tx) => {
+      const credRepo = tx.getRepository(AccountCredential);
+      const accRepo = tx.getRepository(Account);
+      const teamRepo = tx.getRepository(Team);
+      const tmRepo = tx.getRepository(TeamMember);
+      const sessionRepo = tx.getRepository(AccountSession);
 
-    let account = await this.accountRepository.findOne({
-      where: { credential_id: credential.id },
-    });
-    if (!account) throw new NotFoundException('사용자 정보를 찾을 수 없습니다');
-
-    const input = this.normalize(dto);
-
-    // 중복 검사: phone
-    if (input.phone) {
-      const dupPhone = await this.accountRepository.findOne({
-        where: { phone: input.phone },
+      const credential = await credRepo.findOne({
+        where: { id: String(credentialId) },
       });
-      if (dupPhone && dupPhone.id !== account.id) {
-        throw new ConflictException('이미 사용 중인 연락처입니다');
-      }
-    }
-    // 중복 검사: salary_account
-    if (input.salaryAccount) {
-      const dupSalary = await this.accountRepository.findOne({
-        where: { salary_account: input.salaryAccount },
+      if (!credential) throw new NotFoundException('계정을 찾을 수 없습니다');
+
+      const account = await accRepo.findOne({
+        where: { credential_id: String(credential.id) },
       });
-      if (dupSalary && dupSalary.id !== account.id) {
-        throw new ConflictException('이미 사용 중인 급여 계좌번호입니다');
+      if (!account)
+        throw new NotFoundException('사용자 정보를 찾을 수 없습니다');
+
+      const input = this.normalize(dto);
+
+      // =========================
+      // 1) 중복 검사
+      // =========================
+      if (input.phone) {
+        const dupPhone = await accRepo.findOne({
+          where: { phone: input.phone },
+        });
+        if (dupPhone && String(dupPhone.id) !== String(account.id)) {
+          throw new ConflictException('이미 사용 중인 연락처입니다');
+        }
       }
-    }
 
-    // 병합(부분 업데이트)
-    account = Object.assign(account, {
-      name: input.name ?? account.name,
-      phone: input.phone ?? account.phone,
-      emergency_contact: input.emergencyContact ?? account.emergency_contact,
-      address_line: input.addressLine ?? account.address_line,
-      salary_bank_name: input.salaryBankName ?? account.salary_bank_name,
-      salary_account: input.salaryAccount ?? account.salary_account,
-      profile_url: input.profileUrl ?? account.profile_url,
+      if (input.salaryAccount) {
+        const dupSalary = await accRepo.findOne({
+          where: { salary_account: input.salaryAccount },
+        });
+        if (dupSalary && String(dupSalary.id) !== String(account.id)) {
+          throw new ConflictException('이미 사용 중인 급여 계좌번호입니다');
+        }
+      }
 
-      // 신규: 직급 (컨트롤러/가드에서 권한 분기)
-      position_rank:
-        input.positionRank !== undefined
-          ? input.positionRank
-          : account.position_rank,
+      // =========================
+      // 2) 직급 변경 감지 (요청에 들어온 경우만)
+      // =========================
+      const prevRank = account.position_rank
+        ? String(account.position_rank)
+        : null;
+      const hasRankInRequest = input.positionRank !== undefined;
+      const nextRank = hasRankInRequest
+        ? input.positionRank
+          ? String(input.positionRank)
+          : null
+        : prevRank;
 
-      // 신규: 4종 서류 URL
-      doc_url_resident_registration:
+      const rankChanged = hasRankInRequest && prevRank !== nextRank;
+
+      // =========================
+      // 3) Account 병합(부분 업데이트)
+      // =========================
+      account.name = input.name ?? account.name;
+      account.phone = input.phone ?? account.phone;
+      account.emergency_contact =
+        input.emergencyContact ?? account.emergency_contact;
+      account.address_line = input.addressLine ?? account.address_line;
+      account.salary_bank_name =
+        input.salaryBankName ?? account.salary_bank_name;
+      account.salary_account = input.salaryAccount ?? account.salary_account;
+      account.profile_url = input.profileUrl ?? account.profile_url;
+
+      if (hasRankInRequest) {
+        account.position_rank =
+          input.positionRank !== undefined
+            ? input.positionRank
+            : account.position_rank;
+      }
+
+      account.doc_url_resident_registration =
         input.docUrlResidentRegistration !== undefined
           ? input.docUrlResidentRegistration
-          : account.doc_url_resident_registration,
-      doc_url_resident_abstract:
+          : account.doc_url_resident_registration;
+
+      account.doc_url_resident_abstract =
         input.docUrlResidentAbstract !== undefined
           ? input.docUrlResidentAbstract
-          : account.doc_url_resident_abstract,
-      doc_url_id_card:
+          : account.doc_url_resident_abstract;
+
+      account.doc_url_id_card =
         input.docUrlIdCard !== undefined
           ? input.docUrlIdCard
-          : account.doc_url_id_card,
-      doc_url_family_relation:
+          : account.doc_url_id_card;
+
+      account.doc_url_family_relation =
         input.docUrlFamilyRelation !== undefined
           ? input.docUrlFamilyRelation
-          : account.doc_url_family_relation,
+          : account.doc_url_family_relation;
+
+      // 프로필 완료 기준(6종)
+      const requiredFilled =
+        !!account.name &&
+        !!account.phone &&
+        !!account.emergency_contact &&
+        !!account.address_line &&
+        !!account.salary_bank_name &&
+        !!account.salary_account;
+
+      account.is_profile_completed = requiredFilled;
+
+      const saved = await accRepo.save(account);
+
+      // =========================
+      // 4) (직급 변경 시) role/team/session 동기화
+      // =========================
+      let changedRole: 'admin' | 'manager' | 'staff' = credential.role;
+      let becameTeamLeader = false;
+      let leftTeamLeader = false;
+
+      if (rankChanged) {
+        // 4-1) role 동기화 (admin은 유지)
+        if (credential.role !== 'admin') {
+          // TEAM_LEADER, DIRECTOR => manager / 그 외 => staff
+          const nextRole = this.toRoleFromRank(nextRank as any);
+          if (credential.role !== nextRole) {
+            credential.role = nextRole;
+            await credRepo.save(credential);
+            changedRole = nextRole;
+          }
+        }
+
+        // 4-2) TEAM_LEADER 승급/강등 처리
+        becameTeamLeader =
+          nextRank === 'TEAM_LEADER' && prevRank !== 'TEAM_LEADER';
+        leftTeamLeader =
+          prevRank === 'TEAM_LEADER' && nextRank !== 'TEAM_LEADER';
+
+        if (becameTeamLeader) {
+          // 팀장: 기존 소속 전부 제거
+          await tmRepo
+            .createQueryBuilder()
+            .delete()
+            .from(TeamMember)
+            .where('account_id = :aid', { aid: String(saved.id) })
+            .execute();
+
+          // 내 팀 존재 확인
+          let myTeam = await teamRepo.findOne({
+            where: { leader_account_id: String(saved.id) },
+          });
+
+          if (!myTeam) {
+            const baseName = saved.name ? `${saved.name} 팀` : `팀-${saved.id}`;
+
+            const makeCode = () =>
+              `TL-${saved.id}-${Date.now().toString(36)}`.toUpperCase();
+            let code = makeCode();
+
+            for (let i = 0; i < 3; i++) {
+              const exists = await teamRepo.findOne({ where: { code } });
+              if (!exists) break;
+              code = makeCode();
+            }
+
+            let finalName = baseName;
+            const nameDup = await teamRepo.findOne({
+              where: { name: finalName },
+            });
+            if (nameDup) finalName = `${baseName}-${saved.id}`;
+
+            myTeam = await teamRepo.save(
+              teamRepo.create({
+                leader_account_id: String(saved.id),
+                name: finalName,
+                code,
+                description: null,
+                is_active: true,
+              }),
+            );
+          } else if (!myTeam.is_active) {
+            myTeam.is_active = true;
+            myTeam = await teamRepo.save(myTeam);
+          }
+
+          // 팀장 멤버(manager) 없으면 생성
+          const leaderMember = await tmRepo.findOne({
+            where: {
+              team_id: String(myTeam.id),
+              account_id: String(saved.id),
+              team_role: 'manager',
+            } as any,
+          });
+
+          if (!leaderMember) {
+            await tmRepo.save(
+              tmRepo.create({
+                team_id: String(myTeam.id),
+                account_id: String(saved.id),
+                team_role: 'manager',
+                is_primary: true,
+                joined_at: new Date().toISOString().slice(0, 10),
+              }),
+            );
+          }
+
+          // 혹시 남은 다른 팀 소속 제거(안전)
+          await tmRepo
+            .createQueryBuilder()
+            .delete()
+            .from(TeamMember)
+            .where('account_id = :aid AND team_id <> :tid', {
+              aid: String(saved.id),
+              tid: String(myTeam.id),
+            })
+            .execute();
+        }
+
+        if (leftTeamLeader) {
+          const myTeam = await teamRepo.findOne({
+            where: { leader_account_id: String(saved.id) },
+          });
+
+          if (myTeam) {
+            myTeam.is_active = false;
+            await teamRepo.save(myTeam);
+
+            await tmRepo
+              .createQueryBuilder()
+              .delete()
+              .from(TeamMember)
+              .where(
+                'team_id = :tid AND account_id = :aid AND team_role = :r',
+                {
+                  tid: String(myTeam.id),
+                  aid: String(saved.id),
+                  r: 'manager',
+                },
+              )
+              .execute();
+          }
+        }
+
+        // 4-3) 세션 즉시 종료(권한 변경 반영)
+        await sessionRepo
+          .createQueryBuilder()
+          .update(AccountSession)
+          .set({ is_active: false, deactivated_at: new Date() })
+          .where('credential_id = :cid', { cid: String(credentialId) })
+          .andWhere('is_active = 1')
+          .execute();
+      }
+
+      return {
+        id: saved.id,
+        credentialId: saved.credential_id,
+        name: saved.name,
+        phone: saved.phone,
+        is_profile_completed: saved.is_profile_completed,
+
+        position_rank: saved.position_rank,
+        profile_url: saved.profile_url,
+        doc_url_resident_registration: saved.doc_url_resident_registration,
+        doc_url_resident_abstract: saved.doc_url_resident_abstract,
+        doc_url_id_card: saved.doc_url_id_card,
+        doc_url_family_relation: saved.doc_url_family_relation,
+
+        // 디버깅/프론트 반영 도움(원하면 빼도 됨)
+        role: changedRole,
+        rankChanged,
+        becameTeamLeader,
+        leftTeamLeader,
+      };
     });
-
-    // 프로필 완료 기준(기존 로직 유지: 인적사항 6종)
-    const requiredFilled =
-      !!account.name &&
-      !!account.phone &&
-      !!account.emergency_contact &&
-      !!account.address_line &&
-      !!account.salary_bank_name &&
-      !!account.salary_account;
-
-    account.is_profile_completed = requiredFilled;
-
-    const saved = await this.accountRepository.save(account);
-
-    return {
-      id: saved.id,
-      credentialId: saved.credential_id,
-      name: saved.name,
-      phone: saved.phone,
-      is_profile_completed: saved.is_profile_completed,
-
-      // 프론트 동기화용 신규 필드 포함
-      position_rank: saved.position_rank,
-      profile_url: saved.profile_url,
-      doc_url_resident_registration: saved.doc_url_resident_registration,
-      doc_url_resident_abstract: saved.doc_url_resident_abstract,
-      doc_url_id_card: saved.doc_url_id_card,
-      doc_url_family_relation: saved.doc_url_family_relation,
-    };
   }
 
   async getProfileByCredentialId(credentialId: string) {
