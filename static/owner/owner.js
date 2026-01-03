@@ -48,6 +48,7 @@
     const html = await fetchHtml(`/owner/partials/${tab}${q}`);
     contentEl.innerHTML = html;
 
+    if (tab === 'employee-sessions') await initEmployeeSessions();
     if (tab === 'api-logs') initApiLogs();
     if (tab === 'error-logs') initErrorLogs();
   }
