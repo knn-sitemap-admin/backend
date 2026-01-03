@@ -6,16 +6,13 @@ import {
   Render,
   UseGuards,
 } from '@nestjs/common';
-import { SessionAuthGuard } from '../../dashboard/auth/guards/session-auth.guard';
-import { RolesGuard } from '../../dashboard/auth/guards/roles.guard';
 import { Roles } from '../../dashboard/auth/decorators/roles.decorator';
 import { SystemRole } from '../../dashboard/accounts/types/roles';
 import { OwnerSessionGuard } from '../guards/owner-session.guard';
 
 @Controller('owner')
-@UseGuards(SessionAuthGuard, RolesGuard, OwnerSessionGuard)
+@UseGuards(OwnerSessionGuard)
 export class OwnerPageController {
-  @Roles(SystemRole.ADMIN)
   @Get()
   @Render('owner/index')
   index() {
@@ -23,14 +20,12 @@ export class OwnerPageController {
     return { activeTab: 'dashboard' };
   }
 
-  @Roles(SystemRole.ADMIN)
   @Get('partials/dashboard')
   @Render('owner/partials/dashboard')
   dashboardPartial() {
     return {};
   }
 
-  @Roles(SystemRole.ADMIN)
   @Get('partials/api-logs')
   @Render('owner/partials/api-logs')
   apiLogsPartial(
@@ -43,7 +38,6 @@ export class OwnerPageController {
     };
   }
 
-  @Roles(SystemRole.ADMIN)
   @Get('partials/error-logs')
   @Render('owner/partials/error-logs')
   errorLogsPartial(
@@ -56,7 +50,6 @@ export class OwnerPageController {
     };
   }
 
-  @Roles(SystemRole.ADMIN)
   @Get('partials/api-log-modal/:id')
   @Render('owner/partials/api-log-modal')
   apiLogModal(@Param('id') id: string) {
