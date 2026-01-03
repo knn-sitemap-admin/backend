@@ -17,6 +17,8 @@ import { PerformanceModule } from './performance/performance.module';
 import { ReportsModule } from './reports/reports.module';
 import { NoticesModule } from './notices/notices.module';
 import { OwnerModule } from './owner/owner.module';
+import { RequestQueryLogger } from './common/typeorm/request-query.logger';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -32,7 +34,8 @@ import { OwnerModule } from './owner/owner.module';
         autoLoadEntities: true,
         synchronize: true, // 개발용
         // synchronize: false, // 배포용
-        logging: ['error', 'schema', 'warn', 'query', 'migration', 'info'],
+        logging: false, // 콘솔 로깅 끔
+        logger: new RequestQueryLogger(), // 요청 단위로 쿼리만 수집
       }),
     }),
     PinsModule,
@@ -49,6 +52,7 @@ import { OwnerModule } from './owner/owner.module';
     ReportsModule,
     NoticesModule,
     OwnerModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],

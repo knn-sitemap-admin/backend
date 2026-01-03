@@ -1,0 +1,33 @@
+<div class="card">
+    <div class="card__header">
+        <div>
+            <div class="card__title">API 요청 로그</div>
+            <div class="card__sub">클릭하면 요청/응답/쿼리 상세 모달이 열립니다.</div>
+        </div>
+
+        <div class="card__actions">
+            <a id="api-logs-export" class="btn btn--ghost" href="/owner/api/logs/export.xlsx">
+                엑셀 다운로드 (최대 500)
+            </a>
+        </div>
+    </div>
+
+    <div class="table-wrap" id="api-logs-table" data-page="<%= page %>" data-page-size="<%= pageSize %>">
+        <div class="table-loading">
+            <div class="spinner"></div>
+            <div class="table-loading__text">불러오는 중...</div>
+        </div>
+    </div>
+
+    <div class="card__footer">
+        <div class="pager">
+            <button class="btn btn--ghost" id="api-logs-prev">이전</button>
+            <div class="pager__label" id="api-logs-page-label">-</div>
+            <button class="btn btn--ghost" id="api-logs-next">다음</button>
+        </div>
+
+        <div class="muted">
+            페이징은 화면 표시용, 엑셀은 필터 결과 최대 500행까지 전체 내보냅니다.
+        </div>
+    </div>
+</div>

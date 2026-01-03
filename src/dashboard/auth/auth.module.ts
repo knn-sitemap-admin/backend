@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -7,6 +7,7 @@ import { BcryptModule } from '../../common/hashing/bcrypt.module';
 import { Account } from '../accounts/entities/account.entity';
 import { AccountSession } from './entities/account-session.entity';
 
+@Global()
 @Module({
   imports: [
     TypeOrmModule.forFeature([AccountCredential, Account, AccountSession]),
