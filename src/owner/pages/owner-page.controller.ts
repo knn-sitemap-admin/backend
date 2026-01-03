@@ -10,9 +10,10 @@ import { SessionAuthGuard } from '../../dashboard/auth/guards/session-auth.guard
 import { RolesGuard } from '../../dashboard/auth/guards/roles.guard';
 import { Roles } from '../../dashboard/auth/decorators/roles.decorator';
 import { SystemRole } from '../../dashboard/accounts/types/roles';
+import { OwnerSessionGuard } from '../guards/owner-session.guard';
 
 @Controller('owner')
-@UseGuards(SessionAuthGuard, RolesGuard)
+@UseGuards(SessionAuthGuard, RolesGuard, OwnerSessionGuard)
 export class OwnerPageController {
   @Roles(SystemRole.ADMIN)
   @Get()
