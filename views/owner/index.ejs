@@ -1,4 +1,16 @@
-<div class="app">
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Owner Console</title>
+
+    <!-- Owner 전용 스타일 -->
+    <link rel="stylesheet" href="/static/owner/owner.css" />
+</head>
+<body>
+
+<div class="app" data-default-tab="<%= activeTab %>">
     <aside class="sidebar">
         <div class="sidebar__brand">
             <div class="brand__logo">O</div>
@@ -20,6 +32,7 @@
             <button class="nav__item" data-tab="api-logs">
                 <span class="nav__label">API 요청</span>
             </button>
+
             <button class="nav__item" data-tab="error-logs">
                 <span class="nav__label">에러 API</span>
             </button>
@@ -36,12 +49,21 @@
         <header class="topbar">
             <div class="topbar__left">
                 <div class="topbar__title" id="topbar-title">Dashboard</div>
-                <div class="topbar__desc" id="topbar-desc">서버 상태와 운영 데이터를 확인합니다.</div>
+                <div class="topbar__desc" id="topbar-desc">
+                    서버 상태와 운영 데이터를 확인합니다.
+                </div>
             </div>
 
             <div class="topbar__right">
                 <div class="pill" id="server-pill">LIVE</div>
-                <a class="topbar__link" href="/docs" target="_blank" rel="noreferrer">API Docs</a>
+                <a
+                        class="topbar__link"
+                        href="/docs"
+                        target="_blank"
+                        rel="noreferrer"
+                >
+                    API Docs
+                </a>
             </div>
         </header>
 
@@ -57,8 +79,7 @@
     <div id="owner-modal-root"></div>
 </div>
 
-<link rel="stylesheet" href="/static/owner/owner.css" />
 <script src="/static/owner/owner.js"></script>
-<script>
-    window.__OWNER_DEFAULT_TAB__ = "<%= activeTab %>";
-</script>
+
+</body>
+</html>

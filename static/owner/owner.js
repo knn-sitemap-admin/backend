@@ -476,9 +476,13 @@
 
   bindSidebar();
 
+  const appEl = document.querySelector('.app');
+  const defaultTabFromDom = appEl
+    ? appEl.getAttribute('data-default-tab')
+    : null;
+
   const hashTab = (location.hash || '').replace('#', '').trim();
-  const defaultTab = window.__OWNER_DEFAULT_TAB__ || 'dashboard';
-  const startTab = hashTab || defaultTab;
+  const startTab = hashTab || defaultTabFromDom || 'dashboard';
 
   await loadTab(startTab);
 })();

@@ -55,4 +55,16 @@ export class OwnerPageController {
   apiLogModal(@Param('id') id: string) {
     return { id };
   }
+
+  @Get('partials/employee-sessions')
+  @Render('owner/partials/employee-sessions')
+  employeeSessionsPartial(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return {
+      page: Number(page ?? 1),
+      pageSize: Number(pageSize ?? 20),
+    };
+  }
 }
