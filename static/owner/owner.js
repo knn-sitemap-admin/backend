@@ -96,21 +96,16 @@
         : `<span class="badge">-</span>`;
     }
 
-    async function forceSignout(credentialId, device) {
-      const res = await fetch(
-        `/owner/api/employees/${credentialId}/force-signout?device=${device}`,
-        {
-          method: 'POST',
-          credentials: 'include',
-        },
-      );
+    async function forceSignout(credentialId, deviceType) {
+      const res = await fetch(`/owner/api/employees/force-logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credentialId, deviceType }),
+      });
       const json = await res.json();
       if (!res.ok) {
-        alert(
-          json && json.messages && json.messages[0]
-            ? json.messages[0]
-            : '강제 로그아웃 실패',
-        );
+        alert(json?.message ?? '강제 로그아웃 실패');
         return;
       }
       await render();
