@@ -1,7 +1,7 @@
 import { Controller, Get, Res } from '@nestjs/common';
 
 @Controller()
-export class AppController {
+export class OwnerController {
   @Get()
   root(@Res() res: any) {
     return res.redirect('/owner/login');
