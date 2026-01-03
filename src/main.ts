@@ -27,7 +27,7 @@ async function bootstrap() {
   expressApp.set('layout', 'layouts/main');
 
   // 정적파일 제공 (css/js/img)
-  app.use('/static', express.static(join(__dirname, '..', 'public')));
+  app.use('/static', express.static(join(__dirname, '..', 'static')));
 
   // main.ts (부팅 직후)
   app.getHttpAdapter().getInstance().set('etag', false);
