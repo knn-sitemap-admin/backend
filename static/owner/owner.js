@@ -161,31 +161,32 @@
       html += `</tr></thead><tbody>`;
 
       for (const r of rows) {
+        const pc = r.sessions ? r.sessions.pc : null;
+        const mobile = r.sessions ? r.sessions.mobile : null;
+
         html += `<tr>`;
         html += `<td>${safe(r.credentialId)}</td>`;
         html += `<td>${safe(r.name)}</td>`;
         html += `<td>${safe(r.positionRank)}</td>`;
         html += `<td>${safe(r.email)}</td>`;
-        html += `<td>${safe(r.effectiveRole)}</td>`;
+        html += `<td>${safe(r.role)}</td>`; // effectiveRole 쓰면 그 필드도 서버에서 내려줘야 함
 
         // PC
-        html += `<td>${badgeActive(r.pc && r.pc.isActive)}</td>`;
-        html += `<td>${safe(r.pc && r.pc.lastAccessedAt)}</td>`;
-        html += `<td>${safe(r.pc && r.pc.ip)}</td>`;
-        html += `<td title="${safe(r.pc && r.pc.userAgent)}">${ellipsis(r.pc && r.pc.userAgent, 40)}</td>`;
-        html += `<td>`;
-        html += `<button class="btn btn--ghost" data-action="force" data-device="pc" data-cid="${safe(r.credentialId)}">PC 로그아웃</button>`;
-        html += `</td>`;
+        html += `<td>${badgeActive(pc && pc.isActive)}</td>`;
+        html += `<td>${safe(pc && pc.lastAccessedAt)}</td>`;
+        html += `<td>${safe(pc && pc.ip)}</td>`;
+        html += `<td title="${safe(pc && pc.userAgent)}">${ellipsis(pc && pc.userAgent, 40)}</td>`;
+        html += `<td><button class="btn btn--ghost" data-action="force" data-device="pc" data-cid="${safe(r.credentialId)}">PC 로그아웃</button></td>`;
 
         // Mobile
-        html += `<td>${badgeActive(r.mobile && r.mobile.isActive)}</td>`;
-        html += `<td>${safe(r.mobile && r.mobile.lastAccessedAt)}</td>`;
-        html += `<td>${safe(r.mobile && r.mobile.ip)}</td>`;
-        html += `<td title="${safe(r.mobile && r.mobile.userAgent)}">${ellipsis(r.mobile && r.mobile.userAgent, 40)}</td>`;
-        html += `<td>`;
-        html += `<button class="btn btn--ghost" data-action="force" data-device="mobile" data-cid="${safe(r.credentialId)}">Mobile 로그아웃</button>`;
-        html += `<button class="btn" style="margin-left:8px;" data-action="force" data-device="all" data-cid="${safe(r.credentialId)}">전체 로그아웃</button>`;
-        html += `</td>`;
+        html += `<td>${badgeActive(mobile && mobile.isActive)}</td>`;
+        html += `<td>${safe(mobile && mobile.lastAccessedAt)}</td>`;
+        html += `<td>${safe(mobile && mobile.ip)}</td>`;
+        html += `<td title="${safe(mobile && mobile.userAgent)}">${ellipsis(mobile && mobile.userAgent, 40)}</td>`;
+        html += `<td>
+    <button class="btn btn--ghost" data-action="force" data-device="mobile" data-cid="${safe(r.credentialId)}">Mobile 로그아웃</button>
+    <button class="btn" style="margin-left:8px;" data-action="force" data-device="all" data-cid="${safe(r.credentialId)}">전체 로그아웃</button>
+  </td>`;
 
         html += `</tr>`;
       }
