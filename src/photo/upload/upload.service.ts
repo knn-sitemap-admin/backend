@@ -97,8 +97,7 @@ export class UploadService {
   // 환경변수 → SDK 리터럴 유니온으로 안전 변환
   private resolveACL(): ObjectCannedACL | undefined {
     if (!this.isPublic) return undefined;
-    // 공개 운영이면 static-read만 허용
-    return 'static-read';
+    return 'public-read';
   }
 
   private resolveSSE(): ServerSideEncryption | undefined {
