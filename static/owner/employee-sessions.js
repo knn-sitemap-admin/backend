@@ -145,8 +145,8 @@
     html += `<th>email</th>`;
     html += `<th style="width:90px;">권한</th>`;
     html += `<th style="width:120px;">상태</th>`;
-    html += `<th style="width:160px;">PC 최신 로그인 시간</th>`;
-    html += `<th style="width:160px;">MOBILE 최신 로그인 시간</th>`;
+    html += `<th style="width:160px;">PC LSAT</th>`;
+    html += `<th style="width:160px;">MOBILE LAST</th>`;
     html += `<th style="width:120px;">강제 로그아웃</th>`;
     html += `</tr></thead><tbody>`;
 
