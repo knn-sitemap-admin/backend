@@ -6,12 +6,6 @@
                 PC/Mobile 각각 1대 정책 기반으로 현재 활성 세션을 표시합니다.
             </div>
         </div>
-
-        <div class="card__actions">
-            <a id="employee-sessions-export" class="btn btn--ghost" href="/owner/api/employees/sessions/export.xlsx">
-                엑셀 다운로드 (최대 500)
-            </a>
-        </div>
     </div>
 
     <div class="table-wrap" id="employee-sessions-table" data-page="<%= page %>" data-page-size="<%= pageSize %>">
@@ -30,20 +24,6 @@
 
         <div class="muted">
             강제 로그아웃은 DB 비활성화 + Redis 세션 삭제(best-effort)까지 수행합니다.
-        </div>
-    </div>
-</div>
-
-<div class="card" style="margin-top:14px;">
-    <div class="card__header">
-        <div>
-            <div class="card__title">보기 옵션</div>
-            <div class="card__sub">UA 길이가 길면 말줄임 처리됩니다.</div>
-        </div>
-    </div>
-    <div class="card__body">
-        <div class="muted">
-            필요하면 다음 단계에서 “직원 선택 → 상세(최근 접속/아이피/UA 전체)” 모달로 확장합니다.
         </div>
     </div>
 </div>

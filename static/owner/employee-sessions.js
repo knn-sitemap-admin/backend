@@ -134,21 +134,20 @@
       return !!(pc && pc.isActive) || !!(mo && mo.isActive);
     });
 
-    // 페이지 라벨: total은 서버 기준이라 정확하지 않을 수 있음
     const label = document.getElementById('employee-sessions-page-label');
     if (label) label.textContent = `${page} (active ${rows.length})`;
 
     let html = '';
     html += `<table class="table table--compact">`;
     html += `<thead><tr>`;
-    html += `<th style="width:72px;">cid</th>`;
+    html += `<th style="width:72px;">번호</th>`;
     html += `<th style="width:140px;">직급</th>`;
     html += `<th>email</th>`;
-    html += `<th style="width:90px;">role</th>`;
+    html += `<th style="width:90px;">권한</th>`;
     html += `<th style="width:120px;">상태</th>`;
-    html += `<th style="width:160px;">PC last</th>`;
-    html += `<th style="width:160px;">Mobile last</th>`;
-    html += `<th style="width:120px;">action</th>`;
+    html += `<th style="width:160px;">PC 최신 로그인 시간</th>`;
+    html += `<th style="width:160px;">MOBILE 최신 로그인 시간</th>`;
+    html += `<th style="width:120px;">강제 로그아웃</th>`;
     html += `</tr></thead><tbody>`;
 
     for (const r of rows) {
