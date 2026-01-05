@@ -31,3 +31,68 @@
     width: min(520px, calc(100vw - 32px));
     height: auto;
 }
+
+/* employee-sessions table polish */
+#employee-sessions-table .table {
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.02);
+}
+
+#employee-sessions-table .table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 12px 12px;
+    font-size: 12px;
+    letter-spacing: 0.2px;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+    background: rgba(11,16,32,0.85);
+}
+
+#employee-sessions-table .table tbody td {
+    padding: 12px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 13px;
+    color: rgba(255,255,255,0.86);
+}
+
+#employee-sessions-table .table tbody tr:hover td {
+    background: rgba(255,255,255,0.04);
+}
+
+/* column alignment */
+#employee-sessions-table .table th:nth-child(1),
+#employee-sessions-table .table td:nth-child(1) {
+    text-align: right;
+    color: rgba(255,255,255,0.70);
+    font-variant-numeric: tabular-nums;
+}
+
+#employee-sessions-table .table th:nth-child(5),
+#employee-sessions-table .table td:nth-child(5),
+#employee-sessions-table .table th:nth-child(8),
+#employee-sessions-table .table td:nth-child(8) {
+    text-align: center;
+}
+
+/* keep email readable */
+#employee-sessions-table .td-ellipsis {
+    max-width: 420px;
+}
+
+/* make "로그아웃" button smaller + consistent */
+#employee-sessions-table .btn {
+    padding: 8px 10px;
+    border-radius: 10px;
+}
+
+/* badge slightly nicer */
+#employee-sessions-table .badge {
+    padding: 4px 10px;
+    font-size: 11px;
+}
+
