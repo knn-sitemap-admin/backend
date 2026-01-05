@@ -196,6 +196,7 @@ a:hover{ text-decoration:underline; }
     flex: 1;
     min-height: 0;
     overflow: auto;
+    padding-bottom: 56px;
 }
 
 .grid{
@@ -668,24 +669,4 @@ a:hover{ text-decoration:underline; }
     .split__col:last-child{border-bottom:none}
 }
 
-.card--full{
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-}
 
-.card--full .card__header,
-.card--full .card__footer{
-    flex: 0 0 auto;
-}
-
-.card--full .table-wrap{
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-}
-
-.card--full .table-wrap{
-    min-height: 0;
-}

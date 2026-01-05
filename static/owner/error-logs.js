@@ -111,7 +111,7 @@
     html += `<table class="table table--compact">`;
     html += `<thead><tr>`;
     html += `<th>시간</th>`;
-    html += `<th>cid</th>`;
+    html += `<th>번호</th>`;
     html += `<th>device</th>`;
     html += `<th>method</th>`;
     html += `<th>path</th>`;
