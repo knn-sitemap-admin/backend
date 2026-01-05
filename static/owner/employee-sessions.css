@@ -1,0 +1,33 @@
+/* public/owner/employee-sessions.css */
+
+/* 이 탭 테이블은 무조건 화면 폭 안에 맞춰야 함 */
+#employee-sessions-table.table-wrap{
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* compact 테이블: 고정 레이아웃 + 말줄임 */
+.table.table--compact{
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+}
+
+.table.table--compact th,
+.table.table--compact td{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.td-ellipsis{
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 세션 모달은 작게 */
+.modal.modal--small{
+    width: min(520px, calc(100vw - 32px));
+    height: auto;
+}

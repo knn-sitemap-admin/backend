@@ -1,3 +1,4 @@
+// public/owner/owner.js
 (async function () {
   const contentEl = document.getElementById('owner-content');
   const modalRoot = document.getElementById('owner-modal-root');
@@ -9,6 +10,10 @@
     dashboard: {
       title: 'Dashboard',
       desc: '서버 상태와 운영 데이터를 확인합니다.',
+    },
+    'employee-sessions': {
+      title: 'employee-sessions',
+      desc: '현재 활성 로그인(PC/Mobile) 상태만 표시합니다.',
     },
     'api-logs': { title: 'API Logs', desc: '전체 API 요청 로그를 확인합니다.' },
     'error-logs': {
@@ -34,23 +39,30 @@
     if (descEl) descEl.textContent = meta.desc;
   }
 
-  async function loadTab(tab, qs) {
-    setActiveNav(tab);
-    contentEl.innerHTML = `
-      <div class="skeleton">
-        <div class="skeleton__bar"></div>
-        <div class="skeleton__bar"></div>
-        <div class="skeleton__bar"></div>
-      </div>
-    `;
+  function safe(v) {
+    return v === null || v === undefined ? '' : String(v);
+  }
 
-    const q = qs ? '?' + new URLSearchParams(qs).toString() : '';
-    const html = await fetchHtml(`/owner/partials/${tab}${q}`);
-    contentEl.innerHTML = html;
+  function statusBadge(statusCode) {
+    const n = Number(statusCode || 0);
+    if (n >= 500) return `<span class="badge badge--danger">${n}</span>`;
+    if (n >= 400) return `<span class="badge badge--warn">${n}</span>`;
+    return `<span class="badge badge--ok">${n}</span>`;
+  }
 
-    if (tab === 'employee-sessions') await initEmployeeSessions();
-    if (tab === 'api-logs') initApiLogs();
-    if (tab === 'error-logs') initErrorLogs();
+  function ensureScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      const exists = document.querySelector(`script[data-owner-src="${src}"]`);
+      if (exists) return resolve();
+
+      const s = document.createElement('script');
+      s.src = src;
+      s.async = true;
+      s.setAttribute('data-owner-src', src);
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('failed to load script: ' + src));
+      document.head.appendChild(s);
+    });
   }
 
   function bindSidebar() {
@@ -65,176 +77,35 @@
     }
   }
 
-  function statusBadge(statusCode) {
-    const n = Number(statusCode || 0);
-    if (n >= 500) return `<span class="badge badge--danger">${n}</span>`;
-    if (n >= 400) return `<span class="badge badge--warn">${n}</span>`;
-    return `<span class="badge badge--ok">${n}</span>`;
-  }
-
-  async function initEmployeeSessions() {
-    const box = document.getElementById('employee-sessions-table');
-    if (!box) return;
-
-    let page = Number(box.getAttribute('data-page') || '1');
-    const pageSize = Number(box.getAttribute('data-page-size') || '20');
-
-    function safe(v) {
-      return v === null || v === undefined ? '' : String(v);
-    }
-
-    function ellipsis(s, max) {
-      const v = safe(s);
-      if (!v) return '';
-      if (v.length <= max) return v;
-      return v.slice(0, max) + '…';
-    }
-
-    function badgeActive(isActive) {
-      return isActive
-        ? `<span class="badge badge--ok">active</span>`
-        : `<span class="badge">-</span>`;
-    }
-
-    async function forceSignout(credentialId, deviceType) {
-      const res = await fetch(`/owner/api/employees/force-logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credentialId, deviceType }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        alert(json?.message ?? '강제 로그아웃 실패');
-        return;
-      }
-      await render();
-    }
-
-    async function render() {
-      box.innerHTML = `
-      <div class="table-loading">
-        <div class="spinner"></div>
-        <div class="table-loading__text">불러오는 중...</div>
+  async function loadTab(tab, qs) {
+    setActiveNav(tab);
+    contentEl.innerHTML = `
+      <div class="skeleton">
+        <div class="skeleton__bar"></div>
+        <div class="skeleton__bar"></div>
+        <div class="skeleton__bar"></div>
       </div>
     `;
 
-      const res = await fetch(
-        `/owner/api/employees/sessions?page=${page}&pageSize=${pageSize}`,
-        {
-          credentials: 'include',
-        },
-      );
-      const json = await res.json();
-      const data = json.data;
+    const q = qs ? '?' + new URLSearchParams(qs).toString() : '';
+    const html = await fetchHtml(`/owner/partials/${tab}${q}`);
+    contentEl.innerHTML = html;
 
-      const totalPages = Math.max(
-        1,
-        Math.ceil((data.total || 0) / (data.pageSize || pageSize)),
-      );
-      const label = document.getElementById('employee-sessions-page-label');
-      if (label)
-        label.textContent = `${data.page} / ${totalPages} (total ${data.total})`;
-
-      const rows = data.items || [];
-
-      let html = '';
-      html += `<table class="table">`;
-      html += `<thead><tr>`;
-      html += `<th style="width:90px;">cid</th>`;
-      html += `<th style="width:160px;">이름</th>`;
-      html += `<th style="width:140px;">직급</th>`;
-      html += `<th style="width:240px;">email</th>`;
-      html += `<th style="width:130px;">role</th>`;
-
-      html += `<th style="width:110px;">PC</th>`;
-      html += `<th style="width:190px;">PC last</th>`;
-      html += `<th style="width:140px;">PC ip</th>`;
-      html += `<th style="width:260px;">PC ua</th>`;
-      html += `<th style="width:190px;">PC action</th>`;
-
-      html += `<th style="width:110px;">Mobile</th>`;
-      html += `<th style="width:190px;">Mobile last</th>`;
-      html += `<th style="width:140px;">Mobile ip</th>`;
-      html += `<th style="width:260px;">Mobile ua</th>`;
-      html += `<th style="width:190px;">Mobile action</th>`;
-      html += `</tr></thead><tbody>`;
-
-      for (const r of rows) {
-        const pc = r.sessions ? r.sessions.pc : null;
-        const mobile = r.sessions ? r.sessions.mobile : null;
-
-        html += `<tr>`;
-        html += `<td>${safe(r.credentialId)}</td>`;
-        html += `<td>${safe(r.name)}</td>`;
-        html += `<td>${safe(r.positionRank)}</td>`;
-        html += `<td>${safe(r.email)}</td>`;
-        html += `<td>${safe(r.role)}</td>`; // effectiveRole 쓰면 그 필드도 서버에서 내려줘야 함
-
-        // PC
-        html += `<td>${badgeActive(pc && pc.isActive)}</td>`;
-        html += `<td>${safe(pc && pc.lastAccessedAt)}</td>`;
-        html += `<td>${safe(pc && pc.ip)}</td>`;
-        html += `<td title="${safe(pc && pc.userAgent)}">${ellipsis(pc && pc.userAgent, 40)}</td>`;
-        html += `<td><button class="btn btn--ghost" data-action="force" data-device="pc" data-cid="${safe(r.credentialId)}">PC 로그아웃</button></td>`;
-
-        // Mobile
-        html += `<td>${badgeActive(mobile && mobile.isActive)}</td>`;
-        html += `<td>${safe(mobile && mobile.lastAccessedAt)}</td>`;
-        html += `<td>${safe(mobile && mobile.ip)}</td>`;
-        html += `<td title="${safe(mobile && mobile.userAgent)}">${ellipsis(mobile && mobile.userAgent, 40)}</td>`;
-        html += `<td>
-    <button class="btn btn--ghost" data-action="force" data-device="mobile" data-cid="${safe(r.credentialId)}">Mobile 로그아웃</button>
-    <button class="btn" style="margin-left:8px;" data-action="force" data-device="all" data-cid="${safe(r.credentialId)}">전체 로그아웃</button>
-  </td>`;
-
-        html += `</tr>`;
-      }
-
-      html += `</tbody></table>`;
-      box.innerHTML = html;
-
-      const prev = document.getElementById('employee-sessions-prev');
-      const next = document.getElementById('employee-sessions-next');
-      if (prev) prev.disabled = page <= 1;
-      if (next) next.disabled = page >= totalPages;
-
-      // 버튼 바인딩
-      const btns = box.querySelectorAll('button[data-action="force"]');
-      for (const b of btns) {
-        b.addEventListener('click', async () => {
-          const cid = b.getAttribute('data-cid');
-          const device = b.getAttribute('data-device');
-          if (!cid || !device) return;
-          await forceSignout(cid, device);
+    // 탭별 초기화
+    if (tab === 'employee-sessions') {
+      // 세션 탭 전용 코드 분리
+      await ensureScriptOnce('/owner/employee-sessions.js');
+      if (window.OwnerEmployeeSessions && window.OwnerEmployeeSessions.init) {
+        await window.OwnerEmployeeSessions.init({
+          modalRootId: 'owner-modal-root',
+          tableId: 'employee-sessions-table',
         });
       }
-
-      // export 링크
-      const exportA = document.getElementById('employee-sessions-export');
-      if (exportA) exportA.href = `/owner/api/employees/sessions/export.xlsx`;
+      return;
     }
 
-    const prevBtn = document.getElementById('employee-sessions-prev');
-    const nextBtn = document.getElementById('employee-sessions-next');
-    if (prevBtn)
-      prevBtn.onclick = () => {
-        if (page > 1) {
-          page--;
-          render();
-        }
-      };
-    if (nextBtn)
-      nextBtn.onclick = () => {
-        page++;
-        render();
-      };
-
-    await render();
-  }
-
-  function safe(v) {
-    return v === null || v === undefined ? '' : String(v);
+    if (tab === 'api-logs') initApiLogs();
+    if (tab === 'error-logs') initErrorLogs();
   }
 
   async function initApiLogs() {
