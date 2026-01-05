@@ -94,7 +94,7 @@
     // 탭별 초기화
     if (tab === 'employee-sessions') {
       // 세션 탭 전용 코드 분리
-      await ensureScriptOnce('/owner/employee-sessions.js');
+      await ensureScriptOnce('/static/owner/employee-sessions.js');
       if (window.OwnerEmployeeSessions && window.OwnerEmployeeSessions.init) {
         await window.OwnerEmployeeSessions.init({
           modalRootId: 'owner-modal-root',

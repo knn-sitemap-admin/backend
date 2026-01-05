@@ -215,7 +215,7 @@
   }
 
   async function init({ modalRootId, tableId }) {
-    await ensureCssOnce('/owner/employee-sessions.css');
+    await ensureCssOnce('/static/owner/employee-sessions.css');
 
     const modalRoot = document.getElementById(modalRootId);
     const box = document.getElementById(tableId);
