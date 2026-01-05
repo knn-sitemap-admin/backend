@@ -39,17 +39,6 @@
     if (descEl) descEl.textContent = meta.desc;
   }
 
-  function safe(v) {
-    return v === null || v === undefined ? '' : String(v);
-  }
-
-  function statusBadge(statusCode) {
-    const n = Number(statusCode || 0);
-    if (n >= 500) return `<span class="badge badge--danger">${n}</span>`;
-    if (n >= 400) return `<span class="badge badge--warn">${n}</span>`;
-    return `<span class="badge badge--ok">${n}</span>`;
-  }
-
   function ensureScriptOnce(src) {
     return new Promise((resolve, reject) => {
       const exists = document.querySelector(`script[data-owner-src="${src}"]`);
@@ -78,6 +67,8 @@
   }
 
   async function loadTab(tab, qs) {
+    if (!contentEl) return;
+
     setActiveNav(tab);
     contentEl.innerHTML = `
       <div class="skeleton">
@@ -91,9 +82,8 @@
     const html = await fetchHtml(`/owner/partials/${tab}${q}`);
     contentEl.innerHTML = html;
 
-    // 탭별 초기화
+    // 탭별 초기화 (탭 전용 JS로 분리)
     if (tab === 'employee-sessions') {
-      // 세션 탭 전용 코드 분리
       await ensureScriptOnce('/static/owner/employee-sessions.js');
       if (window.OwnerEmployeeSessions && window.OwnerEmployeeSessions.init) {
         await window.OwnerEmployeeSessions.init({
@@ -104,242 +94,27 @@
       return;
     }
 
-    if (tab === 'api-logs') initApiLogs();
-    if (tab === 'error-logs') initErrorLogs();
-  }
-
-  async function initApiLogs() {
-    const box = document.getElementById('api-logs-table');
-    if (!box) return;
-
-    let page = Number(box.getAttribute('data-page') || '1');
-    const pageSize = Number(box.getAttribute('data-page-size') || '20');
-
-    async function render() {
-      box.innerHTML = `
-        <div class="table-loading">
-          <div class="spinner"></div>
-          <div class="table-loading__text">불러오는 중...</div>
-        </div>
-      `;
-
-      const res = await fetch(
-        `/owner/api/logs?page=${page}&pageSize=${pageSize}`,
-        { credentials: 'include' },
-      );
-      const json = await res.json();
-      const data = json.data;
-
-      const totalPages = Math.max(
-        1,
-        Math.ceil((data.total || 0) / (data.pageSize || pageSize)),
-      );
-      const label = document.getElementById('api-logs-page-label');
-      if (label)
-        label.textContent = `${data.page} / ${totalPages} (total ${data.total})`;
-
-      const rows = data.items || [];
-      let html = '';
-      html += `<table class="table">`;
-      html += `<thead><tr>`;
-      html += `<th style="width:180px;">시간</th>`;
-      html += `<th style="width:90px;">cid</th>`;
-      html += `<th style="width:80px;">device</th>`;
-      html += `<th style="width:80px;">method</th>`;
-      html += `<th>path</th>`;
-      html += `<th style="width:110px;">status</th>`;
-      html += `<th style="width:90px;">ms</th>`;
-      html += `</tr></thead><tbody>`;
-
-      for (const r of rows) {
-        html += `<tr class="tr" data-log-id="${safe(r.id)}">`;
-        html += `<td>${safe(r.created_at)}</td>`;
-        html += `<td>${safe(r.credential_id)}</td>`;
-        html += `<td>${safe(r.device_type)}</td>`;
-        html += `<td>${safe(r.method)}</td>`;
-        html += `<td>${safe(r.path)}</td>`;
-        html += `<td>${statusBadge(r.status_code)}</td>`;
-        html += `<td>${safe(r.duration_ms)}</td>`;
-        html += `</tr>`;
-      }
-      html += `</tbody></table>`;
-
-      box.innerHTML = html;
-
-      const trs = box.querySelectorAll('tr[data-log-id]');
-      for (const tr of trs) {
-        tr.addEventListener('click', () => {
-          const id = tr.getAttribute('data-log-id');
-          if (id) openLogModal(id);
+    if (tab === 'api-logs') {
+      await ensureScriptOnce('/static/owner/api-logs.js');
+      if (window.OwnerApiLogs && window.OwnerApiLogs.init) {
+        await window.OwnerApiLogs.init({
+          modalRootId: 'owner-modal-root',
+          tableId: 'api-logs-table',
         });
       }
-
-      const prev = document.getElementById('api-logs-prev');
-      const next = document.getElementById('api-logs-next');
-      if (prev) prev.disabled = page <= 1;
-      if (next) next.disabled = page >= totalPages;
+      return;
     }
 
-    const prevBtn = document.getElementById('api-logs-prev');
-    const nextBtn = document.getElementById('api-logs-next');
-
-    if (prevBtn)
-      prevBtn.onclick = () => {
-        if (page > 1) {
-          page--;
-          render();
-        }
-      };
-    if (nextBtn)
-      nextBtn.onclick = () => {
-        page++;
-        render();
-      };
-
-    const exportA = document.getElementById('api-logs-export');
-    if (exportA) exportA.href = `/owner/api/logs/export.xlsx`;
-
-    await render();
-  }
-
-  async function initErrorLogs() {
-    const box = document.getElementById('error-logs-table');
-    if (!box) return;
-
-    let page = Number(box.getAttribute('data-page') || '1');
-    const pageSize = Number(box.getAttribute('data-page-size') || '20');
-
-    async function render() {
-      box.innerHTML = `
-        <div class="table-loading">
-          <div class="spinner"></div>
-          <div class="table-loading__text">불러오는 중...</div>
-        </div>
-      `;
-
-      const res = await fetch(
-        `/owner/api/error-logs?page=${page}&pageSize=${pageSize}`,
-        { credentials: 'include' },
-      );
-      const json = await res.json();
-      const data = json.data;
-
-      const totalPages = Math.max(
-        1,
-        Math.ceil((data.total || 0) / (data.pageSize || pageSize)),
-      );
-      const label = document.getElementById('error-logs-page-label');
-      if (label)
-        label.textContent = `${data.page} / ${totalPages} (total ${data.total})`;
-
-      const rows = data.items || [];
-      let html = '';
-      html += `<table class="table">`;
-      html += `<thead><tr>`;
-      html += `<th style="width:180px;">시간</th>`;
-      html += `<th style="width:90px;">cid</th>`;
-      html += `<th style="width:80px;">device</th>`;
-      html += `<th style="width:80px;">method</th>`;
-      html += `<th>path</th>`;
-      html += `<th style="width:110px;">status</th>`;
-      html += `<th style="width:90px;">ms</th>`;
-      html += `</tr></thead><tbody>`;
-
-      for (const r of rows) {
-        html += `<tr class="tr" data-log-id="${safe(r.id)}">`;
-        html += `<td>${safe(r.created_at)}</td>`;
-        html += `<td>${safe(r.credential_id)}</td>`;
-        html += `<td>${safe(r.device_type)}</td>`;
-        html += `<td>${safe(r.method)}</td>`;
-        html += `<td>${safe(r.path)}</td>`;
-        html += `<td>${statusBadge(r.status_code)}</td>`;
-        html += `<td>${safe(r.duration_ms)}</td>`;
-        html += `</tr>`;
-      }
-      html += `</tbody></table>`;
-
-      box.innerHTML = html;
-
-      const trs = box.querySelectorAll('tr[data-log-id]');
-      for (const tr of trs) {
-        tr.addEventListener('click', () => {
-          const id = tr.getAttribute('data-log-id');
-          if (id) openLogModal(id);
+    if (tab === 'error-logs') {
+      await ensureScriptOnce('/static/owner/error-logs.js');
+      if (window.OwnerErrorLogs && window.OwnerErrorLogs.init) {
+        await window.OwnerErrorLogs.init({
+          modalRootId: 'owner-modal-root',
+          tableId: 'error-logs-table',
         });
       }
-
-      const prev = document.getElementById('error-logs-prev');
-      const next = document.getElementById('error-logs-next');
-      if (prev) prev.disabled = page <= 1;
-      if (next) next.disabled = page >= totalPages;
+      return;
     }
-
-    const prevBtn = document.getElementById('error-logs-prev');
-    const nextBtn = document.getElementById('error-logs-next');
-
-    if (prevBtn)
-      prevBtn.onclick = () => {
-        if (page > 1) {
-          page--;
-          render();
-        }
-      };
-    if (nextBtn)
-      nextBtn.onclick = () => {
-        page++;
-        render();
-      };
-
-    const exportA = document.getElementById('error-logs-export');
-    if (exportA) exportA.href = `/owner/api/error-logs/export.xlsx`;
-
-    await render();
-  }
-
-  async function openLogModal(id) {
-    const html = await fetchHtml(`/owner/partials/api-log-modal/${id}`);
-    modalRoot.innerHTML = html;
-
-    for (const el of modalRoot.querySelectorAll('[data-close="1"]')) {
-      el.addEventListener('click', () => {
-        modalRoot.innerHTML = '';
-      });
-    }
-
-    const res = await fetch(`/owner/api/logs/${id}`, {
-      credentials: 'include',
-    });
-    const json = await res.json();
-    const row = json.data || {};
-
-    const elReq = document.getElementById('pane-request');
-    const elRes = document.getElementById('pane-response');
-    const elQry = document.getElementById('pane-query');
-
-    if (elReq) elReq.textContent = row.request_body || '';
-    if (elRes) elRes.textContent = row.response_body || '';
-    if (elQry) elQry.textContent = row.query_log || '';
-
-    function activate(tab) {
-      const tabs = modalRoot.querySelectorAll('.tab[data-tab]');
-      const panes = modalRoot.querySelectorAll('.pane[data-pane]');
-
-      for (const t of tabs) {
-        t.classList.toggle('tab--active', t.getAttribute('data-tab') === tab);
-      }
-      for (const p of panes) {
-        p.classList.toggle('pane--active', p.getAttribute('data-pane') === tab);
-      }
-    }
-
-    for (const t of modalRoot.querySelectorAll('.tab[data-tab]')) {
-      t.addEventListener('click', () => {
-        const tab = t.getAttribute('data-tab');
-        if (tab) activate(tab);
-      });
-    }
-
-    activate('request');
   }
 
   bindSidebar();

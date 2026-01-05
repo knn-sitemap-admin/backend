@@ -1,25 +1,24 @@
-(async function () {
-  const contentEl = document.getElementById('owner-content');
-  const modalRoot = document.getElementById('owner-modal-root');
+(function () {
+  function safe(v) {
+    return v === null || v === undefined ? '' : String(v);
+  }
 
-  const titleEl = document.getElementById('topbar-title');
-  const descEl = document.getElementById('topbar-desc');
+  function statusBadge(statusCode) {
+    const n = Number(statusCode || 0);
+    if (n >= 500) return `<span class="badge badge--danger">${n}</span>`;
+    if (n >= 400) return `<span class="badge badge--warn">${n}</span>`;
+    return `<span class="badge badge--ok">${n}</span>`;
+  }
 
-  const tabMeta = {
-    dashboard: {
-      title: 'Dashboard',
-      desc: '서버 상태와 운영 데이터를 확인합니다.',
-    },
-    'employee-sessions': {
-      title: 'employee-sessions',
-      desc: '현재 활성 로그인(PC/Mobile) 상태만 표시합니다.',
-    },
-    'api-logs': { title: 'API Logs', desc: '전체 API 요청 로그를 확인합니다.' },
-    'error-logs': {
-      title: 'Error Logs',
-      desc: 'status_code >= 400 (4xx + 5xx) 에러 로그만 표시합니다.',
-    },
-  };
+  async function ensureCssOnce(href) {
+    const exists = document.querySelector(`link[data-owner-href="${href}"]`);
+    if (exists) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.setAttribute('data-owner-href', href);
+    document.head.appendChild(link);
+  }
 
   async function fetchHtml(url) {
     const res = await fetch(url, { credentials: 'include' });
@@ -27,104 +26,161 @@
     return await res.text();
   }
 
-  function setActiveNav(tab) {
-    const buttons = document.querySelectorAll('.nav__item[data-tab]');
-    for (const btn of buttons) {
-      const t = btn.getAttribute('data-tab');
-      btn.classList.toggle('is-active', t === tab);
-    }
-    const meta = tabMeta[tab] || { title: tab, desc: '' };
-    if (titleEl) titleEl.textContent = meta.title;
-    if (descEl) descEl.textContent = meta.desc;
-  }
+  async function openLogModal(modalRoot, id) {
+    const html = await fetchHtml(`/owner/partials/api-log-modal/${id}`);
+    modalRoot.innerHTML = html;
 
-  function ensureScriptOnce(src) {
-    return new Promise((resolve, reject) => {
-      const exists = document.querySelector(`script[data-owner-src="${src}"]`);
-      if (exists) return resolve();
-
-      const s = document.createElement('script');
-      s.src = src;
-      s.async = true;
-      s.setAttribute('data-owner-src', src);
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('failed to load script: ' + src));
-      document.head.appendChild(s);
-    });
-  }
-
-  function bindSidebar() {
-    const buttons = document.querySelectorAll('.nav__item[data-tab]');
-    for (const btn of buttons) {
-      btn.addEventListener('click', () => {
-        const tab = btn.getAttribute('data-tab');
-        if (!tab) return;
-        history.replaceState(null, '', `/owner#${tab}`);
-        loadTab(tab);
+    for (const el of modalRoot.querySelectorAll('[data-close="1"]')) {
+      el.addEventListener('click', () => {
+        modalRoot.innerHTML = '';
       });
     }
+
+    const res = await fetch(`/owner/api/logs/${id}`, {
+      credentials: 'include',
+    });
+    const json = await res.json();
+    const row = json.data || {};
+
+    const elReq = document.getElementById('pane-request');
+    const elRes = document.getElementById('pane-response');
+    const elQry = document.getElementById('pane-query');
+
+    if (elReq) elReq.textContent = row.request_body || '';
+    if (elRes) elRes.textContent = row.response_body || '';
+    if (elQry) elQry.textContent = row.query_log || '';
+
+    function activate(tab) {
+      const tabs = modalRoot.querySelectorAll('.tab[data-tab]');
+      const panes = modalRoot.querySelectorAll('.pane[data-pane]');
+
+      for (const t of tabs) {
+        t.classList.toggle('tab--active', t.getAttribute('data-tab') === tab);
+      }
+      for (const p of panes) {
+        p.classList.toggle('pane--active', p.getAttribute('data-pane') === tab);
+      }
+    }
+
+    for (const t of modalRoot.querySelectorAll('.tab[data-tab]')) {
+      t.addEventListener('click', () => {
+        const tab = t.getAttribute('data-tab');
+        if (tab) activate(tab);
+      });
+    }
+
+    activate('request');
   }
 
-  async function loadTab(tab, qs) {
-    if (!contentEl) return;
+  async function fetchLogs({ page, pageSize }) {
+    const res = await fetch(
+      `/owner/api/error-logs?page=${page}&pageSize=${pageSize}`,
+      { credentials: 'include' },
+    );
+    const json = await res.json();
+    return { res, json };
+  }
 
-    setActiveNav(tab);
-    contentEl.innerHTML = `
-      <div class="skeleton">
-        <div class="skeleton__bar"></div>
-        <div class="skeleton__bar"></div>
-        <div class="skeleton__bar"></div>
+  async function render({ box, modalRoot, page, pageSize }) {
+    box.innerHTML = `
+      <div class="table-loading">
+        <div class="spinner"></div>
+        <div class="table-loading__text">불러오는 중...</div>
       </div>
     `;
 
-    const q = qs ? '?' + new URLSearchParams(qs).toString() : '';
-    const html = await fetchHtml(`/owner/partials/${tab}${q}`);
-    contentEl.innerHTML = html;
-
-    // 탭별 초기화 (탭 전용 JS로 분리)
-    if (tab === 'employee-sessions') {
-      await ensureScriptOnce('/static/owner/employee-sessions.js');
-      if (window.OwnerEmployeeSessions && window.OwnerEmployeeSessions.init) {
-        await window.OwnerEmployeeSessions.init({
-          modalRootId: 'owner-modal-root',
-          tableId: 'employee-sessions-table',
-        });
-      }
-      return;
+    const { res, json } = await fetchLogs({ page, pageSize });
+    if (!res.ok) {
+      box.innerHTML = `<div class="muted">불러오기 실패</div>`;
+      return { totalPages: 1 };
     }
 
-    if (tab === 'api-logs') {
-      await ensureScriptOnce('/static/owner/api-logs.js');
-      if (window.OwnerApiLogs && window.OwnerApiLogs.init) {
-        await window.OwnerApiLogs.init({
-          modalRootId: 'owner-modal-root',
-          tableId: 'api-logs-table',
-        });
-      }
-      return;
+    const data = json.data || {};
+    const rows = data.items || [];
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil((data.total || 0) / (data.pageSize || pageSize)),
+    );
+
+    const label = document.getElementById('error-logs-page-label');
+    if (label)
+      label.textContent = `${data.page} / ${totalPages} (total ${data.total})`;
+
+    let html = '';
+    html += `<table class="table table--compact">`;
+    html += `<thead><tr>`;
+    html += `<th>시간</th>`;
+    html += `<th>cid</th>`;
+    html += `<th>device</th>`;
+    html += `<th>method</th>`;
+    html += `<th>path</th>`;
+    html += `<th>status</th>`;
+    html += `<th>ms</th>`;
+    html += `</tr></thead><tbody>`;
+
+    for (const r of rows) {
+      html += `<tr class="tr" data-log-id="${safe(r.id)}">`;
+      html += `<td>${safe(r.created_at)}</td>`;
+      html += `<td>${safe(r.credential_id)}</td>`;
+      html += `<td>${safe(r.device_type)}</td>`;
+      html += `<td>${safe(r.method)}</td>`;
+      html += `<td title="${safe(r.path)}">${safe(r.path)}</td>`;
+      html += `<td>${statusBadge(r.status_code)}</td>`;
+      html += `<td>${safe(r.duration_ms)}</td>`;
+      html += `</tr>`;
     }
 
-    if (tab === 'error-logs') {
-      await ensureScriptOnce('/static/owner/error-logs.js');
-      if (window.OwnerErrorLogs && window.OwnerErrorLogs.init) {
-        await window.OwnerErrorLogs.init({
-          modalRootId: 'owner-modal-root',
-          tableId: 'error-logs-table',
-        });
-      }
-      return;
+    html += `</tbody></table>`;
+    box.innerHTML = html;
+
+    const trs = box.querySelectorAll('tr[data-log-id]');
+    for (const tr of trs) {
+      tr.addEventListener('click', () => {
+        const id = tr.getAttribute('data-log-id');
+        if (id) openLogModal(modalRoot, id);
+      });
     }
+
+    return { totalPages };
   }
 
-  bindSidebar();
+  async function init({ modalRootId, tableId }) {
+    await ensureCssOnce('/static/owner/error-logs.css');
 
-  const appEl = document.querySelector('.app');
-  const defaultTabFromDom = appEl
-    ? appEl.getAttribute('data-default-tab')
-    : null;
+    const modalRoot = document.getElementById(modalRootId);
+    const box = document.getElementById(tableId);
+    if (!box || !modalRoot) return;
 
-  const hashTab = (location.hash || '').replace('#', '').trim();
-  const startTab = hashTab || defaultTabFromDom || 'dashboard';
+    let page = Number(box.getAttribute('data-page') || '1');
+    const pageSize = Number(box.getAttribute('data-page-size') || '20');
 
-  await loadTab(startTab);
+    const prevBtn = document.getElementById('error-logs-prev');
+    const nextBtn = document.getElementById('error-logs-next');
+
+    async function rerender() {
+      const { totalPages } = await render({ box, modalRoot, page, pageSize });
+      if (prevBtn) prevBtn.disabled = page <= 1;
+      if (nextBtn) nextBtn.disabled = page >= totalPages;
+    }
+
+    if (prevBtn) {
+      prevBtn.onclick = () => {
+        if (page > 1) {
+          page--;
+          rerender();
+        }
+      };
+    }
+    if (nextBtn) {
+      nextBtn.onclick = () => {
+        page++;
+        rerender();
+      };
+    }
+
+    await rerender();
+  }
+
+  window.OwnerErrorLogs = { init };
 })();
