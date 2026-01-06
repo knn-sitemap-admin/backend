@@ -385,12 +385,12 @@ a:hover{ text-decoration:underline; }
 }
 
 /* Modal */
-.modal-backdrop{
-    position:fixed;
-    inset:0;
-    background: rgba(0,0,0,0.52);
-    z-index: 9999;
-}
+/*.modal-backdrop{*/
+/*    position:fixed;*/
+/*    inset:0;*/
+/*    background: rgba(0,0,0,0.52);*/
+
+/*}*/
 
 .modal{
     position:fixed;
@@ -407,6 +407,7 @@ a:hover{ text-decoration:underline; }
     display:flex;
     flex-direction:column;
     overflow:hidden;
+    z-index: 9999;
 }
 
 .modal__header{
