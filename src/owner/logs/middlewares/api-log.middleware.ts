@@ -9,6 +9,7 @@ function shouldSkip(path: string): boolean {
   if (path.startsWith('/owner')) return true;
   if (path.startsWith('/static')) return true;
   if (path === '/auth/me') return true;
+  if (path === '/favicon.ico') return true;
   return false;
 }
 
