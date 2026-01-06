@@ -101,6 +101,8 @@ async function bootstrap() {
   });
   await redisClient.connect();
 
+  expressApp.set('redisClient', redisClient);
+
   type RedisStoreCtorArg = ConstructorParameters<typeof RedisStore>[0];
 
   const store = new RedisStore({

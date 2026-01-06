@@ -1,31 +1,20 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { HttpAdapterHost } from '@nestjs/core';
+import type { RedisClientType } from 'redis';
 
 @Injectable()
-export class AppService implements OnModuleDestroy {
-  private readonly redis: Redis;
+export class AppService {
+  private readonly redisClient: RedisClientType | null;
 
-  constructor(@InjectDataSource() private readonly ds: DataSource) {
-    const url = process.env.REDIS_URL;
-
-    this.redis = url
-      ? new Redis(url, { lazyConnect: true })
-      : new Redis({
-          host: process.env.REDIS_HOST ?? '127.0.0.1',
-          port: Number(process.env.REDIS_PORT ?? 6379),
-          password: process.env.REDIS_PASSWORD || undefined,
-          lazyConnect: true,
-        });
-
-    this.redis.on('error', (e) => {
-      // eslint-disable-next-line no-console
-      console.error(
-        '[ioredis] client error:',
-        e instanceof Error ? e.message : e,
-      );
-    });
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly adapterHost: HttpAdapterHost,
+  ) {
+    const expressApp = this.adapterHost.httpAdapter.getInstance();
+    this.redisClient =
+      (expressApp.get('redisClient') as RedisClientType) ?? null;
   }
 
   async check() {
@@ -47,21 +36,11 @@ export class AppService implements OnModuleDestroy {
 
   private async checkRedis(): Promise<boolean> {
     try {
-      if (!this.redis.status || this.redis.status === 'end') {
-        await this.redis.connect();
-      }
-      const pong = await this.redis.ping();
+      if (!this.redisClient) return false;
+      const pong = await this.redisClient.ping();
       return pong === 'PONG';
     } catch {
       return false;
-    }
-  }
-
-  async onModuleDestroy() {
-    try {
-      await this.redis.quit();
-    } catch {
-      /* ignore */
     }
   }
 }
