@@ -128,4 +128,42 @@
   const startTab = hashTab || defaultTabFromDom || 'dashboard';
 
   await loadTab(startTab);
+
+  //복사버튼
+
+  // owner.js 안 (IIFE 내부) - loadTab(startTab) 이후 아무데나
+  document.addEventListener('click', async (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    // 복사 버튼 클릭인지 확인
+    const copyBtn = target.closest('#copy-tab-content');
+    if (!copyBtn) return;
+
+    // 현재 열려있는 모달 기준으로 찾기
+    const modal = copyBtn.closest('.modal');
+    if (!modal) return;
+
+    const activeTab = modal.querySelector('.modal__tabs .tab--active');
+    if (!activeTab) return;
+
+    const tab = activeTab.getAttribute('data-tab'); // request | response | query
+    if (!tab) return;
+
+    // 너 모달 마크업 기준: pane 안에 pre.code가 있음
+    const pre = modal.querySelector(`.pane[data-pane="${tab}"] .code`);
+    if (!pre) return;
+
+    const text = pre.textContent || '';
+
+    try {
+      await navigator.clipboard.writeText(text);
+
+      const old = copyBtn.textContent;
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => (copyBtn.textContent = old || '📋'), 1000);
+    } catch {
+      alert('복사 실패');
+    }
+  });
 })();
