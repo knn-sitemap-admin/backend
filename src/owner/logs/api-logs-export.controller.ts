@@ -14,7 +14,7 @@ export class ApiLogsExportController {
   constructor(private readonly service: ApiLogExportService) {}
 
   @Roles(SystemRole.ADMIN)
-  @Get('logs/export.xlsx')
+  @Get('api-logs/export.xlsx')
   async exportLogs(@Query() dto: ApiLogListQueryDto, @Res() res: Response) {
     const buf = await this.service.exportLogsXlsx(dto);
 
