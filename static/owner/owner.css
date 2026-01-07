@@ -368,6 +368,7 @@ a:hover{ text-decoration:underline; }
 }
 
 .kpi__item{
+    width: 100%;
     border-radius: 14px;
     border: 1px solid rgba(255,255,255,0.08);
     background: rgba(255,255,255,0.03);
@@ -690,10 +691,9 @@ a:hover{ text-decoration:underline; }
     gap: 14px;
 }
 
-/* KPI는 세로 유지(원하면 유지/조정) */
 .kpi{
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 12px;
 }
 
