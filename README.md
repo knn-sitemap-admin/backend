@@ -4,7 +4,7 @@
 
 **클라우드 기반 부동산 관리 플랫폼**입니다.  
 
-백엔드는 **NestJS + PostgreSQL**, 프론트엔드는 **Next.js**로 구성되었으며, Railway를 통해 안정적으로 호스팅됩니다.
+백엔드는 **NestJS + Mysql**, 프론트엔드는 **Next.js**로 구성되었으며, Railway를 통해 안정적으로 호스팅됩니다.
 
 ---
 
@@ -31,24 +31,24 @@
 - 계정 활성상태 및 공지사항 관리
 
 ### 🔐 인증 및 보안
-- JWT 기반 로그인 / 로그아웃
-- Refresh Token 관리
-- Role 기반 접근 제어 (Admin, Agent, Staff)
+- 세션 + Redis 기반 인가/인증 / 로그아웃
+- 다양한 가드 사용(권한 가드, 세션가드, 디바이스가드)
+- 단방향 암호화 적용
 - HTTPS + CORS 정책 적용
 
 ---
 
 ## 🏗️ 기술 스택
 
-| 구분 | 기술 |
-|------|------|
+| 구분 | 기술                                                       |
+|------|----------------------------------------------------------|
 | **Frontend** | Next.js 14, TypeScript, Tailwind CSS, React Query, Axios |
-| **Backend** | NestJS, TypeORM, PostgreSQL |
-| **Auth** | JWT (RS256), argon2 |
-| **Infra / DevOps** | Railway / AWS / Vercel (선택), Docker |
-| **Storage** | AWS S3 (이미지, 문서 저장) |
-| **CI/CD** | Railway Deploy Hook |
-| **Docs** | Swagger UI (`/api-docs`) |
+| **Backend** | NestJS, TypeORM, Mysql                                   |
+| **Auth** | JWT (RS256), argon2                                      |
+| **Infra / DevOps** | Railway / AWS / Vercel (선택), Docker                      |
+| **Storage** | AWS S3 (이미지, 문서 저장)                                      |
+| **CI/CD** | Railway Deploy Hook                                      |
+| **Docs** | Swagger UI (`/api-docs`)                                 |
 
 ---
 
