@@ -50,25 +50,24 @@ async function bootstrap() {
   //요청 로깅
   app.use(morgan('combined'));
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      return callback(null, true);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  });
-
-  //배포버전
-  // const corsOrigins = (process.env.CORS_ORIGIN ?? '')
-  //   .split(',')
-  //   .map((s) => s.trim())
-  //   .filter(Boolean);
   // app.enableCors({
-  //   origin: corsOrigins.length ? corsOrigins : false,
+  //   origin: (origin, callback) => {
+  //     if (!origin) return callback(null, true);
+  //     return callback(null, true);
+  //   },
   //   credentials: true,
+  //   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  //   allowedHeaders: ['Content-Type', 'Authorization'],
   // });
+
+  const corsOrigins = (process.env.PAGE_URL ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: corsOrigins.length ? corsOrigins : false,
+    credentials: true,
+  });
 
   //전역 파이프
   app.useGlobalPipes(
