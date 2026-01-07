@@ -82,6 +82,14 @@
     const html = await fetchHtml(`/owner/partials/${tab}${q}`);
     contentEl.innerHTML = html;
 
+    if (tab === 'dashboard') {
+      await ensureScriptOnce('/static/owner/owner-dashboard.js'); // 경로는 너 프로젝트 기준
+      if (window.OwnerDashboard && window.OwnerDashboard.init) {
+        await window.OwnerDashboard.init();
+      }
+      return;
+    }
+
     // 탭별 초기화 (탭 전용 JS로 분리)
     if (tab === 'employee-sessions') {
       await ensureScriptOnce('/static/owner/employee-sessions.js');

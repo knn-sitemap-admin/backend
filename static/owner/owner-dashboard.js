@@ -1,17 +1,9 @@
 (function () {
-  const serverEl = document.getElementById('kpi-server');
-  const dbEl = document.getElementById('kpi-database');
-  const redisEl = document.getElementById('kpi-redis');
-  const updatedAtEl = document.getElementById('kpi-updated-at');
-
-  const openFrontendBtn = document.getElementById('open-frontend-btn');
-
   function setPill(el, isLive) {
     if (!el) return;
 
     const text = isLive ? 'LIVE' : 'FAIL';
     const cls = isLive ? 'kpi-pill kpi-pill--ok' : 'kpi-pill kpi-pill--danger';
-
     el.innerHTML = `<span class="${cls}">${text}</span>`;
   }
 
@@ -22,7 +14,14 @@
   }
 
   async function renderHealth() {
-    // 기본은 FAIL로 깔고 시작
+    const serverEl = document.getElementById('kpi-server');
+    const dbEl = document.getElementById('kpi-database');
+    const redisEl = document.getElementById('kpi-redis');
+    const updatedAtEl = document.getElementById('kpi-updated-at');
+
+    // dashboard partial이 아직 없으면 종료
+    if (!serverEl || !dbEl || !redisEl) return;
+
     setPill(serverEl, false);
     setPill(dbEl, false);
     setPill(redisEl, false);
@@ -36,30 +35,44 @@
       const redisOk = data && data.redis === 'ok';
 
       setPill(serverEl, statusOk);
-
       setPill(dbEl, dbOk);
       setPill(redisEl, redisOk);
 
       if (updatedAtEl) {
-        const now = new Date();
-        updatedAtEl.textContent = `마지막 확인: ${now.toLocaleString()}`;
+        updatedAtEl.textContent = `마지막 확인: ${new Date().toLocaleString()}`;
       }
-    } catch (e) {
-      if (updatedAtEl)
+    } catch {
+      if (updatedAtEl) {
         updatedAtEl.textContent = '마지막 확인: 실패 (네트워크/서버 오류)';
+      }
     }
   }
 
   function bindOpenFrontend() {
-    if (!openFrontendBtn) return;
+    const btn = document.getElementById('open-frontend-btn');
+    if (!btn) return;
 
-    openFrontendBtn.addEventListener('click', function () {
-      const url = openFrontendBtn.getAttribute('data-url') || '';
+    // dashboard 탭 재진입 시 중복 바인딩 방지
+    if (btn.getAttribute('data-bound') === '1') return;
+    btn.setAttribute('data-bound', '1');
+
+    btn.addEventListener('click', function () {
+      const url = btn.getAttribute('data-url') || '';
       if (!url) return;
       window.open(url, '_blank', 'noopener,noreferrer');
     });
   }
 
-  bindOpenFrontend();
-  renderHealth();
+  let intervalId = null;
+
+  async function init() {
+    bindOpenFrontend();
+    await renderHealth();
+
+    // (원하면) 주기 갱신. 탭 재진입 시 중복 방지
+    if (intervalId) clearInterval(intervalId);
+    intervalId = setInterval(renderHealth, 10000);
+  }
+
+  window.OwnerDashboard = { init };
 })();
