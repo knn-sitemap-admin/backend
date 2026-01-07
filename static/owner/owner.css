@@ -683,4 +683,18 @@ a:hover{ text-decoration:underline; }
     .split__col:last-child{border-bottom:none}
 }
 
+/* dashboard 전용: 세로 스택 레이아웃 */
+.stack{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+/* KPI는 세로 유지(원하면 유지/조정) */
+.kpi{
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
 

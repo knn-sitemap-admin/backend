@@ -1,27 +1,30 @@
-<div class="grid">
+<div class="stack">
     <div class="card">
-
-    <div class="card__header">
+        <div class="card__header">
             <div>
                 <div class="card__title">서버 상태</div>
-                <div class="card__sub">다음 단계에서 health / redis / db 체크 붙입니다.</div>
             </div>
         </div>
+
         <div class="card__body">
             <div class="kpi">
                 <div class="kpi__item">
-                    <div class="kpi__label">API 로그</div>
-                    <div class="kpi__value">LIVE</div>
+                    <div class="kpi__label">SERVER</div>
+                    <div class="kpi__value" id="kpi-server">-</div>
                 </div>
+
                 <div class="kpi__item">
-                    <div class="kpi__label">세션 정책</div>
-                    <div class="kpi__value">PC/Mobile 1대</div>
+                    <div class="kpi__label">DATABASE</div>
+                    <div class="kpi__value" id="kpi-database">-</div>
                 </div>
+
                 <div class="kpi__item">
-                    <div class="kpi__label">Export</div>
-                    <div class="kpi__value">XLSX</div>
+                    <div class="kpi__label">REDIS</div>
+                    <div class="kpi__value" id="kpi-redis">-</div>
                 </div>
             </div>
+
+            <div class="muted" style="margin-top:10px" id="kpi-updated-at"></div>
         </div>
     </div>
 
@@ -31,13 +34,27 @@
                 <div class="card__title">운영 가이드</div>
                 <div class="card__sub">클릭 기반으로 모달 상세를 확인합니다.</div>
             </div>
+
+            <div class="card__actions">
+                <button
+                        type="button"
+                        class="btn btn--primary"
+                        id="open-frontend-btn"
+                        data-url="<%= frontendUrl %>"
+                >
+                    웹사이트로 이동
+                </button>
+            </div>
         </div>
+
         <div class="card__body">
             <ul class="list">
                 <li>API 요청 탭: 전체 로그 + 상세</li>
-                <li>에러 API 탭: status_code >= 400만 필터</li>
+                <li>에러 API 탭: status_code &gt;= 400만 필터</li>
                 <li>엑셀: 필터 결과 최대 500행</li>
             </ul>
         </div>
     </div>
 </div>
+
+<script src="/owner/owner-dashboard.js"></script>
