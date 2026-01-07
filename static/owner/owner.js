@@ -11,13 +11,13 @@
       desc: '서버 상태와 운영 데이터를 확인합니다.',
     },
     'employee-sessions': {
-      title: 'employee-sessions',
+      title: 'Employee-sessions',
       desc: '현재 활성 로그인(PC/Mobile) 상태만 표시합니다.',
     },
     'api-logs': { title: 'API Logs', desc: '전체 API 요청 로그를 확인합니다.' },
     'error-logs': {
       title: 'Error Logs',
-      desc: 'status_code >= 400 (4xx + 5xx) 에러 로그만 표시합니다.',
+      desc: 'API 중 에러 로그만 표시합니다.',
     },
   };
 
