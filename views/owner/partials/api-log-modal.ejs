@@ -1,0 +1,39 @@
+<div class="modal-backdrop" data-close="1"></div>
+
+<div class="modal">
+    <div class="modal__header">
+        <div class="modal__title">API 로그 상세</div>
+        <button class="icon-btn" data-close="1" aria-label="close">×</button>
+    </div>
+
+    <div class="modal__tabs">
+        <button class="tab tab--active" data-tab="request">요청</button>
+        <button class="tab" data-tab="response">응답</button>
+        <button class="tab" data-tab="query">쿼리</button>
+        <button class="icon-btn copy-btn" id="copy-tab-content" title="복사">
+            📋
+        </button>
+    </div>
+
+    <div class="modal__panes">
+        <section class="pane pane--active" data-pane="request">
+            <div class="pane__title">Request</div>
+            <pre class="code" id="pane-request">로딩중...</pre>
+        </section>
+
+        <section class="pane" data-pane="response">
+            <div class="pane__title">Response</div>
+            <pre class="code" id="pane-response"></pre>
+        </section>
+
+        <section class="pane" data-pane="query">
+            <div class="pane__title">Query</div>
+            <pre class="code" id="pane-query"></pre>
+        </section>
+    </div>
+
+    <div class="modal__footer">
+        <div class="muted">탭 클릭 시 선택된 패널이 확대되고 나머지는 축소됩니다.</div>
+        <div style="display:none" id="modal-log-id"><%= id %></div>
+    </div>
+</div>

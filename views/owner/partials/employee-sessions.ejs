@@ -1,0 +1,26 @@
+<div class="card">
+
+<div class="card__header">
+        <div>
+            <div class="card__title">직원 로그인 상태</div>
+            <div class="card__sub">
+                PC/Mobile 각각 1대 정책 기반으로 현재 활성 세션을 표시합니다.
+            </div>
+        </div>
+    </div>
+
+    <div class="table-wrap" id="employee-sessions-table" data-page="<%= page %>" data-page-size="<%= pageSize %>">
+        <div class="table-loading">
+            <div class="spinner"></div>
+            <div class="table-loading__text">불러오는 중...</div>
+        </div>
+    </div>
+
+    <div class="card__footer">
+        <div class="pager">
+            <button class="btn btn--ghost" id="employee-sessions-prev">이전</button>
+            <div class="pager__label" id="employee-sessions-page-label">-</div>
+            <button class="btn btn--ghost" id="employee-sessions-next">다음</button>
+        </div>
+    </div>
+</div>

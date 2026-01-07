@@ -1,0 +1,39 @@
+{
+  "lat": 37.123456,
+  "lng": 127.123456,
+  "addressLine": "서울시 어딘가 123",
+  "province": "서울특별시",
+  "city": "강남구",
+  "district": "역삼동",
+  "hasElevator": true,
+
+  "contactMainLabel": "관리",
+  "contactMainPhone": "010-1234-5678",
+  "contactSubLabel": "분양",
+  "contactSubPhone": "02-111-2222",
+
+  "directions": [
+    { "direction": "남" },
+    { "direction": "동" }
+  ],
+
+  "areaGroups": [
+    { "title": "2룸", "exclusiveMinM2": 45, "exclusiveMaxM2": 59, "actualMinM2": 40, "actualMaxM2": 55, "sortOrder": 0 }
+  ],
+
+  "units": [
+    { "rooms": 2, "baths": 1, "hasLoft": false, "hasTerrace": false, "salePrice": 350000000 },
+    { "rooms": 3, "baths": 2, "hasLoft": true,  "hasTerrace": true,  "salePrice": 520000000 }
+  ],
+
+  "options": {
+    "hasAircon": true,
+    "hasFridge": false,
+    "hasWasher": true,
+    "hasDryer": false,
+    "hasBidet": true,
+    "hasAirPurifier": false,
+    "isDirectLease": false,
+    "extraOptionsText": "공용 자전거보관소"
+  }
+}

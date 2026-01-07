@@ -1,0 +1,33 @@
+<div class="card">
+
+<div class="card__header">
+        <div>
+            <div class="card__title">에러 API 로그</div>
+            <div class="card__sub">status_code >= 400 (4xx + 5xx)</div>
+        </div>
+
+        <div class="card__actions">
+            <a id="error-logs-export" class="btn btn--ghost" href="/owner/api/error-logs/export.xlsx">
+                엑셀 다운로드 (최대 500)
+            </a>
+        </div>
+    </div>
+
+    <div class="table-wrap" id="error-logs-table" data-page="<%= page %>" data-page-size="<%= pageSize %>">
+        <div class="table-loading">
+            <div class="spinner"></div>
+            <div class="table-loading__text">불러오는 중...</div>
+        </div>
+    </div>
+
+    <div class="card__footer">
+        <div class="pager">
+            <button class="btn btn--ghost" id="error-logs-prev">이전</button>
+            <div class="pager__label" id="error-logs-page-label">-</div>
+            <button class="btn btn--ghost" id="error-logs-next">다음</button>
+        </div>
+
+        <div class="muted">
+        </div>
+    </div>
+</div>
