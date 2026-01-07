@@ -23,7 +23,9 @@ export class OwnerPageController {
   @Get('partials/dashboard')
   @Render('owner/partials/dashboard')
   dashboardPartial() {
-    return {};
+    return {
+      frontendUrl: process.env.PAGE_URL,
+    };
   }
 
   @Get('partials/api-logs')

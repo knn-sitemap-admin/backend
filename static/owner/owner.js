@@ -1,4 +1,3 @@
-// public/owner/owner.js
 (async function () {
   const contentEl = document.getElementById('owner-content');
   const modalRoot = document.getElementById('owner-modal-root');
