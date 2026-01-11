@@ -1,7 +1,13 @@
 import { Pin } from '../entities/pin.entity';
 import { PinAreaGroup } from '../../pin_area_groups/entities/pin_area_group.entity';
 import { Unit } from '../../units/entities/unit.entity';
-import { PinOption } from '../../pin-options/entities/pin-option.entity';
+import {
+  FridgeSlot,
+  KitchenLayout,
+  LivingRoomView,
+  PinOption,
+  SofaSize,
+} from '../../pin-options/entities/pin-option.entity';
 import { PinDirection } from '../../pin-directions/entities/pin-direction.entity';
 
 function toIntOrNull(v: unknown): number | null {
@@ -88,6 +94,16 @@ export class PinOptionsResponseDto {
   isDirectLease!: boolean | null;
   extraOptionsText!: string | null;
 
+  kitchenLayout!: KitchenLayout | null;
+  fridgeSlot!: FridgeSlot | null;
+  sofaSize!: SofaSize | null;
+  livingRoomView!: LivingRoomView | null;
+
+  hasIslandTable!: boolean | null;
+  hasKitchenWindow!: boolean | null;
+  hasCityGas!: boolean | null;
+  hasInduction!: boolean | null;
+
   static fromEntity(entity: PinOption): PinOptionsResponseDto {
     return {
       hasAircon: toBoolOrNull(entity.hasAircon),
@@ -98,6 +114,16 @@ export class PinOptionsResponseDto {
       hasAirPurifier: toBoolOrNull(entity.hasAirPurifier),
       isDirectLease: toBoolOrNull(entity.isDirectLease),
       extraOptionsText: entity.extraOptionsText ?? null,
+
+      kitchenLayout: entity.kitchenLayout ?? null,
+      fridgeSlot: entity.fridgeSlot ?? null,
+      sofaSize: entity.sofaSize ?? null,
+      livingRoomView: entity.livingRoomView ?? null,
+
+      hasIslandTable: toBoolOrNull(entity.hasIslandTable),
+      hasKitchenWindow: toBoolOrNull(entity.hasKitchenWindow),
+      hasCityGas: toBoolOrNull(entity.hasCityGas),
+      hasInduction: toBoolOrNull(entity.hasInduction),
     };
   }
 }
@@ -180,7 +206,6 @@ export class PinResponseDto {
 
     let ageType: PinAgeType = null;
 
-    // 정책: 둘 다 true면 NEW 우선 (필요하면 OLD 우선으로 바꿔도 됨)
     if (isNewFlag && !isOldFlag) {
       ageType = 'NEW';
     } else if (isOldFlag && !isNewFlag) {

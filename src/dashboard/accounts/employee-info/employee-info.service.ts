@@ -105,7 +105,11 @@ export class EmployeeInfoService {
   }
 
   private isManagerRank(rank: PositionRank | null | undefined): boolean {
-    return rank === PositionRank.TEAM_LEADER || rank === PositionRank.DIRECTOR;
+    return (
+      rank === PositionRank.TEAM_LEADER ||
+      rank === PositionRank.DIRECTOR ||
+      rank === PositionRank.CEO
+    );
   }
 
   private toRoleFromRank(
@@ -378,7 +382,6 @@ export class EmployeeInfoService {
         doc_url_id_card: saved.doc_url_id_card,
         doc_url_family_relation: saved.doc_url_family_relation,
 
-        // 디버깅/프론트 반영 도움(원하면 빼도 됨)
         role: changedRole,
         rankChanged,
         becameTeamLeader,
@@ -436,9 +439,14 @@ export class EmployeeInfoService {
   async findUnassignedEmployees() {
     const rows = await this.accountCredentialRepository
       .createQueryBuilder('cred')
-      .leftJoin('accounts', 'acc', 'acc.credential_id = cred.id')
+      .innerJoin(
+        'accounts',
+        'acc',
+        'acc.credential_id = cred.id AND acc.is_deleted = 0',
+      )
       .leftJoin('team_members', 'tm', 'tm.account_id = acc.id')
       .where('tm.id IS NULL')
+      .andWhere('cred.is_disabled = 0')
       .select([
         'cred.id AS credentialId',
         'cred.email AS email',
@@ -478,7 +486,9 @@ export class EmployeeInfoService {
       .createQueryBuilder('a')
       .innerJoin(AccountCredential, 'c', 'c.id = a.credential_id')
       .select(['a.id AS accountId', 'a.name AS name'])
-      .where('c.role != :admin', { admin: 'admin' })
+      .where('a.is_deleted = 0')
+      .andWhere('c.is_disabled = 0')
+      .andWhere('c.role != :admin', { admin: 'admin' })
       .andWhere('a.id != :me', { me: myAccountId })
       .orderBy('a.name', 'ASC')
       .getRawMany<{ accountId: string; name: string }>();
@@ -498,6 +508,11 @@ export class EmployeeInfoService {
     // 1) base: 계정 + 팀
     const baseQb = this.accountRepository
       .createQueryBuilder('a')
+      .innerJoin(
+        AccountCredential,
+        'cred',
+        'cred.id = a.credential_id AND cred.is_disabled = 0',
+      )
       .leftJoin(TeamMember, 'tm', 'tm.account_id = a.id')
       .leftJoin(Team, 't', 't.id = tm.team_id')
       .select([
@@ -508,7 +523,8 @@ export class EmployeeInfoService {
         'a.phone AS phone',
         't.name AS teamName',
       ])
-      .where('a.is_deleted = 0');
+      .where('a.is_deleted = 0')
+      .andWhere('cred.role <> :admin', { admin: 'admin' });
 
     if (nameKw.length > 0) {
       baseQb.andWhere('a.name LIKE :kw', { kw: `%${nameKw}%` });
@@ -522,6 +538,7 @@ export class EmployeeInfoService {
         .orderBy(
           `
         CASE a.position_rank
+          WHEN 'CEO' THEN 0
           WHEN 'TEAM_LEADER' THEN 1
           WHEN 'DIRECTOR' THEN 2
           WHEN 'GENERAL_MANAGER' THEN 3
