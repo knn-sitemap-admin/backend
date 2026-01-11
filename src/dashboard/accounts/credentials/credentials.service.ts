@@ -413,18 +413,60 @@ export class CredentialsService {
   }
 
   async setCredentialDisabled(id: string, disabled: boolean) {
-    const cred = await this.accountCredentialRepository.findOne({
-      where: { id },
+    return this.dataSource.transaction(async (tx) => {
+      const credRepo = tx.getRepository(AccountCredential);
+      const accRepo = tx.getRepository(Account);
+      const teamRepo = tx.getRepository(Team);
+      const tmRepo = tx.getRepository(TeamMember);
+
+      const cred = await credRepo.findOne({ where: { id: String(id) } });
+      if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+      // credential disable 토글
+      cred.is_disabled = disabled;
+      await credRepo.save(cred);
+
+      // account 조회
+      const account = await accRepo.findOne({
+        where: { credential_id: String(cred.id) },
+        select: ['id', 'position_rank'],
+      });
+
+      // 직급이 팀장인 속한 팀 삭제
+      if (disabled && account?.position_rank === PositionRank.TEAM_LEADER) {
+        const myTeams = await tmRepo
+          .createQueryBuilder('tm')
+          .select(['tm.team_id AS teamId'])
+          .where('tm.account_id = :aid', { aid: String(account.id) })
+          .groupBy('tm.team_id')
+          .getRawMany<{ teamId: string }>();
+
+        const teamIds = myTeams.map((r) => String(r.teamId));
+
+        if (teamIds.length > 0) {
+          // 팀원 전부 방출
+          await tmRepo
+            .createQueryBuilder()
+            .delete()
+            .from(TeamMember)
+            .where('team_id IN (:...tids)', { tids: teamIds })
+            .execute();
+
+          // 팀 하드 삭제
+          await teamRepo
+            .createQueryBuilder()
+            .delete()
+            .from(Team)
+            .where('id IN (:...tids)', { tids: teamIds })
+            .execute();
+        }
+      }
+
+      // 세션 즉시 끊기
+      await this.deactivateAllSessionsByCredentialId(String(cred.id));
+
+      return { id: cred.id, disabled: cred.is_disabled };
     });
-    if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
-
-    cred.is_disabled = disabled;
-    await this.accountCredentialRepository.save(cred);
-
-    // 추가: 해당 credential의 모든 세션 즉시 끊기
-    await this.deactivateAllSessionsByCredentialId(String(cred.id));
-
-    return { id: cred.id, disabled: cred.is_disabled };
   }
 
   async setCredentialRole(id: string, role: 'admin' | 'manager' | 'staff') {
