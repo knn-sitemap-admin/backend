@@ -14,6 +14,7 @@ export enum PositionRank {
   GENERAL_MANAGER = 'GENERAL_MANAGER', // 부장
   TEAM_LEADER = 'TEAM_LEADER', // 팀장
   DIRECTOR = 'DIRECTOR', // 실장
+  CEO = 'CEO', // 대표이사
 }
 
 @Entity('accounts')

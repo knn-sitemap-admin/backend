@@ -18,13 +18,22 @@ export class PinOptionsService {
     const repo = manager.getRepository(PinOption);
     const exist = await repo.findOne({ where: { pinId } });
     if (exist) return;
-    await repo.save(repo.create({ pinId })); // DB default=false가 채워짐
+
+    await repo.save(
+      repo.create({
+        pinId,
+        kitchenLayout: null,
+        fridgeSlot: null,
+        sofaSize: null,
+        livingRoomView: null,
+      }),
+    );
   }
 
   async upsertWithManager(
     manager: EntityManager,
     pinId: string,
-    dto: CreatePinOptionsDto, // 이름은 Create지만 "patch"로 동작
+    dto: CreatePinOptionsDto,
   ): Promise<void> {
     const repo = manager.getRepository(PinOption);
     const exist = await repo.findOne({ where: { pinId } });
@@ -32,6 +41,7 @@ export class PinOptionsService {
     if (!exist) {
       const created = repo.create({
         pinId,
+
         hasAircon: dto.hasAircon ?? false,
         hasFridge: dto.hasFridge ?? false,
         hasWasher: dto.hasWasher ?? false,
@@ -40,7 +50,18 @@ export class PinOptionsService {
         hasAirPurifier: dto.hasAirPurifier ?? false,
         isDirectLease: dto.isDirectLease ?? false,
         extraOptionsText: dto.extraOptionsText ?? null,
+
+        kitchenLayout: dto.kitchenLayout ?? null,
+        fridgeSlot: dto.fridgeSlot ?? null,
+        sofaSize: dto.sofaSize ?? null,
+        livingRoomView: dto.livingRoomView ?? null,
+
+        hasIslandTable: dto.hasIslandTable ?? false,
+        hasKitchenWindow: dto.hasKitchenWindow ?? false,
+        hasCityGas: dto.hasCityGas ?? false,
+        hasInduction: dto.hasInduction ?? false,
       });
+
       await repo.save(created);
       return;
     }
@@ -59,13 +80,20 @@ export class PinOptionsService {
       exist.extraOptionsText = dto.extraOptionsText || null;
     }
 
-    await repo.save(exist);
-  }
+    if (dto.kitchenLayout !== undefined)
+      exist.kitchenLayout = dto.kitchenLayout ?? null;
+    if (dto.fridgeSlot !== undefined) exist.fridgeSlot = dto.fridgeSlot ?? null;
+    if (dto.sofaSize !== undefined) exist.sofaSize = dto.sofaSize ?? null;
+    if (dto.livingRoomView !== undefined)
+      exist.livingRoomView = dto.livingRoomView ?? null;
 
-  async deleteByPinWithManager(
-    manager: EntityManager,
-    pinId: string,
-  ): Promise<void> {
-    await manager.getRepository(PinOption).delete({ pinId });
+    if (dto.hasIslandTable !== undefined)
+      exist.hasIslandTable = dto.hasIslandTable;
+    if (dto.hasKitchenWindow !== undefined)
+      exist.hasKitchenWindow = dto.hasKitchenWindow;
+    if (dto.hasCityGas !== undefined) exist.hasCityGas = dto.hasCityGas;
+    if (dto.hasInduction !== undefined) exist.hasInduction = dto.hasInduction;
+
+    await repo.save(exist);
   }
 }
