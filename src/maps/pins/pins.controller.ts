@@ -69,8 +69,13 @@ export class PinsController {
    */
   @Get(':id')
   async getOne(@Param('id') id: string) {
-    const pin = await this.pinsService.findDetail(id);
-    return { data: pin };
+    try {
+      const pin = await this.pinsService.findDetail(id);
+      return { data: pin };
+    } catch (e) {
+      console.error('[GET /pins/:id ERROR]', e);
+      throw e;
+    }
   }
 
   /**
