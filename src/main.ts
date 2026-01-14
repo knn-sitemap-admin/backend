@@ -139,24 +139,45 @@ async function bootstrap() {
   const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
   const ttlMs = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
-  app.use(
-    session({
-      store,
-      secret: process.env.SESSION_SECRET ?? 'change_this_secret',
-      resave: false,
-      saveUninitialized: false,
+  const sessionMiddlewareLocal = session({
+    store,
+    secret: process.env.SESSION_SECRET ?? 'change_this_secret',
+    resave: false,
+    saveUninitialized: false,
+    proxy: true,
+    cookie: {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: ttlMs,
+    },
+  });
 
-      proxy: true,
+  const sessionMiddlewareCrossSite = session({
+    store,
+    secret: process.env.SESSION_SECRET ?? 'change_this_secret',
+    resave: false,
+    saveUninitialized: false,
+    proxy: true,
+    cookie: {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      path: '/',
+      maxAge: ttlMs,
+    },
+  });
 
-      cookie: {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? 'none' : 'lax',
-        path: '/',
-        maxAge: ttlMs,
-      },
-    }),
-  );
+  app.use((req, res, next) => {
+    const origin = String(req.headers.origin ?? '');
+    const isLocalOrigin =
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('http://127.0.0.1');
+
+    if (isLocalOrigin) return sessionMiddlewareLocal(req, res, next);
+    return sessionMiddlewareCrossSite(req, res, next);
+  });
 
   //스웨거
   const config = new DocumentBuilder()
