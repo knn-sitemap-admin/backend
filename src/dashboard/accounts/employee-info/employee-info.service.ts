@@ -31,6 +31,7 @@ type UpsertInput = {
   profileUrl?: string;
 
   positionRank?: PositionRank;
+  teamName?: string;
 
   docUrlResidentRegistration?: string | null;
   docUrlResidentAbstract?: string | null;
@@ -95,6 +96,7 @@ export class EmployeeInfoService {
       profileUrl: dto.profileUrl?.trim() ?? undefined,
 
       positionRank: dto.positionRank,
+      teamName: dto.teamName?.trim() ?? undefined,
 
       docUrlResidentRegistration:
         dto.docUrlResidentRegistration?.trim() ?? undefined,
@@ -248,6 +250,9 @@ export class EmployeeInfoService {
         }
 
         // 4-2) TEAM_LEADER 승급/강등 처리
+        // =========================
+        // 4-2) TEAM_LEADER 승급/강등 처리
+        // =========================
         becameTeamLeader =
           nextRank === 'TEAM_LEADER' && prevRank !== 'TEAM_LEADER';
         leftTeamLeader =
@@ -267,8 +272,16 @@ export class EmployeeInfoService {
             where: { leader_account_id: String(saved.id) },
           });
 
+          const requestedTeamName =
+            input.teamName !== undefined
+              ? input.teamName
+                ? String(input.teamName).trim()
+                : null
+              : undefined;
+
           if (!myTeam) {
             const baseName = saved.name ? `${saved.name} 팀` : `팀-${saved.id}`;
+            const baseFinal = requestedTeamName ?? baseName;
 
             const makeCode = () =>
               `TL-${saved.id}-${Date.now().toString(36)}`.toUpperCase();
@@ -280,11 +293,14 @@ export class EmployeeInfoService {
               code = makeCode();
             }
 
-            let finalName = baseName;
+            // 팀명 중복 처리
+            let finalName = baseFinal;
+            if (!finalName) finalName = baseName; // null/빈값 방어(정책상 팀명 비우기 금지)
+
             const nameDup = await teamRepo.findOne({
               where: { name: finalName },
             });
-            if (nameDup) finalName = `${baseName}-${saved.id}`;
+            if (nameDup) finalName = `${finalName}-${saved.id}`;
 
             myTeam = await teamRepo.save(
               teamRepo.create({
@@ -295,8 +311,27 @@ export class EmployeeInfoService {
                 is_active: true,
               }),
             );
-          } else if (!myTeam.is_active) {
-            myTeam.is_active = true;
+          } else {
+            // 기존 팀이 있으면 활성화 + (요청이 있으면) 팀명 갱신
+            if (!myTeam.is_active) {
+              myTeam.is_active = true;
+            }
+
+            if (requestedTeamName !== undefined) {
+              // null/빈값은 무시(팀명은 비울 수 없게)
+              if (requestedTeamName) {
+                // 팀명 중복이면 suffix 붙여서 저장
+                let nextName = requestedTeamName;
+                const dup = await teamRepo.findOne({
+                  where: { name: nextName },
+                });
+                if (dup && String(dup.id) !== String(myTeam.id)) {
+                  nextName = `${requestedTeamName}-${saved.id}`;
+                }
+                myTeam.name = nextName;
+              }
+            }
+
             myTeam = await teamRepo.save(myTeam);
           }
 
@@ -331,31 +366,6 @@ export class EmployeeInfoService {
               tid: String(myTeam.id),
             })
             .execute();
-        }
-
-        if (leftTeamLeader) {
-          const myTeam = await teamRepo.findOne({
-            where: { leader_account_id: String(saved.id) },
-          });
-
-          if (myTeam) {
-            myTeam.is_active = false;
-            await teamRepo.save(myTeam);
-
-            await tmRepo
-              .createQueryBuilder()
-              .delete()
-              .from(TeamMember)
-              .where(
-                'team_id = :tid AND account_id = :aid AND team_role = :r',
-                {
-                  tid: String(myTeam.id),
-                  aid: String(saved.id),
-                  r: 'manager',
-                },
-              )
-              .execute();
-          }
         }
 
         // 4-3) 세션 즉시 종료(권한 변경 반영)
