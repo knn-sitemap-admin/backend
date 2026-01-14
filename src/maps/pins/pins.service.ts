@@ -1,10 +1,18 @@
 import {
   BadRequestException,
+  HttpException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets, DataSource, DeepPartial } from 'typeorm';
+import {
+  Repository,
+  Brackets,
+  DataSource,
+  DeepPartial,
+  QueryFailedError,
+} from 'typeorm';
 import { MapPinsDto } from './dto/map-pins.dto';
 import { Pin, PinBadge } from './entities/pin.entity';
 import { CreatePinDto } from './dto/create-pin.dto';
@@ -384,62 +392,100 @@ export class PinsService {
   }
 
   async findDetail(id: string): Promise<PinResponseDto> {
-    const pin = await this.pinRepository.findOne({
-      where: { id },
-      relations: ['options', 'directions', 'areaGroups', 'units'],
-    });
-
-    if (!pin) {
-      throw new NotFoundException('핀 없음');
-    }
-
-    const accountRepo = this.dataSource.getRepository(Account);
-
-    let creator: PinPersonInfo | null = null;
-    let surveyor: PinPersonInfo | null = null;
-    let lastEditor: PinPersonInfo | null = null;
-
-    if (pin.creatorId) {
-      const acc = await accountRepo.findOne({
-        where: { id: String(pin.creatorId) },
+    try {
+      const pin = await this.pinRepository.findOne({
+        where: { id },
+        relations: ['options', 'directions', 'areaGroups', 'units'],
       });
-      if (acc) {
-        creator = {
-          id: String(acc.id),
-          name: acc.name ?? null,
-        };
-      }
-    }
 
-    if (pin.surveyedBy) {
-      const acc = await accountRepo.findOne({
-        where: { id: String(pin.surveyedBy) },
+      if (!pin) {
+        throw new NotFoundException('핀 없음');
+      }
+
+      const accountRepo = this.dataSource.getRepository(Account);
+
+      let creator: PinPersonInfo | null = null;
+      let surveyor: PinPersonInfo | null = null;
+      let lastEditor: PinPersonInfo | null = null;
+
+      // NOTE: bigint/number/string 어떤 타입이 와도 안전하게 문자열로 변환
+      const toIdString = (v: unknown): string | null => {
+        if (v === null || v === undefined) return null;
+        try {
+          return String(v);
+        } catch {
+          return null;
+        }
+      };
+
+      const creatorId = toIdString((pin as any).creatorId);
+      if (creatorId) {
+        const acc = await accountRepo.findOne({ where: { id: creatorId } });
+        if (acc) {
+          creator = { id: String(acc.id), name: acc.name ?? null };
+        }
+      }
+
+      const surveyedBy = toIdString((pin as any).surveyedBy);
+      if (surveyedBy) {
+        const acc = await accountRepo.findOne({ where: { id: surveyedBy } });
+        if (acc) {
+          surveyor = { id: String(acc.id), name: acc.name ?? null };
+        }
+      }
+
+      const lastEditorId = toIdString((pin as any).lastEditorId);
+      if (lastEditorId) {
+        const acc = await accountRepo.findOne({ where: { id: lastEditorId } });
+        if (acc) {
+          lastEditor = { id: String(acc.id), name: acc.name ?? null };
+        }
+      }
+
+      const dto = PinResponseDto.fromEntity(pin, {
+        creator,
+        surveyor,
+        lastEditor,
       });
-      if (acc) {
-        surveyor = {
-          id: String(acc.id),
-          name: acc.name ?? null,
-        };
-      }
-    }
 
-    if (pin.lastEditorId) {
-      const acc = await accountRepo.findOne({
-        where: { id: String(pin.lastEditorId) },
+      // 디버그/안전장치: 응답 직렬화 단계에서 터질 에러(BigInt/circular)를 여기서 잡아냄
+      // - 운영에선 원인 잡히면 제거해도 됨
+      try {
+        JSON.stringify(dto);
+      } catch (serr) {
+        console.error('[PinService.findDetail SERIALIZE FAIL]', {
+          id,
+          err: serr,
+        });
+        throw new InternalServerErrorException('응답 직렬화 실패');
+      }
+
+      return dto;
+    } catch (e) {
+      // 무조건 스택 찍기
+      console.error('[PinService.findDetail ERROR]', {
+        id,
+        err: e,
       });
-      if (acc) {
-        lastEditor = {
-          id: String(acc.id),
-          name: acc.name ?? null,
-        };
-      }
-    }
 
-    return PinResponseDto.fromEntity(pin, {
-      creator,
-      surveyor,
-      lastEditor,
-    });
+      // 이미 의도된 HttpException(404 등)은 그대로 전달
+      if (e instanceof HttpException) {
+        throw e;
+      }
+
+      // TypeORM 쿼리 실패면 원인 메시지를 좀 더 구체적으로 로그에 남김
+      if (e instanceof QueryFailedError) {
+        console.error('[PinService.findDetail QueryFailedError]', {
+          id,
+          message: (e as any).message,
+          driverError: (e as any).driverError,
+        });
+        throw new InternalServerErrorException('DB 조회 실패');
+      }
+
+      // 나머지는 전부 500
+      throw new InternalServerErrorException('핀 상세 조회 실패');
+    }
   }
 
   async update(id: string, dto: UpdatePinDto, meCredentialId: string | null) {
