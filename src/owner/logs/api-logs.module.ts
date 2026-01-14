@@ -10,6 +10,7 @@ import { ApiErrorLogsController } from './api-error-logs.controller';
 
 import { ApiLogExportService } from './services/api-log-export.service';
 import { ApiLogsExportController } from './api-logs-export.controller';
+import { ApiLogCleanupService } from './services/api-log-cleanup.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ApiRequestLog])],
@@ -23,6 +24,7 @@ import { ApiLogsExportController } from './api-logs-export.controller';
     ApiLogQueryService,
     ApiErrorLogQueryService,
     ApiLogExportService,
+    ApiLogCleanupService,
   ],
 })
 export class ApiLogsModule implements NestModule {
