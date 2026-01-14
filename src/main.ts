@@ -20,6 +20,8 @@ async function bootstrap() {
 
   const expressApp = app.getHttpAdapter().getInstance();
 
+  const isProd = process.env.NODE_ENV === 'production';
+
   app.setBaseViewsDir(join(__dirname, '..', 'views'));
   app.setViewEngine('ejs');
 
@@ -60,12 +62,35 @@ async function bootstrap() {
   //   allowedHeaders: ['Content-Type', 'Authorization'],
   // });
 
+  // const corsOrigins = (process.env.PAGE_URL ?? '')
+  //   .split(',')
+  //   .map((s) => s.trim())
+  //   .filter(Boolean);
+  // app.enableCors({
+  //   origin: corsOrigins.length ? corsOrigins : false,
+  //   credentials: true,
+  // });
+
   const corsOrigins = (process.env.PAGE_URL ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+
+  // 로컬 테스트용 origin을 코드에서만 추가
+  const devExtraOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ];
+
+  const finalOrigins = isProd
+    ? corsOrigins
+    : Array.from(new Set([...corsOrigins, ...devExtraOrigins]));
+
   app.enableCors({
-    origin: corsOrigins.length ? corsOrigins : false,
+    // PAGE_URL이 비어도 로컬 테스트를 위해 dev에서는 true로 열어둠
+    origin: finalOrigins.length ? finalOrigins : isProd ? false : true,
     credentials: true,
   });
 
@@ -125,8 +150,8 @@ async function bootstrap() {
 
       cookie: {
         httpOnly: true,
-        secure: true,
-        sameSite: 'none',
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
         path: '/',
         maxAge: ttlMs,
       },
