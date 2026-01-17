@@ -7,6 +7,7 @@ export class PinDraftDetailDto {
   addressLine!: string;
   name: string | null;
   contactMainPhone: string | null;
+  contactSubPhone: string | null;
   createdAt!: Date;
 
   static fromEntity(d: PinDraft): PinDraftDetailDto {
@@ -17,6 +18,7 @@ export class PinDraftDetailDto {
     dto.addressLine = d.addressLine;
     dto.name = d.name ?? null;
     dto.contactMainPhone = d.contactMainPhone ?? null;
+    dto.contactSubPhone = d.contactSubPhone ?? null;
     dto.createdAt = d.createdAt;
     return dto;
   }

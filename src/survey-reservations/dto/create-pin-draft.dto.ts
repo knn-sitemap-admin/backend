@@ -13,4 +13,9 @@ export class CreatePinDraftDto {
   @IsString()
   @Length(1, 50)
   contactMainPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 50)
+  contactSubPhone?: string;
 }

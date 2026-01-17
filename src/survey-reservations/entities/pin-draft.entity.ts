@@ -35,6 +35,14 @@ export class PinDraft {
   })
   contactMainPhone: string | null = null;
 
+  @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'contact_sub_phone',
+    nullable: true,
+  })
+  contactSubPhone!: string | null;
+
   @CreateDateColumn({ type: 'datetime', name: 'created_at' })
   createdAt!: Date;
 

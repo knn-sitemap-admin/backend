@@ -40,6 +40,7 @@ export class PinDraftsService {
       addressLine: dto.addressLine,
       name: dto.name ?? null,
       contactMainPhone: dto.contactMainPhone ?? null,
+      contactSubPhone: dto.contactSubPhone ?? null,
       isActive: true,
       creatorId: creatorAccountId,
     });
