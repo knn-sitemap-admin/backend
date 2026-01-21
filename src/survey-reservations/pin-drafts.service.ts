@@ -25,33 +25,69 @@ export class PinDraftsService {
   }
 
   async create(dto: CreatePinDraftDto, meCredentialId: string | null) {
-    if (!Number.isFinite(dto.lat) || !Number.isFinite(dto.lng)) {
-      throw new BadRequestException('잘못된 좌표');
+    try {
+      if (!Number.isFinite(dto.lat) || !Number.isFinite(dto.lng)) {
+        throw new BadRequestException('잘못된 좌표');
+      }
+
+      const lat = Number(dto.lat.toFixed(7));
+      const lng = Number(dto.lng.toFixed(7));
+
+      const creatorAccountId = meCredentialId
+        ? await this.resolveMyAccountId(meCredentialId)
+        : null;
+
+      const repo = this.ds.getRepository(PinDraft);
+      const draft = repo.create({
+        lat: String(lat),
+        lng: String(lng),
+        addressLine: dto.addressLine,
+        name: dto.name ?? null,
+        contactMainPhone: dto.contactMainPhone ?? null,
+        contactSubPhone: dto.contactSubPhone ?? null,
+        isActive: true,
+        creatorId: creatorAccountId,
+      });
+
+      await repo.save(draft);
+
+      return { draftId: draft.id };
+    } catch (err: any) {
+      console.error('[PinDraftsService.create] ERROR');
+      console.error('meCredentialId:', meCredentialId);
+      console.error('dto:', dto);
+
+      // 변환값까지 확인
+      try {
+        const lat = Number.isFinite(dto?.lat)
+          ? Number(dto.lat.toFixed(7))
+          : dto?.lat;
+        const lng = Number.isFinite(dto?.lng)
+          ? Number(dto.lng.toFixed(7))
+          : dto?.lng;
+        console.error('latFixed7:', lat, 'lngFixed7:', lng);
+      } catch (e) {
+        console.error('lat/lng toFixed failed:', e);
+      }
+
+      console.error('err.name:', err?.name);
+      console.error('err.message:', err?.message);
+      if (err?.stack) console.error(err.stack);
+
+      // TypeORM QueryFailedError가 보통 여기로 들어옴
+      console.error('err.query:', err?.query);
+      console.error('err.parameters:', err?.parameters);
+
+      const d = err?.driverError;
+      if (d) {
+        console.error('driverError.code:', d.code);
+        console.error('driverError.errno:', d.errno);
+        console.error('driverError.sqlState:', d.sqlState);
+        console.error('driverError.sqlMessage:', d.sqlMessage);
+      }
+
+      throw err;
     }
-
-    // 추가: DB decimal(10,7) 맞추기 (소수 7자리로 고정)
-    const lat = Number(dto.lat.toFixed(7));
-    const lng = Number(dto.lng.toFixed(7));
-
-    const creatorAccountId = meCredentialId
-      ? await this.resolveMyAccountId(meCredentialId)
-      : null;
-
-    const repo = this.ds.getRepository(PinDraft);
-    const draft = repo.create({
-      lat: String(lat),
-      lng: String(lng),
-      addressLine: dto.addressLine,
-      name: dto.name ?? null,
-      contactMainPhone: dto.contactMainPhone ?? null,
-      contactSubPhone: dto.contactSubPhone ?? null,
-      isActive: true,
-      creatorId: creatorAccountId,
-    });
-
-    await repo.save(draft);
-
-    return { draftId: draft.id };
   }
 
   async findDraftDetail(id: string): Promise<PinDraftDetailDto> {
