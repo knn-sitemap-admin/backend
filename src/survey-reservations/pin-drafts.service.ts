@@ -29,14 +29,18 @@ export class PinDraftsService {
       throw new BadRequestException('잘못된 좌표');
     }
 
+    // 추가: DB decimal(10,7) 맞추기 (소수 7자리로 고정)
+    const lat = Number(dto.lat.toFixed(7));
+    const lng = Number(dto.lng.toFixed(7));
+
     const creatorAccountId = meCredentialId
       ? await this.resolveMyAccountId(meCredentialId)
       : null;
 
     const repo = this.ds.getRepository(PinDraft);
     const draft = repo.create({
-      lat: String(dto.lat),
-      lng: String(dto.lng),
+      lat: String(lat),
+      lng: String(lng),
       addressLine: dto.addressLine,
       name: dto.name ?? null,
       contactMainPhone: dto.contactMainPhone ?? null,
