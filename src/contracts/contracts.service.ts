@@ -265,9 +265,6 @@ export class ContractsService {
     role: Role,
     dto: ListContractsDto,
   ): Promise<{ items: ListItem[]; total: number }> {
-    if (role === 'staff')
-      throw new ForbiddenException('전체 리스트 권한이 없습니다.');
-
     const { page, size, orderBy, orderDir } = this.normalizePaging(dto);
 
     const qb = this.contractRepo
