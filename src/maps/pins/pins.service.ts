@@ -40,6 +40,7 @@ type DraftMarker = {
   id: string;
   lat: number;
   lng: number;
+  name: string;
   draftState: 'BEFORE' | 'SCHEDULED';
 };
 
@@ -165,6 +166,7 @@ export class PinsService {
           id: String(d.id),
           lat: Number(d.lat),
           lng: Number(d.lng),
+          name: d.name ?? null,
           draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
         }));
       }

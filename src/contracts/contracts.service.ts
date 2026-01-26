@@ -500,18 +500,17 @@ export class ContractsService {
     if (!contract) throw new NotFoundException('계약을 찾을 수 없습니다.');
 
     if (role === 'staff') {
-      const assigneeExists = await this.assigneeRepo.exist({
-        where: {
-          contract: { id: Number(id) } as any,
-          account: { id: String(me.id) } as any,
-        },
-      });
+      // createdByAccountId/RelationId에 의존하지 않고 DB 컬럼 기준으로 접근 가능 여부를 확정
+      const ok = await this.contractRepo
+        .createQueryBuilder('c')
+        .leftJoin('contract_assignees', 'a', 'a.contract_id = c.id')
+        .where('c.id = :id', { id: Number(id) })
+        .andWhere('(c.created_by_account_id = :me OR a.account_id = :me)', {
+          me: String(me.id),
+        })
+        .getExists();
 
-      if (
-        !this.canAccessContractAsStaff(String(me.id), contract, assigneeExists)
-      ) {
-        throw new ForbiddenException('접근 권한이 없습니다.');
-      }
+      if (!ok) throw new ForbiddenException('접근 권한이 없습니다.');
     }
 
     const [assignees, files] = await Promise.all([
@@ -562,7 +561,6 @@ export class ContractsService {
         isDisabled: createdByMasked.isDisabled,
       },
 
-      // 원본 바디 + contractNo
       customerName: contract.customerName,
       customerPhone: contract.customerPhone,
 
