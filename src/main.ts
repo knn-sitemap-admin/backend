@@ -20,6 +20,8 @@ async function bootstrap() {
 
   const expressApp = app.getHttpAdapter().getInstance();
 
+  const isProd = process.env.NODE_ENV === 'production';
+
   app.setBaseViewsDir(join(__dirname, '..', 'views'));
   app.setViewEngine('ejs');
 
@@ -60,12 +62,35 @@ async function bootstrap() {
   //   allowedHeaders: ['Content-Type', 'Authorization'],
   // });
 
+  // const corsOrigins = (process.env.PAGE_URL ?? '')
+  //   .split(',')
+  //   .map((s) => s.trim())
+  //   .filter(Boolean);
+  // app.enableCors({
+  //   origin: corsOrigins.length ? corsOrigins : false,
+  //   credentials: true,
+  // });
+
   const corsOrigins = (process.env.PAGE_URL ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+
+  // 로컬 테스트용 origin을 코드에서만 추가
+  const devExtraOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ];
+
+  const finalOrigins = isProd
+    ? corsOrigins
+    : Array.from(new Set([...corsOrigins, ...devExtraOrigins]));
+
   app.enableCors({
-    origin: corsOrigins.length ? corsOrigins : false,
+    // PAGE_URL이 비어도 로컬 테스트를 위해 dev에서는 true로 열어둠
+    origin: finalOrigins.length ? finalOrigins : isProd ? false : true,
     credentials: true,
   });
 
@@ -114,24 +139,45 @@ async function bootstrap() {
   const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
   const ttlMs = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
-  app.use(
-    session({
-      store,
-      secret: process.env.SESSION_SECRET ?? 'change_this_secret',
-      resave: false,
-      saveUninitialized: false,
+  const sessionMiddlewareLocal = session({
+    store,
+    secret: process.env.SESSION_SECRET ?? 'change_this_secret',
+    resave: false,
+    saveUninitialized: false,
+    proxy: true,
+    cookie: {
+      httpOnly: true,
+      secure: false,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: ttlMs,
+    },
+  });
 
-      proxy: true,
+  const sessionMiddlewareCrossSite = session({
+    store,
+    secret: process.env.SESSION_SECRET ?? 'change_this_secret',
+    resave: false,
+    saveUninitialized: false,
+    proxy: true,
+    cookie: {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      path: '/',
+      maxAge: ttlMs,
+    },
+  });
 
-      cookie: {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        path: '/',
-        maxAge: ttlMs,
-      },
-    }),
-  );
+  app.use((req, res, next) => {
+    const origin = String(req.headers.origin ?? '');
+    const isLocalOrigin =
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('http://127.0.0.1');
+
+    if (isLocalOrigin) return sessionMiddlewareLocal(req, res, next);
+    return sessionMiddlewareCrossSite(req, res, next);
+  });
 
   //스웨거
   const config = new DocumentBuilder()

@@ -48,6 +48,7 @@ type DraftMarker = {
   id: string;
   lat: number;
   lng: number;
+  name: string;
   draftState: 'BEFORE' | 'SCHEDULED';
 };
 
@@ -136,7 +137,12 @@ export class PinsService {
 
       const draftsRaw = await draftRepo
         .createQueryBuilder('d')
-        .select(['d.id AS id', 'd.lat AS lat', 'd.lng AS lng'])
+        .select([
+          'd.id AS id',
+          'd.lat AS lat',
+          'd.lng AS lng',
+          'd.name AS name',
+        ])
         .where('d.isActive = 1')
         .andWhere('CAST(d.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
           swLat,
@@ -168,6 +174,7 @@ export class PinsService {
           id: String(d.id),
           lat: Number(d.lat),
           lng: Number(d.lng),
+          name: d.name ?? null,
           draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
         }));
       }
