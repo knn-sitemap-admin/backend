@@ -36,7 +36,7 @@ export class TeamController {
     return { message: '팀 목록', data: items };
   }
 
-  @Roles(SystemRole.ADMIN, SystemRole.MANAGER)
+  @Roles(SystemRole.ADMIN, SystemRole.MANAGER, SystemRole.STAFF)
   @Get(':id')
   async get(@Param('id') id: string) {
     const team = await this.service.get(id);
