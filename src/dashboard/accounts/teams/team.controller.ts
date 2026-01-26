@@ -29,7 +29,7 @@ export class TeamController {
     return { message: '팀 생성', data: created };
   }
 
-  @Roles(SystemRole.ADMIN, SystemRole.MANAGER)
+  @Roles(SystemRole.ADMIN, SystemRole.MANAGER, SystemRole.STAFF)
   @Get()
   async list() {
     const items = await this.service.list();
