@@ -490,16 +490,12 @@ export class EmployeeInfoService {
   async getEmployeePicklistExcludeAdminAndMe(
     myCredentialId: string,
   ): Promise<EmployeePickItemDto[]> {
-    const myAccountId = await this.resolveMyAccountId(myCredentialId);
-
     const rows = await this.accountRepository
       .createQueryBuilder('a')
       .innerJoin(AccountCredential, 'c', 'c.id = a.credential_id')
       .select(['a.id AS accountId', 'a.name AS name'])
       .where('a.is_deleted = 0')
       .andWhere('c.is_disabled = 0')
-      .andWhere('c.role != :admin', { admin: 'admin' })
-      .andWhere('a.id != :me', { me: myAccountId })
       .orderBy('a.name', 'ASC')
       .getRawMany<{ accountId: string; name: string }>();
 
