@@ -288,6 +288,20 @@ export class PinsService {
       }
 
       // 4) 핀 저장
+      const buildingTypes =
+        dto.buildingTypes !== undefined
+          ? (dto.buildingTypes ?? null)
+          : dto.buildingType
+            ? [dto.buildingType]
+            : null;
+
+      const parkingTypes =
+        dto.parkingTypes !== undefined
+          ? (dto.parkingTypes ?? null)
+          : dto.parkingType
+            ? [dto.parkingType]
+            : null;
+
       const pin = pinRepo.create({
         lat: String(dto.lat),
         lng: String(dto.lng),
@@ -298,12 +312,19 @@ export class PinsService {
         completionDate: dto.completionDate
           ? new Date(dto.completionDate)
           : null,
+
+        // 레거시
         buildingType: dto.buildingType ?? null,
+        parkingType: dto.parkingType ?? null,
+
+        // 신규
+        buildingTypes,
+        parkingTypes,
+
         hasElevator: dto.hasElevator ?? null,
         totalHouseholds: dto.totalHouseholds ?? null,
         totalParkingSlots: dto.totalParkingSlots ?? null,
         registrationTypeId: dto.registrationTypeId ?? null,
-        parkingType: dto.parkingType ?? null,
         parkingGrade: dto.parkingGrade ?? null,
         slopeGrade: dto.slopeGrade ?? null,
         structureGrade: dto.structureGrade ?? null,

@@ -158,6 +158,10 @@ export class PinResponseDto {
   registrationTypeId!: number | null;
   parkingType!: string | null;
   parkingGrade!: string | null;
+
+  buildingTypes!: string[] | null;
+  parkingTypes!: string[] | null;
+
   slopeGrade!: string | null;
   structureGrade!: string | null;
   hasElevator!: boolean | null;
@@ -233,6 +237,9 @@ export class PinResponseDto {
       slopeGrade: entity.slopeGrade ?? null,
       structureGrade: entity.structureGrade ?? null,
       hasElevator: toBoolOrNull(entity.hasElevator),
+
+      buildingTypes: entity.buildingTypes ?? null,
+      parkingTypes: entity.parkingTypes ?? null,
 
       ageType,
 

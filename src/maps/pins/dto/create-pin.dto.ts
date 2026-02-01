@@ -89,14 +89,20 @@ export class CreatePinDto {
   @Min(0)
   minRealMoveInCost?: number | null;
 
-  // 추가된 필드들
   @IsOptional()
   @Type(() => Date)
   completionDate?: Date | null;
 
+  // [레거시 단일값] 유지 (호환)
   @IsOptional()
   @IsEnum(['APT', 'OP', '주택', '근생', '도생'])
   buildingType?: BuildingType | null;
+
+  // [신규 배열]
+  @IsOptional()
+  @IsArray()
+  @IsEnum(['APT', 'OP', '주택', '근생', '도생'], { each: true })
+  buildingTypes?: BuildingType[] | null;
 
   @IsOptional()
   @IsInt()
@@ -112,10 +118,17 @@ export class CreatePinDto {
   @IsInt()
   registrationTypeId?: number | null;
 
-  //주차유형 문자열로 받기
+  // [레거시 단일값] 유지
   @IsOptional()
   @IsString()
   parkingType?: string | null;
+
+  // [신규 배열]
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true })
+  parkingTypes?: string[] | null;
 
   @IsOptional()
   @IsEnum(['1', '2', '3', '4', '5'])
@@ -149,7 +162,6 @@ export class CreatePinDto {
   @IsString()
   privateMemo?: string | null;
 
-  // 옵션/유닛/방향/면적그룹
   @IsOptional()
   @ValidateNested()
   @Type(() => CreatePinOptionsDto)
