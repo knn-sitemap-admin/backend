@@ -520,6 +520,17 @@ export class PinsService {
         pin.parkingType = dto.parkingType ?? null;
       }
 
+      if (dto.buildingTypes !== undefined) {
+        // null을 보내면 "비우기"로 해석할지, "거부"할지 정책 선택
+        // 보통은 "비우기"면 []가 맞고, null은 금지하는게 안전함.
+        pin.buildingTypes = dto.buildingTypes;
+      }
+
+      // parkingTypes (배열)
+      if (dto.parkingTypes !== undefined) {
+        pin.parkingTypes = dto.parkingTypes;
+      }
+
       if (dto.parkingGrade !== undefined) {
         pin.parkingGrade = dto.parkingGrade ?? null;
       }
