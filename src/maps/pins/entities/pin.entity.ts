@@ -75,6 +75,14 @@ export class Pin {
   })
   buildingType: BuildingType | null = null;
 
+  //새로 추가
+  @Column({
+    type: 'json',
+    name: 'building_types',
+    nullable: true,
+  })
+  buildingTypes: BuildingType[] | null = null;
+
   @Column({ type: 'boolean', name: 'has_elevator', nullable: true })
   hasElevator: boolean | null = null;
 
@@ -99,6 +107,14 @@ export class Pin {
     nullable: true,
   })
   parkingType: string | null = null;
+
+  //새로 추가
+  @Column({
+    type: 'json',
+    name: 'parking_types',
+    nullable: true,
+  })
+  parkingTypes: string[] | null = null;
 
   @Column({
     type: 'varchar',

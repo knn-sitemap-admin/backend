@@ -296,6 +296,20 @@ export class PinsService {
       }
 
       // 4) 핀 저장
+      const buildingTypes =
+        dto.buildingTypes !== undefined
+          ? (dto.buildingTypes ?? null)
+          : dto.buildingType
+            ? [dto.buildingType]
+            : null;
+
+      const parkingTypes =
+        dto.parkingTypes !== undefined
+          ? (dto.parkingTypes ?? null)
+          : dto.parkingType
+            ? [dto.parkingType]
+            : null;
+
       const pin = pinRepo.create({
         lat: String(dto.lat),
         lng: String(dto.lng),
@@ -306,12 +320,19 @@ export class PinsService {
         completionDate: dto.completionDate
           ? new Date(dto.completionDate)
           : null,
+
+        // 레거시
         buildingType: dto.buildingType ?? null,
+        parkingType: dto.parkingType ?? null,
+
+        // 신규
+        buildingTypes,
+        parkingTypes,
+
         hasElevator: dto.hasElevator ?? null,
         totalHouseholds: dto.totalHouseholds ?? null,
         totalParkingSlots: dto.totalParkingSlots ?? null,
         registrationTypeId: dto.registrationTypeId ?? null,
-        parkingType: dto.parkingType ?? null,
         parkingGrade: dto.parkingGrade ?? null,
         slopeGrade: dto.slopeGrade ?? null,
         structureGrade: dto.structureGrade ?? null,
@@ -543,6 +564,17 @@ export class PinsService {
       }
       if (dto.parkingType !== undefined) {
         pin.parkingType = dto.parkingType ?? null;
+      }
+
+      if (dto.buildingTypes !== undefined) {
+        // null을 보내면 "비우기"로 해석할지, "거부"할지 정책 선택
+        // 보통은 "비우기"면 []가 맞고, null은 금지하는게 안전함.
+        pin.buildingTypes = dto.buildingTypes;
+      }
+
+      // parkingTypes (배열)
+      if (dto.parkingTypes !== undefined) {
+        pin.parkingTypes = dto.parkingTypes;
       }
 
       if (dto.parkingGrade !== undefined) {
