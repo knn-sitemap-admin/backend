@@ -1,0 +1,15 @@
+
+.bigBox{
+    width: 80%;
+    height: 150px;
+    display: flex;
+    flex-direction: column;
+    align-content: flex-end;
+    gap: 10px;
+}
+.middleBox{
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+

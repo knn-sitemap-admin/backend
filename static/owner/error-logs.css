@@ -1,0 +1,131 @@
+/* public/owner/error-logs.css */
+
+/* 이 탭 테이블은 무조건 화면 폭 안에 맞춰야 함 */
+#error-logs-table.table-wrap{
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+/* compact 테이블: 고정 레이아웃 + 말줄임 */
+#error-logs-table .table.table--compact{
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+}
+
+/* 기본 셀 스타일 */
+#error-logs-table .table.table--compact th,
+#error-logs-table .table.table--compact td{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+
+/* 기본은 전부 좌측 정렬 */
+#error-logs-table .table th,
+#error-logs-table .table td{
+    text-align: left;
+}
+
+/* =========================
+   테이블 외형 polish
+   ========================= */
+#error-logs-table .table{
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.02);
+}
+
+/* 헤더 */
+#error-logs-table .table thead th{
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 12px 14px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+    background: rgba(11,16,32,0.88);
+}
+
+/* 바디 셀 */
+#error-logs-table .table tbody td{
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 13px;
+    color: rgba(255,255,255,0.86);
+}
+
+/* hover */
+#error-logs-table .table tbody tr:hover td{
+    background: rgba(255,255,255,0.04);
+}
+
+/* 클릭 가능한 row 커서 */
+#error-logs-table .tr{
+    cursor: pointer;
+}
+
+/* =========================
+   컬럼별 미세 조정
+   ========================= */
+/* 시간 */
+#error-logs-table .table th:nth-child(1),
+#error-logs-table .table td:nth-child(1){
+    width: 180px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255,255,255,0.80);
+}
+
+/* cid */
+#error-logs-table .table th:nth-child(2),
+#error-logs-table .table td:nth-child(2){
+    width: 90px;
+    color: rgba(255,255,255,0.72);
+}
+
+/* device */
+#error-logs-table .table th:nth-child(3),
+#error-logs-table .table td:nth-child(3){
+    width: 90px;
+}
+
+/* method */
+#error-logs-table .table th:nth-child(4),
+#error-logs-table .table td:nth-child(4){
+    width: 90px;
+    text-transform: uppercase;
+}
+
+/* path */
+#error-logs-table .table th:nth-child(5),
+#error-logs-table .table td:nth-child(5){
+    width: auto;
+}
+
+/* status */
+#error-logs-table .table th:nth-child(6),
+#error-logs-table .table td:nth-child(6){
+    width: 110px;
+    text-align: center;
+}
+
+/* ms */
+#error-logs-table .table th:nth-child(7),
+#error-logs-table .table td:nth-child(7){
+    width: 90px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 버튼 (엑셀) */
+#error-logs-export.btn{
+    padding: 8px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+}

@@ -1,29 +1,26 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Brackets, DataSource, DeepPartial, In } from 'typeorm';
+import { Repository, Brackets, DataSource, DeepPartial } from 'typeorm';
 import { MapPinsDto } from './dto/map-pins.dto';
-import { Pin } from './entities/pin.entity';
+import { Pin, PinBadge } from './entities/pin.entity';
 import { CreatePinDto } from './dto/create-pin.dto';
 import { UnitsService } from '../units/units.service';
 import { PinDirectionsService } from '../pin-directions/pin-directions.service';
 import { PinOptionsService } from '../pin-options/pin-options.service';
 import { PinAreaGroupsService } from '../pin_area_groups/pin_area_groups.service';
-import { PinResponseDto } from './dto/pin-detail.dto';
+import { PinPersonInfo, PinResponseDto } from './dto/pin-detail.dto';
 import { UpdatePinDto } from './dto/update-pin.dto';
 import { SearchPinsDto } from './dto/search-pins.dto';
 import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
-import { SurveyReservation } from '../../common/entities/survey-reservation.entity';
 import { SurveyReservationsService } from '../../survey-reservations/survey-reservations.service';
+import { Account } from '../../dashboard/accounts/entities/account.entity';
+import { SurveyReservation } from '../../survey-reservations/entities/survey-reservation.entity';
 
-// type ClusterResp = {
-//   mode: 'cluster';
-//   clusters: Array<{ lat: number; lng: number; count: number }>;
-// };
+export type AgeType = 'OLD' | 'NEW' | null;
 
 export const decimalToNumber = {
   to: (v?: number | null) => v,
@@ -43,12 +40,20 @@ type DraftMarker = {
   id: string;
   lat: number;
   lng: number;
+  name: string;
   draftState: 'BEFORE' | 'SCHEDULED';
 };
 
 type PointResp = {
   mode: 'point';
-  points: { id: string; lat: number; lng: number; badge: string | null }[];
+  points: {
+    id: string;
+    lat: number;
+    lng: number;
+    name: string | null;
+    badge: string | null;
+    ageType: AgeType;
+  }[];
   drafts: DraftMarker[];
 };
 
@@ -60,15 +65,8 @@ type DraftSearchItem = {
   draftState: 'BEFORE' | 'SCHEDULED';
 };
 
-type SearchResp = {
-  pins: PinResponseDto[];
-  drafts: DraftSearchItem[];
-};
-
 @Injectable()
 export class PinsService {
-  // private readonly logger = new Logger(PinsService.name);
-
   constructor(
     @InjectRepository(Pin)
     private readonly pinRepository: Repository<Pin>,
@@ -96,12 +94,14 @@ export class PinsService {
           neLng,
         });
 
-      if (typeof isOld === 'boolean')
+      if (typeof isOld === 'boolean') {
         qb.andWhere('p.isOld = :isOld', { isOld });
-      if (typeof isNew === 'boolean')
+      }
+      if (typeof isNew === 'boolean') {
         qb.andWhere('p.isNew = :isNew', { isNew });
+      }
       if (favoriteOnly) {
-        // 즐겨찾기 기능 미구현
+        // 즐겨찾기 필터는 나중에 구현
       }
 
       const points = await qb
@@ -111,15 +111,30 @@ export class PinsService {
           'p.lng AS lng',
           'p.badge AS badge',
           'p.name AS name',
+          'p.isOld AS isOld',
+          'p.isNew AS isNew',
         ])
         .orderBy('p.id', 'DESC')
-        .getRawMany();
+        .getRawMany<{
+          id: string | number;
+          lat: string | number;
+          lng: string | number;
+          badge: string | null;
+          name: string | null;
+          isOld: 0 | 1 | boolean | null;
+          isNew: 0 | 1 | boolean | null;
+        }>();
 
       const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
 
       const draftsRaw = await draftRepo
         .createQueryBuilder('d')
-        .select(['d.id AS id', 'd.lat AS lat', 'd.lng AS lng'])
+        .select([
+          'd.id AS id',
+          'd.lat AS lat',
+          'd.lng AS lng',
+          'd.name AS name',
+        ])
         .where('d.isActive = 1')
         .andWhere('CAST(d.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
           swLat,
@@ -142,7 +157,7 @@ export class PinsService {
           .createQueryBuilder('r')
           .select('r.pin_draft_id', 'pinDraftId')
           .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
-          .andWhere('r.isDeleted = 0')
+          .andWhere('r.is_deleted = 0')
           .groupBy('r.pin_draft_id')
           .getRawMany();
 
@@ -151,63 +166,46 @@ export class PinsService {
           id: String(d.id),
           lat: Number(d.lat),
           lng: Number(d.lng),
+          name: d.name ?? null,
           draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
         }));
       }
 
       return {
         mode: 'point',
-        points: points.map((p) => ({
-          id: String(p.id),
-          lat: Number(p.lat),
-          lng: Number(p.lng),
-          badge: p.badge,
-          name: p.name ?? null,
-        })),
+        points: points.map((p) => {
+          const oldFlag = !!p.isOld;
+          const newFlag = !!p.isNew;
+
+          let ageType: AgeType = null;
+          if (newFlag && !oldFlag) {
+            ageType = 'NEW';
+          } else if (oldFlag && !newFlag) {
+            ageType = 'OLD';
+          } else if (newFlag && oldFlag) {
+            // 둘 다 true면 신축 우선
+            ageType = 'NEW';
+          }
+
+          return {
+            id: String(p.id),
+            lat: Number(p.lat),
+            lng: Number(p.lng),
+            name: p.name ?? null,
+            badge: p.badge ?? null,
+            ageType,
+          };
+        }),
         drafts,
       };
-    } catch (err) {
+    } catch (err: any) {
       console.error('getMapPins ERROR:', err.message);
       console.error(err.stack);
       throw err;
     }
   }
 
-  // 서버 클러스터링 로직
-  // private async buildClusters(baseQb: SelectQueryBuilder<Pin>): Promise<Array<{ lat: number; lng: number; count: number }>> {
-  //   const raw = await baseQb
-  //     .select([
-  //       'p.lat AS lat',
-  //       'p.lng AS lng',
-  //     ])
-  //     .getRawMany<{ lat: string; lng: string }>();
-  //
-  //   const cellSize = 0.01;
-  //   const map = new Map<string, { latSum: number; lngSum: number; count: number }>();
-  //
-  //   for (const r of raw) {
-  //     const lat = Number(r.lat);
-  //     const lng = Number(r.lng);
-  //     const key = `${Math.floor(lat / cellSize)}:${Math.floor(lng / cellSize)}`;
-  //     const prev = map.get(key);
-  //     if (prev) {
-  //       prev.latSum += lat;
-  //       prev.lngSum += lng;
-  //       prev.count += 1;
-  //     } else {
-  //       map.set(key, { latSum: lat, lngSum: lng, count: 1 });
-  //     }
-  //   }
-  //
-  //   return Array.from(map.values()).map((c) => ({
-  //     lat: c.latSum / c.count,
-  //     lng: c.lngSum / c.count,
-  //     count: c.count,
-  //   }));
-  // }
-
-  async create(dto: CreatePinDto) {
-    // 좌표 1차 검증
+  async create(dto: CreatePinDto, meCredentialId: string | null) {
     if (!Number.isFinite(dto.lat) || !Number.isFinite(dto.lng)) {
       throw new BadRequestException('잘못된 좌표');
     }
@@ -215,8 +213,9 @@ export class PinsService {
     return this.dataSource.transaction(async (manager) => {
       const pinRepo = manager.getRepository(Pin);
       const draftRepo = manager.getRepository(PinDraft);
+      const resvRepo = manager.getRepository(SurveyReservation);
 
-      // 1) 임시핀 매칭: 명시적 pinDraftId 우선
+      // 1) 임시핀 매칭
       let candidate: PinDraft | null = null;
 
       if (dto.pinDraftId != null) {
@@ -229,7 +228,6 @@ export class PinsService {
           );
         }
       } else {
-        // 2) 기존 EPS 근사 fallback
         const EPS = 0.00001;
         candidate = await draftRepo
           .createQueryBuilder('d')
@@ -247,22 +245,86 @@ export class PinsService {
           .getOne();
       }
 
-      // 핀 저장
+      // 2) 생성자 accountId
+      let creatorAccountId: string | null = null;
+
+      if (candidate && candidate.creatorId) {
+        creatorAccountId = String(candidate.creatorId);
+      } else if (meCredentialId) {
+        try {
+          creatorAccountId =
+            await this.surveyReservationsService.resolveMyAccountId(
+              meCredentialId,
+            );
+        } catch {
+          creatorAccountId = null;
+        }
+      }
+
+      // 3) 답사자 / 답사일 (예약 기준)
+      let surveyedBy: string | null = null;
+      let surveyedAt: Date | null = null;
+      let matchedReservation: SurveyReservation | null = null;
+
+      if (candidate) {
+        matchedReservation = await resvRepo.findOne({
+          where: {
+            pinDraft: { id: candidate.id },
+            isDeleted: false,
+          },
+          relations: ['assignee'],
+          order: { createdAt: 'DESC' },
+        });
+
+        if (matchedReservation) {
+          surveyedBy = String(matchedReservation.assignee.id);
+          surveyedAt = new Date(matchedReservation.reservedDate);
+        }
+      }
+
+      if (!candidate && creatorAccountId && !surveyedBy) {
+        surveyedBy = creatorAccountId;
+        surveyedAt = new Date();
+      }
+
+      // 4) 핀 저장
+      const buildingTypes =
+        dto.buildingTypes !== undefined
+          ? (dto.buildingTypes ?? null)
+          : dto.buildingType
+            ? [dto.buildingType]
+            : null;
+
+      const parkingTypes =
+        dto.parkingTypes !== undefined
+          ? (dto.parkingTypes ?? null)
+          : dto.parkingType
+            ? [dto.parkingType]
+            : null;
+
       const pin = pinRepo.create({
         lat: String(dto.lat),
         lng: String(dto.lng),
         badge: dto.badge ?? null,
         addressLine: dto.addressLine,
         name: dto.name,
+        rebateText: dto.rebateText ?? null,
         completionDate: dto.completionDate
           ? new Date(dto.completionDate)
           : null,
+
+        // 레거시
         buildingType: dto.buildingType ?? null,
+        parkingType: dto.parkingType ?? null,
+
+        // 신규
+        buildingTypes,
+        parkingTypes,
+
         hasElevator: dto.hasElevator ?? null,
         totalHouseholds: dto.totalHouseholds ?? null,
         totalParkingSlots: dto.totalParkingSlots ?? null,
         registrationTypeId: dto.registrationTypeId ?? null,
-        parkingTypeId: dto.parkingTypeId ?? null,
         parkingGrade: dto.parkingGrade ?? null,
         slopeGrade: dto.slopeGrade ?? null,
         structureGrade: dto.structureGrade ?? null,
@@ -274,16 +336,18 @@ export class PinsService {
         isNew: dto.isNew ?? false,
         publicMemo: dto.publicMemo ?? null,
         privateMemo: dto.privateMemo ?? null,
-
         totalBuildings: dto.totalBuildings ?? null,
         totalFloors: dto.totalFloors ?? null,
         remainingHouseholds: dto.remainingHouseholds ?? null,
         minRealMoveInCost: dto.minRealMoveInCost ?? null,
+        creatorId: creatorAccountId,
+        surveyedBy,
+        surveyedAt,
       } as DeepPartial<Pin>);
 
       await pinRepo.save(pin);
 
-      // 옵션/방향/면적그룹/유닛
+      // 5) 옵션/방향/면적그룹/유닛
       if (dto.options) {
         await this.pinOptionsService.upsertWithManager(
           manager,
@@ -324,24 +388,89 @@ export class PinsService {
         );
       }
 
-      // 매칭된 임시핀 있으면 비활성화(승격 처리)
+      // 예약도 삭제
       if (candidate) {
-        await draftRepo.update(candidate.id, { isActive: false });
+        await resvRepo
+          .createQueryBuilder()
+          .delete()
+          .from(SurveyReservation)
+          .where('pin_draft_id = :id', { id: candidate.id })
+          .execute();
       }
 
-      return { id: String(pin.id), matchedDraftId: candidate?.id ?? null };
+      //  임시핀 비활성화
+      if (candidate) {
+        await draftRepo.delete(candidate.id);
+      }
+
+      return {
+        id: String(pin.id),
+        matchedDraftId: candidate?.id ?? null,
+        matchedReservationId: matchedReservation?.id ?? null,
+      };
     });
   }
 
   async findDetail(id: string): Promise<PinResponseDto> {
-    const pin = await this.pinRepository.findOneOrFail({
+    const pin = await this.pinRepository.findOne({
       where: { id },
       relations: ['options', 'directions', 'areaGroups', 'units'],
     });
-    return PinResponseDto.fromEntity(pin);
+
+    if (!pin) {
+      throw new NotFoundException('핀 없음');
+    }
+
+    const accountRepo = this.dataSource.getRepository(Account);
+
+    let creator: PinPersonInfo | null = null;
+    let surveyor: PinPersonInfo | null = null;
+    let lastEditor: PinPersonInfo | null = null;
+
+    if (pin.creatorId) {
+      const acc = await accountRepo.findOne({
+        where: { id: String(pin.creatorId) },
+      });
+      if (acc) {
+        creator = {
+          id: String(acc.id),
+          name: acc.name ?? null,
+        };
+      }
+    }
+
+    if (pin.surveyedBy) {
+      const acc = await accountRepo.findOne({
+        where: { id: String(pin.surveyedBy) },
+      });
+      if (acc) {
+        surveyor = {
+          id: String(acc.id),
+          name: acc.name ?? null,
+        };
+      }
+    }
+
+    if (pin.lastEditorId) {
+      const acc = await accountRepo.findOne({
+        where: { id: String(pin.lastEditorId) },
+      });
+      if (acc) {
+        lastEditor = {
+          id: String(acc.id),
+          name: acc.name ?? null,
+        };
+      }
+    }
+
+    return PinResponseDto.fromEntity(pin, {
+      creator,
+      surveyor,
+      lastEditor,
+    });
   }
 
-  async update(id: string, dto: UpdatePinDto) {
+  async update(id: string, dto: UpdatePinDto, meCredentialId: string | null) {
     return this.dataSource.transaction(async (manager) => {
       const pinRepo = manager.getRepository(Pin);
       const pin = await pinRepo.findOne({ where: { id } });
@@ -349,13 +478,15 @@ export class PinsService {
 
       // 좌표
       if (dto.lat !== undefined) {
-        if (!Number.isFinite(dto.lat))
+        if (!Number.isFinite(dto.lat)) {
           throw new BadRequestException('잘못된 좌표');
+        }
         pin.lat = String(dto.lat);
       }
       if (dto.lng !== undefined) {
-        if (!Number.isFinite(dto.lng))
+        if (!Number.isFinite(dto.lng)) {
           throw new BadRequestException('잘못된 lng');
+        }
         pin.lng = String(dto.lng);
       }
 
@@ -369,52 +500,106 @@ export class PinsService {
           ? new Date(dto.completionDate)
           : null;
       }
-      if (dto.buildingType !== undefined)
+      if (dto.buildingType !== undefined) {
         pin.buildingType = dto.buildingType ?? null;
-      if (dto.hasElevator !== undefined) pin.hasElevator = dto.hasElevator;
+      }
+      if (dto.hasElevator !== undefined) {
+        pin.hasElevator = dto.hasElevator;
+      }
 
-      if (dto.totalHouseholds !== undefined)
+      if (dto.totalHouseholds !== undefined) {
         pin.totalHouseholds = dto.totalHouseholds ?? null;
-      if (dto.totalParkingSlots !== undefined)
+      }
+      if (dto.totalParkingSlots !== undefined) {
         pin.totalParkingSlots = dto.totalParkingSlots ?? null;
-      if (dto.registrationTypeId !== undefined)
+      }
+      if (dto.registrationTypeId !== undefined) {
         pin.registrationTypeId = dto.registrationTypeId ?? null;
-      if (dto.parkingTypeId !== undefined)
-        pin.parkingTypeId = dto.parkingTypeId ?? null;
+      }
+      if (dto.parkingType !== undefined) {
+        pin.parkingType = dto.parkingType ?? null;
+      }
 
-      if (dto.parkingGrade !== undefined)
+      if (dto.buildingTypes !== undefined) {
+        // null을 보내면 "비우기"로 해석할지, "거부"할지 정책 선택
+        // 보통은 "비우기"면 []가 맞고, null은 금지하는게 안전함.
+        pin.buildingTypes = dto.buildingTypes;
+      }
+
+      // parkingTypes (배열)
+      if (dto.parkingTypes !== undefined) {
+        pin.parkingTypes = dto.parkingTypes;
+      }
+
+      if (dto.parkingGrade !== undefined) {
         pin.parkingGrade = dto.parkingGrade ?? null;
-      if (dto.slopeGrade !== undefined) pin.slopeGrade = dto.slopeGrade ?? null;
-      if (dto.structureGrade !== undefined)
+      }
+      if (dto.slopeGrade !== undefined) {
+        pin.slopeGrade = dto.slopeGrade ?? null;
+      }
+      if (dto.structureGrade !== undefined) {
         pin.structureGrade = dto.structureGrade ?? null;
+      }
 
-      if (dto.isOld !== undefined) pin.isOld = dto.isOld;
-      if (dto.isNew !== undefined) pin.isNew = dto.isNew;
+      if (dto.isOld !== undefined) {
+        pin.isOld = dto.isOld;
+      }
+      if (dto.isNew !== undefined) {
+        pin.isNew = dto.isNew;
+      }
 
-      if (dto.publicMemo !== undefined) pin.publicMemo = dto.publicMemo ?? null;
-      if (dto.privateMemo !== undefined)
+      if (dto.publicMemo !== undefined) {
+        pin.publicMemo = dto.publicMemo ?? null;
+      }
+      if (dto.privateMemo !== undefined) {
         pin.privateMemo = dto.privateMemo ?? null;
+      }
+
+      if (dto.rebateText !== undefined) {
+        pin.rebateText = dto.rebateText ?? null;
+      }
 
       // 연락처 & 배지
-      if (dto.contactMainLabel !== undefined)
+      if (dto.contactMainLabel !== undefined) {
         pin.contactMainLabel = dto.contactMainLabel ?? null;
-      if (dto.contactMainPhone !== undefined)
+      }
+      if (dto.contactMainPhone !== undefined) {
         pin.contactMainPhone = dto.contactMainPhone;
-      if (dto.contactSubLabel !== undefined)
+      }
+      if (dto.contactSubLabel !== undefined) {
         pin.contactSubLabel = dto.contactSubLabel ?? null;
-      if (dto.contactSubPhone !== undefined)
+      }
+      if (dto.contactSubPhone !== undefined) {
         pin.contactSubPhone = dto.contactSubPhone ?? null;
-      if (dto.badge !== undefined) pin.badge = dto.badge ?? null;
+      }
+      if (dto.badge !== undefined) {
+        pin.badge = dto.badge ?? null;
+      }
 
-      if (dto.totalBuildings !== undefined)
+      if (dto.totalBuildings !== undefined) {
         pin.totalBuildings = dto.totalBuildings ?? null;
-      if (dto.totalFloors !== undefined)
+      }
+      if (dto.totalFloors !== undefined) {
         pin.totalFloors = dto.totalFloors ?? null;
-      if (dto.remainingHouseholds !== undefined)
+      }
+      if (dto.remainingHouseholds !== undefined) {
         pin.remainingHouseholds = dto.remainingHouseholds ?? null;
+      }
       if (dto.minRealMoveInCost !== undefined) {
         pin.minRealMoveInCost =
           dto.minRealMoveInCost == null ? null : String(dto.minRealMoveInCost);
+      }
+
+      if (meCredentialId) {
+        try {
+          const editorAccountId =
+            await this.surveyReservationsService.resolveMyAccountId(
+              meCredentialId,
+            );
+          pin.lastEditorId = editorAccountId;
+        } catch {
+          // 계정 못 찾으면 그냥 무시
+        }
       }
 
       await pinRepo.save(pin);
@@ -482,28 +667,78 @@ export class PinsService {
   ): Promise<{ pins: PinMapItem[]; drafts: DraftSearchItem[] }> {
     const qb = this.pinRepository
       .createQueryBuilder('p')
-      .leftJoin('p.units', 'u')
-      .leftJoin('p.areaGroups', 'ag')
+      .leftJoin('p.units', 'u') // 매매가 필터용
+      .leftJoin('p.areaGroups', 'ag') // 면적 필터용
       .where('p.is_disabled = :active', { active: 0 });
 
+    // 0) 방/테라스/복층 → PinBadge 배열로 변환
+    const badgeFilters: PinBadge[] = [];
+    const rooms = dto.rooms ?? [];
+    const hasTerrace = dto.hasTerrace === true;
+    const hasLoft = dto.hasLoft === true;
+    const hasTownhouse = dto.hasTownhouse === true;
+
+    if (rooms.includes(1)) {
+      badgeFilters.push(
+        hasTerrace ? PinBadge.R1_TO_1_5_TERRACE : PinBadge.R1_TO_1_5,
+      );
+    }
+    if (rooms.includes(2)) {
+      badgeFilters.push(
+        hasTerrace ? PinBadge.R2_TO_2_5_TERRACE : PinBadge.R2_TO_2_5,
+      );
+    }
+    if (rooms.includes(3)) {
+      badgeFilters.push(hasTerrace ? PinBadge.R3_TERRACE : PinBadge.R3);
+    }
+    if (rooms.includes(4)) {
+      badgeFilters.push(hasTerrace ? PinBadge.R4_TERRACE : PinBadge.R4);
+    }
+
+    // 복층 필터
+    if (hasLoft) {
+      badgeFilters.push(hasTerrace ? PinBadge.LOFT_TERRACE : PinBadge.LOFT);
+    }
+
+    if (hasTownhouse) {
+      badgeFilters.push(PinBadge.TOWNHOUSE);
+    }
+
+    const uniqueBadges = Array.from(new Set(badgeFilters));
+
+    if (uniqueBadges.length > 0) {
+      qb.andWhere('p.badge IN (:...badges)', {
+        badges: uniqueBadges,
+      });
+    }
+
+    // 1) 엘리베이터 (핀 기준)
     if (typeof dto.hasElevator === 'boolean') {
       qb.andWhere('p.has_elevator = :hasElevator', {
         hasElevator: dto.hasElevator ? 1 : 0,
       });
     }
-    if (dto.rooms?.length)
-      qb.andWhere('u.rooms IN (:...rooms)', { rooms: dto.rooms });
-    if (typeof dto.hasLoft === 'boolean')
-      qb.andWhere('u.has_loft = :hasLoft', { hasLoft: dto.hasLoft ? 1 : 0 });
-    if (typeof dto.hasTerrace === 'boolean')
-      qb.andWhere('u.has_terrace = :hasTerrace', {
-        hasTerrace: dto.hasTerrace ? 1 : 0,
-      });
-    if (dto.salePriceMin != null)
-      qb.andWhere('u.min_price >= :priceMin', { priceMin: dto.salePriceMin });
-    if (dto.salePriceMax != null)
-      qb.andWhere('u.max_price <= :priceMax', { priceMax: dto.salePriceMax });
 
+    // 2) 매매가 (유닛 기준) – 기존 유지
+    if (dto.salePriceMin != null) {
+      qb.andWhere('u.min_price >= :priceMin', {
+        priceMin: dto.salePriceMin,
+      });
+    }
+    if (dto.salePriceMax != null) {
+      qb.andWhere('u.max_price <= :priceMax', {
+        priceMax: dto.salePriceMax,
+      });
+    }
+
+    // 3) 등기 타입 (핀 기준)
+    if (dto.buildingTypes?.length) {
+      qb.andWhere('p.building_type IN (:...buildingTypes)', {
+        buildingTypes: dto.buildingTypes,
+      });
+    }
+
+    // 4) 전용면적 (areaGroups 기준) – 기존 로직 유지
     if (dto.areaMinM2 != null || dto.areaMaxM2 != null) {
       qb.andWhere(
         new Brackets((w) => {
@@ -537,6 +772,15 @@ export class PinsService {
       );
     }
 
+    // 5) 실입주금 (핀 기준)
+    if (dto.minRealMoveInCostMax != null) {
+      qb.andWhere(
+        'p.min_real_move_in_cost IS NOT NULL AND p.min_real_move_in_cost <= :moveInMax',
+        { moveInMax: dto.minRealMoveInCostMax },
+      );
+    }
+
+    // 6) 필터된 핀 id 목록 조회
     const idRows = await qb
       .select('p.id', 'id')
       .groupBy('p.id')
@@ -573,21 +817,23 @@ export class PinsService {
         lat: Number(r.lat),
         lng: Number(r.lng),
         name: r.name,
-        badge: r.badge ?? null,
+        badge: (r.badge as PinBadge | null) ?? null,
         addressLine: r.addressLine,
       }));
     }
 
+    // 7) 필터 사용 여부 (임시핀 숨길지 결정)
     const hasAnyFilter =
+      uniqueBadges.length > 0 ||
       typeof dto.hasElevator === 'boolean' ||
-      (dto.rooms?.length ?? 0) > 0 ||
-      typeof dto.hasLoft === 'boolean' ||
-      typeof dto.hasTerrace === 'boolean' ||
       dto.salePriceMin != null ||
       dto.salePriceMax != null ||
       dto.areaMinM2 != null ||
-      dto.areaMaxM2 != null;
+      dto.areaMaxM2 != null ||
+      (dto.buildingTypes?.length ?? 0) > 0 ||
+      dto.minRealMoveInCostMax != null;
 
+    // 8) 임시핀 검색 (필터가 하나도 없을 때만)
     let drafts: DraftSearchItem[] = [];
     if (!hasAnyFilter) {
       const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
@@ -616,9 +862,12 @@ export class PinsService {
       const resvRows = draftIds.length
         ? await resvRepo
             .createQueryBuilder('r')
-            .select(['r.pinDraft AS pinDraftId', 'r.assignee_id AS assigneeId'])
-            .where('r.pinDraft IN (:...ids)', { ids: draftIds })
-            .andWhere('r.isDeleted = :isDeleted', { isDeleted: 0 })
+            .select([
+              'r.pin_draft_id AS pinDraftId',
+              'r.assignee_id AS assigneeId',
+            ])
+            .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
+            .andWhere('r.is_deleted = :isDeleted', { isDeleted: 0 })
             .getRawMany<{ pinDraftId: string; assigneeId: string }>()
         : [];
 
@@ -674,27 +923,20 @@ export class PinsService {
     return { pins, drafts };
   }
 
-  // 핀 비활성
-  async setDisabled(id: number, isDisabled: boolean) {
+  async deletePin(id: number) {
     return this.dataSource.transaction(async (m) => {
-      const repo = m.getRepository(Pin);
+      const pinRepo = m.getRepository(Pin);
 
-      // 컬럼 존재 확인
-      const col = repo.metadata.findColumnWithPropertyName('isDisabled');
-      if (!col) throw new BadRequestException('isDisabled 컬럼이 없습니다.');
-
-      const pin = await repo.findOne({ where: { id: String(id) } });
-      if (!pin) throw new NotFoundException('핀을 찾을 수 없습니다.');
-
-      const already = pin.isDisabled === isDisabled;
-      if (!already) {
-        await repo.update(String(id), { isDisabled });
+      const pin = await pinRepo.findOne({ where: { id: String(id) } });
+      if (!pin) {
+        throw new NotFoundException('핀을 찾을 수 없습니다.');
       }
+
+      await pinRepo.delete(String(id));
 
       return {
         id: String(id),
-        isDisabled,
-        changed: !already,
+        deleted: true,
       };
     });
   }

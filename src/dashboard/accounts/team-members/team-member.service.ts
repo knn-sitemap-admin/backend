@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { TeamMember } from '../entities/team-member.entity';
 import { Team } from '../entities/team.entity';
-import { Account } from '../entities/account.entity';
+import { Account, PositionRank } from '../entities/account.entity';
 import { AccountCredential } from '../entities/account-credential.entity';
 import { AssignTeamMemberDto } from '../dto/assign-team-member.dto';
 import { PatchTeamMemberDto } from '../dto/patch-team-member.dto';
@@ -34,19 +34,15 @@ export class TeamMemberService {
     });
     if (!team) throw new NotFoundException('팀을 찾을 수 없습니다.');
 
-    // 계정: credential 또는 account 기준 확인 (프로젝트 기준 선택)
     const account = await this.accountRepository.findOne({
       where: { id: dto.accountId },
     });
     if (!account)
       throw new NotFoundException('사용자 정보를 찾을 수 없습니다.');
 
-    // 팀장 유일성
-    if (dto.role === 'manager') {
-      const exists = await this.teamMemberRepository.findOne({
-        where: { team_id: team.id, team_role: 'manager' },
-      });
-      if (exists) throw new ConflictException('이미 팀장이 존재합니다.');
+    // 팀장 직급은 어떤 팀에도 배정 불가
+    if (account.position_rank === PositionRank.TEAM_LEADER) {
+      throw new BadRequestException('팀장 직급은 팀에 배정될 수 없습니다.');
     }
 
     // 주팀 단일성
@@ -61,12 +57,12 @@ export class TeamMemberService {
     const ent = this.teamMemberRepository.create({
       team_id: team.id,
       account_id: account.id,
-      team_role: dto.role === 'manager' ? 'manager' : 'staff',
+      team_role: 'staff', // 무조건 staff
       is_primary: dto.isPrimary !== false,
       joined_at: dto.joinedAt ?? new Date().toISOString().slice(0, 10),
     });
-    const saved = await this.teamMemberRepository.save(ent);
-    return saved;
+
+    return this.teamMemberRepository.save(ent);
   }
 
   async updateTeamMember(memberId: string, dto: PatchTeamMemberDto) {

@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import { request, response } from 'express';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -12,6 +13,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const req = ctx.getRequest<Request & { originalUrl?: string }>();
     const res = ctx.getResponse();
+
+    if (req.url.startsWith('/owner')) {
+      console.error('[VIEW ERROR]', exception);
+      return;
+    }
 
     const path = (req?.originalUrl as string) ?? (req as any)?.url ?? '';
 

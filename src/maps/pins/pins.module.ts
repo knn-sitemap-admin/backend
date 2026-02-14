@@ -8,8 +8,8 @@ import { UnitsModule } from '../units/units.module';
 import { PinAreaGroupsModule } from '../pin_area_groups/pin_area_groups.module';
 import { PinOptionsModule } from '../pin-options/pin-options.module';
 import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
-import { SurveyReservation } from '../../common/entities/survey-reservation.entity';
 import { SurveyReservationsModule } from '../../survey-reservations/survey-reservations.module';
+import { SurveyReservation } from '../../survey-reservations/entities/survey-reservation.entity';
 
 @Module({
   imports: [

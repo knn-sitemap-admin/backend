@@ -7,10 +7,11 @@ import {
   IsString,
   MaxLength,
   MinLength,
-  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { CreateTeamAssignDto } from './create-team-assign.dto';
+import { PositionRank } from '../entities/account.entity';
+import { UpsertEmployeeInfoDto } from './upsert-employee-info.dto';
 
 export class CreateEmployeeDto {
   @IsEmail()
@@ -22,15 +23,26 @@ export class CreateEmployeeDto {
   @MaxLength(100)
   password!: string;
 
-  @IsEnum(['manager', 'staff'])
-  role!: 'manager' | 'staff';
+  // @IsOptional()
+  // @IsEnum(PositionRank)
+  // positionRank?: PositionRank | null;
 
   @IsOptional()
   @IsBoolean()
   isDisabled?: boolean;
 
-  @ValidateIf((o) => o.role === 'manager' || o.role === 'staff')
+  @IsOptional()
   @ValidateNested()
   @Type(() => CreateTeamAssignDto)
-  team!: CreateTeamAssignDto;
+  team?: CreateTeamAssignDto;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  teamName?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpsertEmployeeInfoDto)
+  info?: UpsertEmployeeInfoDto;
 }

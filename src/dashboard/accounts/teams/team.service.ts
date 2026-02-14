@@ -52,18 +52,35 @@ export class TeamService {
         'tm',
         'tm.team_id = t.id AND tm.team_role = :managerRole',
       )
-      .leftJoin('accounts', 'a', 'a.id = tm.account_id')
+      .leftJoin('accounts', 'a', 'a.id = tm.account_id AND a.is_deleted = 0')
+      .leftJoin(
+        'account_credentials',
+        'cred',
+        'cred.id = a.credential_id AND cred.is_disabled = 0 AND cred.role <> :adminRole',
+      )
       .leftJoin('team_members', 'allm', 'allm.team_id = t.id')
+      .leftJoin(
+        'accounts',
+        'allA',
+        'allA.id = allm.account_id AND allA.is_deleted = 0',
+      )
+      .leftJoin(
+        'account_credentials',
+        'allCred',
+        'allCred.id = allA.credential_id AND allCred.is_disabled = 0 AND allCred.role <> :adminRole',
+      )
       .select([
         't.id AS id',
         't.name AS name',
         't.code AS code',
         't.description AS description',
         't.is_active AS isActive',
+        // 팀장(활성 계정만)
         'MAX(a.name) AS teamLeaderName',
+        // 멤버 수도 활성 계정만 카운트
         'COUNT(DISTINCT allm.id) AS memberCount',
       ])
-      .setParameters({ managerRole: 'manager' }) // 오타 수정
+      .setParameters({ managerRole: 'manager', adminRole: 'admin' })
       .groupBy('t.id')
       .orderBy('t.id', 'DESC');
 
@@ -82,7 +99,6 @@ export class TeamService {
       name: r.name,
       code: r.code,
       description: r.description ?? null,
-      // '0' | '1' 안전 캐스팅
       isActive: Number(r.isActive) === 1,
       teamLeaderName: r.teamLeaderName ?? null,
       memberCount: Number(r.memberCount),
@@ -95,7 +111,13 @@ export class TeamService {
 
     const rows = await this.teamMemberRepository
       .createQueryBuilder('tm')
-      .leftJoin('accounts', 'a', 'a.id = tm.account_id') // 문자열 테이블명으로 조인
+      .innerJoin('accounts', 'a', 'a.id = tm.account_id AND a.is_deleted = 0')
+      .innerJoin(
+        'account_credentials',
+        'cred',
+        'cred.id = a.credential_id AND cred.is_disabled = 0 AND cred.role <> :adminRole',
+        { adminRole: 'admin' },
+      )
       .select([
         'tm.id AS teamMemberId',
         'tm.team_role AS teamRole',
@@ -130,7 +152,7 @@ export class TeamService {
       positionRank: r.positionRank ?? null,
       photoUrl: r.photoUrl ?? null,
       teamRole: r.teamRole,
-      isPrimary: Number(r.isPrimary as any) === 1, // 안전 변환
+      isPrimary: Number(r.isPrimary as any) === 1,
       joinedAt: r.joinedAt,
     }));
 
@@ -145,16 +167,18 @@ export class TeamService {
   }
 
   async update(id: string, dto: UpdateTeamDto) {
-    const team = await this.get(id);
+    const teamEnt = await this.teamRepository.findOne({ where: { id } });
+    if (!teamEnt) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
 
-    if (dto.name && dto.name !== team.name) {
+    if (dto.name && dto.name !== teamEnt.name) {
       const dup = await this.teamRepository.findOne({
         where: { name: dto.name },
       });
       if (dup)
         throw new ConflictException(`팀 "${dto.name}"이(가) 이미 존재합니다.`);
     }
-    if (dto.code && dto.code !== team.code) {
+
+    if (dto.code && dto.code !== teamEnt.code) {
       const dup = await this.teamRepository.findOne({
         where: { code: dto.code },
       });
@@ -162,15 +186,14 @@ export class TeamService {
         throw new ConflictException(`팀 코드 "${dto.code}"가 이미 존재합니다.`);
     }
 
-    Object.assign(team, {
-      name: dto.name ?? team.name,
-      code: dto.code ?? team.code,
-      description: dto.description ?? team.description,
-      is_active: dto.isActive ?? true,
-    });
+    teamEnt.name = dto.name ?? teamEnt.name;
+    teamEnt.code = dto.code ?? teamEnt.code;
+    teamEnt.description = dto.description ?? teamEnt.description;
+    teamEnt.is_active = dto.isActive ?? teamEnt.is_active;
 
-    await this.teamRepository.save(team);
-    return team;
+    await this.teamRepository.save(teamEnt);
+
+    return this.get(id);
   }
 
   async remove(id: string) {

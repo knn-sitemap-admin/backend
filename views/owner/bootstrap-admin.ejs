@@ -1,0 +1,38 @@
+<div class="auth">
+    <div class="auth__panel">
+        <div class="auth__head">
+            <div class="auth__title">BOOTSTRAP ADMIN</div>
+            <div class="auth__sub">최초 1회 관리자 계정 생성</div>
+        </div>
+
+        <form class="form" id="bootstrap-form">
+            <label class="field">
+                <div class="field__label">Email</div>
+                <input class="input" type="email" name="email" placeholder="admin@company.com" autocomplete="username" required />
+            </label>
+
+            <label class="field">
+                <div class="field__label">Password</div>
+                <input class="input" type="password" name="password" placeholder="••••••••" autocomplete="new-password" required />
+            </label>
+
+            <label class="field">
+                <div class="field__label">Bootstrap Token</div>
+                <input class="input" type="text" name="token" placeholder="x-bootstrap-token" required />
+                <div class="field__hint">헤더 <span class="kbd">x-bootstrap-token</span> 으로 전송됩니다.</div>
+            </label>
+
+            <div class="row">
+                <button class="btn btn--primary" type="submit">생성</button>
+                <a class="btn btn--ghost" href="/owner/login">로그인으로</a>
+            </div>
+
+            <div class="hint">
+                이미 관리자/계정1이 있으면 이 페이지는 차단되고 로그인으로 이동해야 정상입니다.
+            </div>
+        </form>
+
+        <div class="toast" id="toast" aria-hidden="true"></div>
+    </div>
+</div>
+<script src="/static/owner/auth-bootstrap.js"></script>

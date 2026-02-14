@@ -5,6 +5,8 @@ import {
   OneToMany,
   Index,
   OneToOne,
+  UpdateDateColumn,
+  CreateDateColumn,
 } from 'typeorm';
 import { PinDirection } from '../../pin-directions/entities/pin-direction.entity';
 import { Unit } from '../../units/entities/unit.entity';
@@ -12,22 +14,20 @@ import { PinOption } from '../../pin-options/entities/pin-option.entity';
 import { PinAreaGroup } from '../../pin_area_groups/entities/pin_area_group.entity';
 
 export type Grade3 = '상' | '중' | '하';
-export type BuildingType = 'APT' | 'OP' | '주택' | '근생';
+export type BuildingType = 'APT' | 'OP' | '주택' | '근생' | '도생';
 
 export enum PinBadge {
-  R1_TO_1_5 = 'R1_TO_1_5',
-  R1_TO_1_5_TERRACE = 'R1_TO_1_5_TERRACE',
-  R2_TO_2_5 = 'R2_TO_2_5',
+  R1_TO_1_5 = 'R1_TO_1_5', //1
+  R1_TO_1_5_TERRACE = 'R1_TO_1_5_TERRACE', //1
+  R2_TO_2_5 = 'R2_TO_2_5', //2
   R2_TO_2_5_TERRACE = 'R2_TO_2_5_TERRACE',
   R3 = 'R3',
   R3_TERRACE = 'R3_TERRACE',
   R4 = 'R4',
   R4_TERRACE = 'R4_TERRACE',
   LOFT = 'LOFT', // 복층
+  LOFT_TERRACE = 'LOFT_TERRACE', // 복층테라스
   TOWNHOUSE = 'TOWNHOUSE', // 타운하우스
-  OLD_HOUSE = 'OLD_HOUSE', // 구옥
-  SURVEY_SCHEDULED = 'SURVEY_SCHEDULED', // 답사예정
-  MOVE_IN_COMPLETE = 'MOVE_IN_COMPLETE', // 입주완료
 }
 
 @Entity({ name: 'pins' })
@@ -36,10 +36,10 @@ export class Pin {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'decimal', precision: 11, scale: 8, name: 'lat' })
+  @Column({ type: 'decimal', precision: 12, scale: 9, name: 'lat' })
   lat!: string;
 
-  @Column({ type: 'decimal', precision: 11, scale: 8, name: 'lng' })
+  @Column({ type: 'decimal', precision: 13, scale: 9, name: 'lng' })
   lng!: string;
 
   @Column({ type: 'varchar', length: 255, name: 'name' })
@@ -60,12 +60,28 @@ export class Pin {
   completionDate: Date | null = null;
 
   @Column({
+    type: 'varchar',
+    length: 50,
+    name: 'rebate_text',
+    nullable: true,
+  })
+  rebateText: string | null = null;
+
+  @Column({
     type: 'enum',
-    enum: ['APT', 'OP', '주택', '근생'],
+    enum: ['APT', 'OP', '주택', '근생', '도생'],
     name: 'building_type',
     nullable: true,
   })
   buildingType: BuildingType | null = null;
+
+  //새로 추가
+  @Column({
+    type: 'json',
+    name: 'building_types',
+    nullable: true,
+  })
+  buildingTypes: BuildingType[] | null = null;
 
   @Column({ type: 'boolean', name: 'has_elevator', nullable: true })
   hasElevator: boolean | null = null;
@@ -85,12 +101,20 @@ export class Pin {
   registrationTypeId: number | null = null;
 
   @Column({
-    type: 'int',
-    unsigned: true,
-    name: 'parking_type_id',
+    type: 'varchar',
+    length: 50,
+    name: 'parking_type',
     nullable: true,
   })
-  parkingTypeId: number | null = null;
+  parkingType: string | null = null;
+
+  //새로 추가
+  @Column({
+    type: 'json',
+    name: 'parking_types',
+    nullable: true,
+  })
+  parkingTypes: string[] | null = null;
 
   @Column({
     type: 'varchar',
@@ -211,4 +235,18 @@ export class Pin {
     unsigned: true,
   })
   minRealMoveInCost: string | null = null;
+
+  @Column({
+    type: 'bigint',
+    unsigned: true,
+    name: 'last_editor_id',
+    nullable: true,
+  })
+  lastEditorId: string | null = null;
+
+  @CreateDateColumn({ type: 'datetime', name: 'created_at' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ type: 'datetime', name: 'updated_at' })
+  updatedAt!: Date;
 }

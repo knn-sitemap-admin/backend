@@ -1,32 +1,15 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { HttpAdapterHost } from '@nestjs/core';
+import type { RedisClientType } from 'redis';
 
 @Injectable()
-export class AppService implements OnModuleDestroy {
-  private readonly redis: Redis;
-
-  constructor(@InjectDataSource() private readonly ds: DataSource) {
-    const url = process.env.REDIS_URL;
-
-    this.redis = url
-      ? new Redis(url, { lazyConnect: true })
-      : new Redis({
-          host: process.env.REDIS_HOST ?? '127.0.0.1',
-          port: Number(process.env.REDIS_PORT ?? 6379),
-          password: process.env.REDIS_PASSWORD || undefined,
-          lazyConnect: true,
-        });
-
-    this.redis.on('error', (e) => {
-      // eslint-disable-next-line no-console
-      console.error(
-        '[ioredis] client error:',
-        e instanceof Error ? e.message : e,
-      );
-    });
-  }
+export class AppService {
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly adapterHost: HttpAdapterHost,
+  ) {}
 
   async check() {
     const [dbStatus, redisStatus] = await Promise.all([
@@ -45,23 +28,23 @@ export class AppService implements OnModuleDestroy {
     }
   }
 
-  private async checkRedis(): Promise<boolean> {
-    try {
-      if (!this.redis.status || this.redis.status === 'end') {
-        await this.redis.connect();
-      }
-      const pong = await this.redis.ping();
-      return pong === 'PONG';
-    } catch {
-      return false;
-    }
+  private getRedisClient(): RedisClientType | null {
+    const expressApp = this.adapterHost.httpAdapter.getInstance();
+    return (expressApp.get('redisClient') as RedisClientType) ?? null;
   }
 
-  async onModuleDestroy() {
+  private async checkRedis(): Promise<boolean> {
     try {
-      await this.redis.quit();
-    } catch {
-      /* ignore */
+      const redisClient = this.getRedisClient();
+      if (!redisClient) return false;
+      const pong = await redisClient.ping();
+      return pong === 'PONG';
+    } catch (e) {
+      console.error('[health][redis] ping failed', {
+        message: e instanceof Error ? e.message : String(e),
+        code: (e as any)?.code,
+      });
+      return false;
     }
   }
 }

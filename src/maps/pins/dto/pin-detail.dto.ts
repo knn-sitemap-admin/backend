@@ -1,7 +1,13 @@
 import { Pin } from '../entities/pin.entity';
 import { PinAreaGroup } from '../../pin_area_groups/entities/pin_area_group.entity';
 import { Unit } from '../../units/entities/unit.entity';
-import { PinOption } from '../../pin-options/entities/pin-option.entity';
+import {
+  FridgeSlot,
+  KitchenLayout,
+  LivingRoomView,
+  PinOption,
+  SofaSize,
+} from '../../pin-options/entities/pin-option.entity';
 import { PinDirection } from '../../pin-directions/entities/pin-direction.entity';
 
 function toIntOrNull(v: unknown): number | null {
@@ -88,6 +94,16 @@ export class PinOptionsResponseDto {
   isDirectLease!: boolean | null;
   extraOptionsText!: string | null;
 
+  kitchenLayout!: KitchenLayout | null;
+  fridgeSlot!: FridgeSlot | null;
+  sofaSize!: SofaSize | null;
+  livingRoomView!: LivingRoomView | null;
+
+  hasIslandTable!: boolean | null;
+  hasKitchenWindow!: boolean | null;
+  hasCityGas!: boolean | null;
+  hasInduction!: boolean | null;
+
   static fromEntity(entity: PinOption): PinOptionsResponseDto {
     return {
       hasAircon: toBoolOrNull(entity.hasAircon),
@@ -98,11 +114,29 @@ export class PinOptionsResponseDto {
       hasAirPurifier: toBoolOrNull(entity.hasAirPurifier),
       isDirectLease: toBoolOrNull(entity.isDirectLease),
       extraOptionsText: entity.extraOptionsText ?? null,
+
+      kitchenLayout: entity.kitchenLayout ?? null,
+      fridgeSlot: entity.fridgeSlot ?? null,
+      sofaSize: entity.sofaSize ?? null,
+      livingRoomView: entity.livingRoomView ?? null,
+
+      hasIslandTable: toBoolOrNull(entity.hasIslandTable),
+      hasKitchenWindow: toBoolOrNull(entity.hasKitchenWindow),
+      hasCityGas: toBoolOrNull(entity.hasCityGas),
+      hasInduction: toBoolOrNull(entity.hasInduction),
     };
   }
 }
 
-// 최상위 DTO
+// 관련 인물 DTO
+export type PinPersonInfo = {
+  id: string;
+  name: string | null;
+};
+
+export type PinAgeType = 'OLD' | 'NEW' | null;
+
+//최상위 DTO
 export class PinResponseDto {
   id!: string;
   lat!: number;
@@ -110,6 +144,7 @@ export class PinResponseDto {
   name!: string;
   badge!: string | null;
   addressLine!: string;
+  rebateText!: string | null;
 
   totalBuildings!: number | null;
   totalFloors!: number | null;
@@ -121,27 +156,68 @@ export class PinResponseDto {
   totalHouseholds!: number | null;
   totalParkingSlots!: number | null;
   registrationTypeId!: number | null;
-  parkingTypeId!: number | null;
+  parkingType!: string | null;
   parkingGrade!: string | null;
+
+  buildingTypes!: string[] | null;
+  parkingTypes!: string[] | null;
+
   slopeGrade!: string | null;
   structureGrade!: string | null;
   hasElevator!: boolean | null;
-  isOld!: boolean;
-  isNew!: boolean;
+
+  // 구옥/신축 구분
+  ageType!: PinAgeType;
+
   publicMemo!: string | null;
   privateMemo!: string | null;
 
-  contactMainLabel!: string;
+  contactMainLabel!: string | null;
   contactMainPhone!: string;
   contactSubLabel!: string | null;
   contactSubPhone!: string | null;
+
+  // 생성/수정/답사 시각
+  createdAt!: string | null;
+  updatedAt!: string | null;
+  surveyedAt!: string | null;
+
+  // 관련 인물 id
+  creatorId!: string | null;
+  surveyorId!: string | null;
+  lastEditorId!: string | null;
+
+  // 관련 인물 정보
+  creator!: PinPersonInfo | null;
+  surveyor!: PinPersonInfo | null;
+  lastEditor!: PinPersonInfo | null;
 
   directions!: PinDirectionResponseDto[];
   areaGroups!: PinAreaGroupResponseDto[];
   units!: UnitResponseDto[];
   options!: PinOptionsResponseDto | null;
 
-  static fromEntity(entity: Pin): PinResponseDto {
+  static fromEntity(
+    entity: Pin,
+    people?: {
+      creator?: PinPersonInfo | null;
+      surveyor?: PinPersonInfo | null;
+      lastEditor?: PinPersonInfo | null;
+    },
+  ): PinResponseDto {
+    const isOldFlag = !!entity.isOld;
+    const isNewFlag = !!entity.isNew;
+
+    let ageType: PinAgeType = null;
+
+    if (isNewFlag && !isOldFlag) {
+      ageType = 'NEW';
+    } else if (isOldFlag && !isNewFlag) {
+      ageType = 'OLD';
+    } else if (isNewFlag && isOldFlag) {
+      ageType = 'NEW';
+    }
+
     return {
       id: String(entity.id),
       lat: Number(entity.lat),
@@ -149,33 +225,53 @@ export class PinResponseDto {
       name: entity.name,
       badge: entity.badge ?? null,
       addressLine: entity.addressLine,
+      rebateText: entity.rebateText ?? null,
 
-      completionDate: toISODateOrNull((entity as any).completionDate),
+      completionDate: toISODateOrNull(entity.completionDate),
       buildingType: entity.buildingType ?? null,
       totalHouseholds: toNumOrNull(entity.totalHouseholds),
       totalParkingSlots: toNumOrNull(entity.totalParkingSlots),
       registrationTypeId: toNumOrNull(entity.registrationTypeId),
-      parkingTypeId: toNumOrNull(entity.parkingTypeId),
+      parkingType: entity.parkingType,
       parkingGrade: entity.parkingGrade ?? null,
       slopeGrade: entity.slopeGrade ?? null,
       structureGrade: entity.structureGrade ?? null,
       hasElevator: toBoolOrNull(entity.hasElevator),
-      isOld: !!entity.isOld,
-      isNew: !!entity.isNew,
+
+      buildingTypes: entity.buildingTypes ?? null,
+      parkingTypes: entity.parkingTypes ?? null,
+
+      ageType,
+
       publicMemo: entity.publicMemo ?? null,
       privateMemo: entity.privateMemo ?? null,
 
-      // 연락처 라벨은 null 허용
       contactMainLabel: entity.contactMainLabel ?? null,
       contactMainPhone: entity.contactMainPhone,
       contactSubLabel: entity.contactSubLabel ?? null,
       contactSubPhone: entity.contactSubPhone ?? null,
 
-      // 신규 필드
       totalBuildings: toNumOrNull(entity.totalBuildings),
       totalFloors: toNumOrNull(entity.totalFloors),
       remainingHouseholds: toNumOrNull(entity.remainingHouseholds),
       minRealMoveInCost: toIntOrNull(entity.minRealMoveInCost),
+
+      createdAt: toISODateOrNull((entity as any).createdAt),
+      updatedAt: toISODateOrNull((entity as any).updatedAt),
+      surveyedAt: toISODateOrNull((entity as any).surveyedAt),
+
+      // id만
+      creatorId: entity.creatorId ? String(entity.creatorId) : null,
+      surveyorId: entity.surveyedBy ? String(entity.surveyedBy) : null,
+      lastEditorId:
+        (entity as any).lastEditorId != null
+          ? String((entity as any).lastEditorId)
+          : null,
+
+      // 이름 포함 객체
+      creator: people?.creator ?? null,
+      surveyor: people?.surveyor ?? null,
+      lastEditor: people?.lastEditor ?? null,
 
       directions:
         entity.directions?.map(PinDirectionResponseDto.fromEntity) ?? [],

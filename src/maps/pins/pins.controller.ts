@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -14,7 +15,6 @@ import { CreatePinDto } from './dto/create-pin.dto';
 import { UpdatePinDto } from './dto/update-pin.dto';
 import { MapPinsDto } from './dto/map-pins.dto';
 import { SearchPinsDto } from './dto/search-pins.dto';
-import { UpdatePinDisableDto } from './dto/update-pin-disable.dto';
 
 @Controller('pins')
 export class PinsController {
@@ -26,8 +26,10 @@ export class PinsController {
    * 핀 생성 API
    */
   @Post()
-  async create(@Body() dto: CreatePinDto) {
-    const data = await this.pinsService.create(dto);
+  async create(@Body() dto: CreatePinDto, @Req() req: any) {
+    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+
+    const data = await this.pinsService.create(dto, me || null);
     return { message: '핀 생성됨', data };
   }
 
@@ -76,8 +78,14 @@ export class PinsController {
    * https://www.notion.so/2858186df78b800fa226fb48dbf63435?source=copy_link
    */
   @Patch(':id')
-  async patch(@Param('id') id: string, @Body() dto: UpdatePinDto) {
-    const data = await this.pinsService.update(id, dto);
+  async patch(
+    @Param('id') id: string,
+    @Body() dto: UpdatePinDto,
+    @Req() req: any,
+  ) {
+    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+
+    const data = await this.pinsService.update(id, dto, me || null);
     return { message: '핀 수정됨', data };
   }
 
@@ -85,12 +93,18 @@ export class PinsController {
    * @remarks
    * https://www.notion.so/2858186df78b801bac39c31ad955346e?source=copy_link
    */
-  @Patch('disable/:id')
-  async setDisabled(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdatePinDisableDto,
-  ) {
-    const data = await this.pinsService.setDisabled(id, dto.isDisabled);
-    return { message: '핀 활성 상태 변경', data };
+  // @Patch('disable/:id')
+  // async setDisabled(
+  //   @Param('id', ParseIntPipe) id: number,
+  //   @Body() dto: UpdatePinDisableDto,
+  // ) {
+  //   const data = await this.pinsService.setDisabled(id, dto.isDisabled);
+  //   return { message: '핀 활성 상태 변경', data };
+  // }
+
+  @Delete(':id')
+  async deletePin(@Param('id', ParseIntPipe) id: number) {
+    const data = await this.pinsService.deletePin(id);
+    return { message: '핀 삭제 완료', data };
   }
 }

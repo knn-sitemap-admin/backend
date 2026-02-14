@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
 import { AppService } from './app.service';
 
 @Controller()
@@ -24,5 +24,10 @@ export class AppController {
         status,
       },
     };
+  }
+
+  @Get('favicon.ico')
+  ignore() {
+    return '';
   }
 }

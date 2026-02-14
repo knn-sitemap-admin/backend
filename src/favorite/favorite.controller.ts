@@ -8,8 +8,9 @@ export class FavoriteController {
 
   @Post('upsert-item')
   async upsertItem(@Body() dto: UpsertFavoriteItemDto, @Req() req: any) {
-    const accountId = String(req.user.userId);
-    const data = await this.service.upsertItem(accountId, dto);
+    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+
+    const data = await this.service.upsertItem(me, dto);
     return { message: '저장 성공', data };
   }
 }

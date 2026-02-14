@@ -1,22 +1,25 @@
 import { Module } from '@nestjs/common';
-import { ContractsService } from './contracts.service';
-import { ContractsController } from './contracts.controller';
-import { AssigneesModule } from './assignees/assignees.module';
-import { FilesModule } from './files/files.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { ContractsController } from './contracts.controller';
+import { ContractsService } from './contracts.service';
+
 import { Contract } from './entities/contract.entity';
-import { ContractFile } from './files/entities/file.entity';
-import { ContractAssigneesService } from './assignees/assignees.service';
+
+import { Account } from '../dashboard/accounts/entities/account.entity';
 import { ContractAssignee } from './assignees/entities/assignee.entity';
+import { ContractFile } from './files/entities/file.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Contract, ContractFile, ContractAssignee]),
-    AssigneesModule,
-    FilesModule,
+    TypeOrmModule.forFeature([
+      Contract,
+      ContractAssignee,
+      ContractFile,
+      Account,
+    ]),
   ],
   controllers: [ContractsController],
-  providers: [ContractsService, ContractAssigneesService],
-  exports: [ContractsService],
+  providers: [ContractsService],
 })
 export class ContractsModule {}

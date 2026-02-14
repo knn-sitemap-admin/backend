@@ -46,6 +46,11 @@ export class UpsertEmployeeInfoDto {
   positionRank?: PositionRank;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  teamName?: string | null;
+
+  @IsOptional()
   @IsUrl()
   docUrlResidentRegistration?: string | null; // 등본
 

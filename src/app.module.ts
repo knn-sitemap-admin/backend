@@ -15,6 +15,10 @@ import { FavoriteModule } from './favorite/favorite.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { PerformanceModule } from './performance/performance.module';
 import { ReportsModule } from './reports/reports.module';
+import { NoticesModule } from './notices/notices.module';
+import { OwnerModule } from './owner/owner.module';
+import { RequestQueryLogger } from './common/typeorm/request-query.logger';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -29,7 +33,9 @@ import { ReportsModule } from './reports/reports.module';
         database: process.env.DB_DATABASE,
         autoLoadEntities: true,
         synchronize: true, // 개발용
-        logging: ['error', 'schema', 'warn', 'query', 'migration', 'info'],
+        // synchronize: false, // 배포용
+        logging: false, // 콘솔 로깅 끔
+        logger: new RequestQueryLogger(), // 요청 단위로 쿼리만 수집
       }),
     }),
     PinsModule,
@@ -44,6 +50,9 @@ import { ReportsModule } from './reports/reports.module';
     ContractsModule,
     PerformanceModule,
     ReportsModule,
+    NoticesModule,
+    OwnerModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],

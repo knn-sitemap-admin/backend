@@ -1,2 +1,56 @@
-# knn-sitemap
-Real estate managing, sales managing SaaS
+# 🏠 Real Estate Listing Management SaaS
+
+**NoteMap**은 공인중개사 및 내부 직원이 **매물 등록, 고객 관리, 계약 상태 추적, 통계 리포트** 등을 손쉽게 수행할 수 있도록 개발된 
+
+**클라우드 기반 부동산 관리 플랫폼**입니다.  
+
+백엔드는 **NestJS + Mysql**, 프론트엔드는 **Next.js**로 구성되었으며, Railway를 통해 안정적으로 호스팅됩니다.
+
+---
+
+## 🚀 주요 기능
+
+### 📋 매물 관리
+- 매물 ( 이미지, 매물정보 ) 등록 / 수정 / 삭제 / 조회
+- 매물별 답사예정지 추가등록, 답사순서 조정
+- 주소 자동 완성 (카카오맵 API 연동)
+- 매물 상태 관리 (거래중 / 계약완료 / 보류)
+- 사진 및 문서 업로드 기능 (S3 또는 Cloudinary 연동)
+
+### 👥 고객 / 문의 관리
+- 고객별 매물 즐겨찾기 CRUD
+- 매물 문의내역 조회 및 상태 변경
+
+### 📈 통계 및 리포트
+- 월별 등록 매물 수, 계약 수, 매출 통계
+- 영업팀별 실적 리포트
+- 기간별 매출 비교 그래프
+
+### 🧑‍💼 관리자 기능
+- 사용자 계정 생성 및 권한 설정
+- 계정 활성상태 및 공지사항 관리
+
+### 🔐 인증 및 보안
+- 세션 + Redis 기반 인가/인증 / 로그아웃
+- 다양한 가드 사용(권한 가드, 세션가드, 디바이스가드)
+- 단방향 암호화 적용
+- HTTPS + CORS 정책 적용
+
+---
+
+## 🏗️ 기술 스택
+
+| 구분 | 기술                                                       |
+|------|----------------------------------------------------------|
+| **Frontend** | Next.js 14, TypeScript, Tailwind CSS, React Query, Axios |
+| **Backend** | NestJS, TypeORM, Mysql                                   |
+| **Auth** | JWT (RS256), argon2                                      |
+| **Infra / DevOps** | Railway / AWS / Vercel (선택), Docker                      |
+| **Storage** | AWS S3 (이미지, 문서 저장)                                      |
+| **CI/CD** | Railway Deploy Hook                                      |
+| **Docs** | Swagger UI (`/api-docs`)                                 |
+
+---
+
+## 📁 프로젝트 구조
+
