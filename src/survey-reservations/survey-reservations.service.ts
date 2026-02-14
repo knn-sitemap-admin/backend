@@ -151,7 +151,7 @@ export class SurveyReservationsService {
       const myAccountId = await this.resolveMyAccountId(meCredentialId);
       const surveyReservationRepo = m.getRepository(SurveyReservation);
 
-      const found = await surveyReservationRepo
+      const found = (await surveyReservationRepo
         .createQueryBuilder('r')
         .setLock('pessimistic_write')
         .select([
@@ -162,13 +162,13 @@ export class SurveyReservationsService {
           'r.pin_draft_id AS pinDraftId',
         ])
         .where('r.id = :id', { id })
-        .getRawOne<{
-          id: string;
-          assigneeId: string;
-          isDeleted: number;
-          sortOrder: number;
-          pinDraftId: string;
-        }>();
+        .getRawOne()) as {
+        id: string;
+        assigneeId: string;
+        isDeleted: number;
+        sortOrder: number;
+        pinDraftId: string;
+      } | null;
 
       if (!found) throw new NotFoundException('예약을 찾을 수 없습니다.');
       if (String(found.assigneeId) !== String(myAccountId)) {
