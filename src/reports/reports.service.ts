@@ -8,6 +8,7 @@ export type TeamOverview = {
   contractCount: number;
   canceledCount: number;
   supportAmount: number;
+  supportCashAmount: number;
   finalAmount: number;
 };
 
@@ -16,6 +17,7 @@ export type SalesOverviewResp = {
     totalContracts: number;
     totalFinalAmount: number;
     totalSupportAmount: number;
+    totalSupportCashAmount: number;
     totalEmployees: number;
   };
   teams: TeamOverview[];
@@ -24,6 +26,7 @@ export type SalesOverviewResp = {
       teamName: string;
       finalAmount: number;
       supportAmount: number;
+      supportCashAmount: number;
     }>;
     pieShareByTeam: Array<{ teamName: string; ratio: number }>;
   };
@@ -44,6 +47,11 @@ export class ReportsService {
       FROM contracts c
       WHERE c.status IN ('ongoing','done')
     `);
+    const [{ totalSupportCashAmount = 0 } = {}] = await this.ds.query(`
+      SELECT COALESCE(SUM(c.supportCashAmount),0) AS totalSupportCashAmount
+      FROM contracts c
+      WHERE c.status IN ('ongoing','done')
+    `);
     const [{ totalFinalAmount = 0 } = {}] = await this.ds.query(`
       SELECT COALESCE(SUM(a.finalAmount),0) AS totalFinalAmount
       FROM contract_assignees a
@@ -59,6 +67,7 @@ export class ReportsService {
       totalContracts: Number(totalContracts),
       totalFinalAmount: Number(totalFinalAmount),
       totalSupportAmount: Number(totalSupportAmount),
+      totalSupportCashAmount: Number(totalSupportCashAmount),
       totalEmployees: Number(totalEmployees),
     };
     const teams = await this.ds.query(`
@@ -69,6 +78,7 @@ export class ReportsService {
         COUNT(DISTINCT CASE WHEN c.status IN ('ongoing','done') THEN c.id END) AS contractCount,
         COUNT(DISTINCT CASE WHEN c.status='canceled' THEN c.id END) AS canceledCount,
         COALESCE(SUM(CASE WHEN c.status IN ('ongoing','done') THEN c.supportAmount END),0) AS supportAmount,
+        COALESCE(SUM(CASE WHEN c.status IN ('ongoing','done') THEN c.supportCashAmount END),0) AS supportCashAmount,
         COALESCE(SUM(CASE WHEN c.status IN ('ongoing','done') AND a.role='staff' THEN a.finalAmount END),0) AS finalAmount
       FROM teams t
       LEFT JOIN team_members tm ON tm.team_id=t.id AND tm.is_primary=1
@@ -81,6 +91,7 @@ export class ReportsService {
       teamName: t.teamName,
       finalAmount: Number(t.finalAmount ?? 0),
       supportAmount: Number(t.supportAmount ?? 0),
+      supportCashAmount: Number(t.supportCashAmount ?? 0),
     }));
     const totalForRatio =
       barByTeam.reduce((sum, t) => sum + t.finalAmount, 0) || 1;

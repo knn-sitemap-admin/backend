@@ -62,6 +62,12 @@ export class CreateContractDto {
   @Min(0)
   supportAmount!: number;
 
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  supportCashAmount?: number;
+
   @IsBoolean()
   isTaxed!: boolean;
 

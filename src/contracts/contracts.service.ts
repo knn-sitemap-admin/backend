@@ -44,6 +44,7 @@ type ListItem = {
   vatEnabled: boolean;
   rebateUnits: number;
   supportAmount: number;
+  supportCashAmount: number; // Added this line
   isTaxed: boolean;
   companyPercent: number;
 
@@ -202,6 +203,7 @@ export class ContractsService {
         vatEnabled: dto.vat,
         rebateUnits: dto.rebate,
         supportAmount: dto.supportAmount,
+        supportCashAmount: dto.supportCashAmount ?? 0,
         isTaxed: dto.isTaxed,
         calcMemo: dto.calcMemo ?? null,
 
@@ -311,10 +313,11 @@ export class ContractsService {
       });
 
       const calc = calcContractMoney({
-        brokerageFee: c.brokerageFee,
+        brokerageFee: Number(c.brokerageFee),
         vatEnabled: c.vatEnabled,
-        rebateUnits: c.rebateUnits,
-        supportAmount: c.supportAmount,
+        rebateUnits: Number(c.rebateUnits),
+        supportAmount: Number(c.supportAmount),
+        supportCashAmount: Number(c.supportCashAmount),
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
       });
@@ -343,6 +346,7 @@ export class ContractsService {
         vatEnabled: c.vatEnabled,
         rebateUnits: c.rebateUnits,
         supportAmount: c.supportAmount,
+        supportCashAmount: c.supportCashAmount,
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
 
@@ -430,10 +434,11 @@ export class ContractsService {
       });
 
       const calc = calcContractMoney({
-        brokerageFee: c.brokerageFee,
+        brokerageFee: Number(c.brokerageFee),
         vatEnabled: c.vatEnabled,
-        rebateUnits: c.rebateUnits,
-        supportAmount: c.supportAmount,
+        rebateUnits: Number(c.rebateUnits),
+        supportAmount: Number(c.supportAmount),
+        supportCashAmount: Number(c.supportCashAmount),
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
       });
@@ -467,6 +472,7 @@ export class ContractsService {
         vatEnabled: c.vatEnabled,
         rebateUnits: c.rebateUnits,
         supportAmount: c.supportAmount,
+        supportCashAmount: c.supportCashAmount,
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
 
@@ -527,10 +533,11 @@ export class ContractsService {
     ]);
 
     const calc = calcContractMoney({
-      brokerageFee: contract.brokerageFee,
+      brokerageFee: Number(contract.brokerageFee),
       vatEnabled: contract.vatEnabled,
-      rebateUnits: contract.rebateUnits,
-      supportAmount: contract.supportAmount,
+      rebateUnits: Number(contract.rebateUnits),
+      supportAmount: Number(contract.supportAmount),
+      supportCashAmount: Number(contract.supportCashAmount),
       isTaxed: contract.isTaxed,
       companyPercent: Number(contract.companyPercent),
     });
@@ -565,6 +572,7 @@ export class ContractsService {
       vat: contract.vatEnabled,
       rebate: contract.rebateUnits,
       supportAmount: contract.supportAmount,
+      supportCashAmount: contract.supportCashAmount,
       isTaxed: contract.isTaxed,
       calcMemo: contract.calcMemo,
 
@@ -682,6 +690,7 @@ export class ContractsService {
       contract.vatEnabled = dto.vat ?? contract.vatEnabled;
       contract.rebateUnits = dto.rebate ?? contract.rebateUnits;
       contract.supportAmount = dto.supportAmount ?? contract.supportAmount;
+      contract.supportCashAmount = dto.supportCashAmount ?? contract.supportCashAmount;
       contract.isTaxed = dto.isTaxed ?? contract.isTaxed;
       contract.calcMemo = dto.calcMemo ?? contract.calcMemo;
 

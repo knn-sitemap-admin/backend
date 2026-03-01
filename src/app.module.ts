@@ -32,8 +32,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         password: process.env.DB_PASSWORD,
         database: process.env.DB_DATABASE,
         autoLoadEntities: true,
-        // synchronize: true, // 개발용
-        synchronize: false, // 배포용
+        synchronize: false, // 배포용 + 마이그레이션 적용 후
         logging: false, // 콘솔 로깅 끔
         logger: new RequestQueryLogger(), // 요청 단위로 쿼리만 수집
       }),
