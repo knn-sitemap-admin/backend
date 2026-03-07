@@ -17,6 +17,7 @@ import { PerformanceModule } from './performance/performance.module';
 import { ReportsModule } from './reports/reports.module';
 import { NoticesModule } from './notices/notices.module';
 import { OwnerModule } from './owner/owner.module';
+import { LedgersModule } from './ledgers/ledgers.module';
 import { RequestQueryLogger } from './common/typeorm/request-query.logger';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -51,6 +52,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ReportsModule,
     NoticesModule,
     OwnerModule,
+    LedgersModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
