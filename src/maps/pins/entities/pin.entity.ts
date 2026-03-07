@@ -179,6 +179,9 @@ export class Pin {
   @Column({ type: 'text', name: 'private_memo', nullable: true })
   privateMemo: string | null = null;
 
+  @Column({ type: 'boolean', name: 'is_completed', default: false })
+  isCompleted!: boolean;
+
   @OneToOne(() => PinOption, (opt) => opt.pin)
   options!: PinOption | null;
 

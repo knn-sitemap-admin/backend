@@ -14,7 +14,7 @@ import {
   QueryFailedError,
 } from 'typeorm';
 import { MapPinsDto } from './dto/map-pins.dto';
-import { Pin, PinBadge } from './entities/pin.entity';
+import { Pin, PinBadge, BuildingType } from './entities/pin.entity';
 import { CreatePinDto } from './dto/create-pin.dto';
 import { UnitsService } from '../units/units.service';
 import { PinDirectionsService } from '../pin-directions/pin-directions.service';
@@ -42,6 +42,7 @@ type PinMapItem = {
   name: string;
   badge: string | null;
   addressLine: string;
+  isCompleted: boolean;
 };
 
 type DraftMarker = {
@@ -60,7 +61,9 @@ type PointResp = {
     lng: number;
     name: string | null;
     badge: string | null;
+    addressLine: string;
     ageType: AgeType;
+    isCompleted: boolean;
   }[];
   drafts: DraftMarker[];
 };
@@ -90,17 +93,23 @@ export class PinsService {
     try {
       const { swLat, swLng, neLat, neLng, isOld, isNew, favoriteOnly } = dto;
 
+      // swLat, swLng, neLat, neLng가 모두 있을 때만 영역 필터링 적용
+      const hasBounds =
+        swLat != null && swLng != null && neLat != null && neLng != null;
+
       const qb = this.pinRepository
         .createQueryBuilder('p')
-        .select(['p.id AS id', 'p.lat AS lat', 'p.lng AS lng'])
-        .where('CAST(p.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
+        .select(['p.id AS id', 'p.lat AS lat', 'p.lng AS lng']);
+
+      if (hasBounds) {
+        qb.where('CAST(p.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
           swLat,
           neLat,
-        })
-        .andWhere('CAST(p.lng AS DECIMAL(10,6)) BETWEEN :swLng AND :neLng', {
+        }).andWhere('CAST(p.lng AS DECIMAL(10,6)) BETWEEN :swLng AND :neLng', {
           swLng,
           neLng,
         });
+      }
 
       if (typeof isOld === 'boolean') {
         qb.andWhere('p.isOld = :isOld', { isOld });
@@ -121,6 +130,8 @@ export class PinsService {
           'p.name AS name',
           'p.isOld AS isOld',
           'p.isNew AS isNew',
+          'p.addressLine AS addressLine',
+          'p.isCompleted AS isCompleted',
         ])
         .orderBy('p.id', 'DESC')
         .getRawMany<{
@@ -129,31 +140,38 @@ export class PinsService {
           lng: string | number;
           badge: string | null;
           name: string | null;
-          isOld: 0 | 1 | boolean | null;
-          isNew: 0 | 1 | boolean | null;
+          isOld: boolean | 0 | 1 | null;
+          isNew: boolean | 0 | 1 | null;
+          addressLine: string;
+          isCompleted: boolean | 0 | 1;
         }>();
 
       const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
 
-      const draftsRaw = await draftRepo
+      const draftQb = draftRepo
         .createQueryBuilder('d')
         .select([
           'd.id AS id',
           'd.lat AS lat',
           'd.lng AS lng',
           'd.name AS name',
+          'd.addressLine AS addressLine',
         ])
-        .where('d.isActive = 1')
-        .andWhere('CAST(d.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
-          swLat,
-          neLat,
-        })
-        .andWhere('CAST(d.lng AS DECIMAL(10,6)) BETWEEN :swLng AND :neLng', {
-          swLng,
-          neLng,
-        })
-        .orderBy('d.createdAt', 'DESC')
-        .getRawMany();
+        .where('d.isActive = 1');
+
+      if (hasBounds) {
+        draftQb
+          .andWhere('CAST(d.lat AS DECIMAL(10,6)) BETWEEN :swLat AND :neLat', {
+            swLat,
+            neLat,
+          })
+          .andWhere('CAST(d.lng AS DECIMAL(10,6)) BETWEEN :swLng AND :neLng', {
+            swLng,
+            neLng,
+          });
+      }
+
+      const draftsRaw = await draftQb.orderBy('d.createdAt', 'DESC').getRawMany();
 
       const draftIds = draftsRaw.map((d) => d.id);
       let drafts: DraftMarker[] = [];
@@ -175,6 +193,7 @@ export class PinsService {
           lat: Number(d.lat),
           lng: Number(d.lng),
           name: d.name ?? null,
+          addressLine: d.addressLine ?? '',
           draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
         }));
       }
@@ -201,7 +220,9 @@ export class PinsService {
             lng: Number(p.lng),
             name: p.name ?? null,
             badge: p.badge ?? null,
+            addressLine: p.addressLine ?? '',
             ageType,
+            isCompleted: !!p.isCompleted,
           };
         }),
         drafts,
@@ -296,12 +317,15 @@ export class PinsService {
       }
 
       // 4) 핀 저장
-      const buildingTypes =
+      // buildingTypes 배열 우선, 없으면 buildingType 단일값으로 배열 구성
+      const buildingTypes: BuildingType[] | null =
         dto.buildingTypes !== undefined
           ? (dto.buildingTypes ?? null)
           : dto.buildingType
             ? [dto.buildingType]
             : null;
+      // buildingType 레거시 컬럼은 buildingTypes[0]와 항상 동기화
+      const buildingTypeSync = (buildingTypes && buildingTypes[0]) ?? (dto.buildingType ?? null);
 
       const parkingTypes =
         dto.parkingTypes !== undefined
@@ -321,11 +345,11 @@ export class PinsService {
           ? new Date(dto.completionDate)
           : null,
 
-        // 레거시
-        buildingType: dto.buildingType ?? null,
+        // buildingType 레거시 컬럼은 buildingTypes[0]와 동기화
+        buildingType: buildingTypeSync,
         parkingType: dto.parkingType ?? null,
 
-        // 신규
+        // 신규 배열
         buildingTypes,
         parkingTypes,
 
@@ -344,6 +368,7 @@ export class PinsService {
         isNew: dto.isNew ?? false,
         publicMemo: dto.publicMemo ?? null,
         privateMemo: dto.privateMemo ?? null,
+        isCompleted: dto.isCompleted ?? false,
         totalBuildings: dto.totalBuildings ?? null,
         totalFloors: dto.totalFloors ?? null,
         remainingHouseholds: dto.remainingHouseholds ?? null,
@@ -546,13 +571,21 @@ export class PinsService {
           ? new Date(dto.completionDate)
           : null;
       }
-      if (dto.buildingType !== undefined) {
+      if (dto.buildingTypes !== undefined) {
+        // buildingTypes 배열 저장
+        pin.buildingTypes = dto.buildingTypes;
+        // buildingType 레거시 콼럼도 buildingTypes[0]와 동기화
+        pin.buildingType = (dto.buildingTypes && dto.buildingTypes[0]) ?? null;
+      } else if (dto.buildingType !== undefined) {
+        // buildingType만 온 경우(레거시 트리거): buildingTypes도 동기화
         pin.buildingType = dto.buildingType ?? null;
+        if (dto.buildingType) pin.buildingTypes = [dto.buildingType];
+        else pin.buildingTypes = [];
       }
+
       if (dto.hasElevator !== undefined) {
         pin.hasElevator = dto.hasElevator;
       }
-
       if (dto.totalHouseholds !== undefined) {
         pin.totalHouseholds = dto.totalHouseholds ?? null;
       }
@@ -564,12 +597,6 @@ export class PinsService {
       }
       if (dto.parkingType !== undefined) {
         pin.parkingType = dto.parkingType ?? null;
-      }
-
-      if (dto.buildingTypes !== undefined) {
-        // null을 보내면 "비우기"로 해석할지, "거부"할지 정책 선택
-        // 보통은 "비우기"면 []가 맞고, null은 금지하는게 안전함.
-        pin.buildingTypes = dto.buildingTypes;
       }
 
       // parkingTypes (배열)
@@ -620,6 +647,9 @@ export class PinsService {
       }
       if (dto.badge !== undefined) {
         pin.badge = dto.badge ?? null;
+      }
+      if (dto.isCompleted !== undefined) {
+        pin.isCompleted = dto.isCompleted;
       }
 
       if (dto.totalBuildings !== undefined) {
@@ -717,44 +747,31 @@ export class PinsService {
       .leftJoin('p.areaGroups', 'ag') // 면적 필터용
       .where('p.is_disabled = :active', { active: 0 });
 
-    // 0) 방/테라스/복층 → PinBadge 배열로 변환
-    const badgeFilters: PinBadge[] = [];
+    // 0) 물리적 속성 필터 (Unit 기반)
     const rooms = dto.rooms ?? [];
     const hasTerrace = dto.hasTerrace === true;
     const hasLoft = dto.hasLoft === true;
     const hasTownhouse = dto.hasTownhouse === true;
 
-    if (rooms.includes(1)) {
-      badgeFilters.push(
-        hasTerrace ? PinBadge.R1_TO_1_5_TERRACE : PinBadge.R1_TO_1_5,
-      );
-    }
-    if (rooms.includes(2)) {
-      badgeFilters.push(
-        hasTerrace ? PinBadge.R2_TO_2_5_TERRACE : PinBadge.R2_TO_2_5,
-      );
-    }
-    if (rooms.includes(3)) {
-      badgeFilters.push(hasTerrace ? PinBadge.R3_TERRACE : PinBadge.R3);
-    }
-    if (rooms.includes(4)) {
-      badgeFilters.push(hasTerrace ? PinBadge.R4_TERRACE : PinBadge.R4);
+    // 0-1) 방 개수 필터
+    if (rooms.length > 0) {
+      qb.andWhere('u.rooms IN (:...rooms)', { rooms });
     }
 
-    // 복층 필터
+    // 0-2) 복층 필터
     if (hasLoft) {
-      badgeFilters.push(hasTerrace ? PinBadge.LOFT_TERRACE : PinBadge.LOFT);
+      qb.andWhere('u.has_loft = :hasLoft', { hasLoft: 1 });
     }
 
+    // 0-3) 테라스 필터
+    if (hasTerrace) {
+      qb.andWhere('u.has_terrace = :hasTerrace', { hasTerrace: 1 });
+    }
+
+    // 0-4) 타운하우스 필터 (핀 기준)
     if (hasTownhouse) {
-      badgeFilters.push(PinBadge.TOWNHOUSE);
-    }
-
-    const uniqueBadges = Array.from(new Set(badgeFilters));
-
-    if (uniqueBadges.length > 0) {
-      qb.andWhere('p.badge IN (:...badges)', {
-        badges: uniqueBadges,
+      qb.andWhere('p.badge = :townhouse', {
+        townhouse: PinBadge.TOWNHOUSE,
       });
     }
 
@@ -777,41 +794,34 @@ export class PinsService {
       });
     }
 
-    // 3) 등기 타입 (핀 기준)
+    // 3) 등기 타입 — building_types(json 배열) 우선, building_type(레거시 단일값) 폴백
     if (dto.buildingTypes?.length) {
-      qb.andWhere('p.building_type IN (:...buildingTypes)', {
-        buildingTypes: dto.buildingTypes,
-      });
+      qb.andWhere(
+        new Brackets((w) => {
+          for (const bt of dto.buildingTypes!) {
+            w.orWhere(
+              `(JSON_CONTAINS(p.building_types, :bt${bt}) OR p.building_type = :bt${bt}s)`,
+              { [`bt${bt}`]: JSON.stringify(bt), [`bt${bt}s`]: bt },
+            );
+          }
+        }),
+      );
     }
 
-    // 4) 전용면적 (areaGroups 기준) – 기존 로직 유지
+    // 4) 전용면적 (areaGroups 기준 — actualMinM2/actualMaxM2 타겟)
     if (dto.areaMinM2 != null || dto.areaMaxM2 != null) {
       qb.andWhere(
         new Brackets((w) => {
           if (dto.areaMinM2 != null) {
             w.andWhere(
-              new Brackets((w2) => {
-                w2.where(
-                  '(ag.exclusiveMaxM2 IS NOT NULL AND ag.exclusiveMaxM2 >= :amin)',
-                  { amin: dto.areaMinM2 },
-                ).orWhere(
-                  '(ag.actualMaxM2 IS NOT NULL AND ag.actualMaxM2 >= :amin)',
-                  { amin: dto.areaMinM2 },
-                );
-              }),
+              '(ag.actualMaxM2 IS NOT NULL AND ag.actualMaxM2 >= :amin)',
+              { amin: dto.areaMinM2 },
             );
           }
           if (dto.areaMaxM2 != null) {
             w.andWhere(
-              new Brackets((w2) => {
-                w2.where(
-                  '(ag.exclusiveMinM2 IS NOT NULL AND ag.exclusiveMinM2 <= :amax)',
-                  { amax: dto.areaMaxM2 },
-                ).orWhere(
-                  '(ag.actualMinM2 IS NOT NULL AND ag.actualMinM2 <= :amax)',
-                  { amax: dto.areaMaxM2 },
-                );
-              }),
+              '(ag.actualMinM2 IS NOT NULL AND ag.actualMinM2 <= :amax)',
+              { amax: dto.areaMaxM2 },
             );
           }
         }),
@@ -846,6 +856,7 @@ export class PinsService {
           'p.name AS name',
           'p.badge AS badge',
           'p.address_line AS addressLine',
+          'p.is_completed AS isCompleted',
         ])
         .where('p.id IN (:...ids)', { ids })
         .orderBy('p.id', 'DESC')
@@ -856,6 +867,7 @@ export class PinsService {
           name: string;
           badge: string | null;
           addressLine: string;
+          isCompleted: boolean | 0 | 1;
         }>();
 
       pins = raw.map((r) => ({
@@ -865,12 +877,16 @@ export class PinsService {
         name: r.name,
         badge: (r.badge as PinBadge | null) ?? null,
         addressLine: r.addressLine,
+        isCompleted: !!r.isCompleted,
       }));
     }
 
     // 7) 필터 사용 여부 (임시핀 숨길지 결정)
     const hasAnyFilter =
-      uniqueBadges.length > 0 ||
+      rooms.length > 0 ||
+      hasLoft ||
+      hasTerrace ||
+      hasTownhouse ||
       typeof dto.hasElevator === 'boolean' ||
       dto.salePriceMin != null ||
       dto.salePriceMax != null ||

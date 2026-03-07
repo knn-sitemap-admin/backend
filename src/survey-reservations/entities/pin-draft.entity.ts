@@ -7,15 +7,14 @@ import {
 } from 'typeorm';
 
 @Entity({ name: 'pin_drafts' })
+@Index(['lat', 'lng'])
 export class PinDraft {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Index()
   @Column({ type: 'decimal', precision: 10, scale: 7 })
   lat!: string;
 
-  @Index()
   @Column({ type: 'decimal', precision: 10, scale: 7 })
   lng!: string;
 

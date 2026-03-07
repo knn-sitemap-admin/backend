@@ -150,9 +150,7 @@ export class PinResponseDto {
   totalFloors!: number | null;
   remainingHouseholds!: number | null;
   minRealMoveInCost!: number | null;
-
   completionDate!: string | null;
-  buildingType!: string | null;
   totalHouseholds!: number | null;
   totalParkingSlots!: number | null;
   registrationTypeId!: number | null;
@@ -165,6 +163,7 @@ export class PinResponseDto {
   slopeGrade!: string | null;
   structureGrade!: string | null;
   hasElevator!: boolean | null;
+  isCompleted!: boolean;
 
   // 구옥/신축 구분
   ageType!: PinAgeType;
@@ -228,7 +227,6 @@ export class PinResponseDto {
       rebateText: entity.rebateText ?? null,
 
       completionDate: toISODateOrNull(entity.completionDate),
-      buildingType: entity.buildingType ?? null,
       totalHouseholds: toNumOrNull(entity.totalHouseholds),
       totalParkingSlots: toNumOrNull(entity.totalParkingSlots),
       registrationTypeId: toNumOrNull(entity.registrationTypeId),
@@ -237,8 +235,15 @@ export class PinResponseDto {
       slopeGrade: entity.slopeGrade ?? null,
       structureGrade: entity.structureGrade ?? null,
       hasElevator: toBoolOrNull(entity.hasElevator),
+      isCompleted: !!entity.isCompleted,
 
-      buildingTypes: entity.buildingTypes ?? null,
+      // buildingTypes(배열)만 반환 — buildingType(레거시 단일값) 제거
+      buildingTypes: (() => {
+        if (Array.isArray(entity.buildingTypes) && entity.buildingTypes.length > 0)
+          return entity.buildingTypes;
+        if (entity.buildingType) return [entity.buildingType];
+        return null;
+      })(),
       parkingTypes: entity.parkingTypes ?? null,
 
       ageType,

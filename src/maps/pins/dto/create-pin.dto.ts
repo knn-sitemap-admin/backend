@@ -194,4 +194,8 @@ export class CreatePinDto {
   @IsString()
   @MaxLength(50)
   rebateText?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isCompleted?: boolean;
 }

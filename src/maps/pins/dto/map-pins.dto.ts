@@ -17,29 +17,33 @@ export enum DraftStateFilter {
 export class MapPinsDto {
   /** 남서(SW) */
   @Type(() => Number)
+  @IsOptional()
   @IsNumber()
   @Min(-90)
   @Max(90)
-  swLat!: number;
+  swLat?: number;
 
   @Type(() => Number)
+  @IsOptional()
   @IsNumber()
   @Min(-180)
   @Max(180)
-  swLng!: number;
+  swLng?: number;
 
   /** 북동(NE) */
   @Type(() => Number)
+  @IsOptional()
   @IsNumber()
   @Min(-90)
   @Max(90)
-  neLat!: number;
+  neLat?: number;
 
   @Type(() => Number)
+  @IsOptional()
   @IsNumber()
   @Min(-180)
   @Max(180)
-  neLng!: number;
+  neLng?: number;
 
   /** 카카오맵 줌 레벨 클러스터링 */
   // @Type(() => Number)

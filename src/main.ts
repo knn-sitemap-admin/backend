@@ -46,8 +46,14 @@ async function bootstrap() {
   //배포
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-  //보안 헤더
-  app.use(helmet());
+  //보안 헤더 (로컬 개발 시 CORP를 cross-origin으로 설정해 Set-Cookie 차단 방지)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: {
+        policy: process.env.IS_DEV === 'true' ? 'cross-origin' : 'same-origin',
+      },
+    }),
+  );
 
   //요청 로깅
   app.use(morgan('combined'));
@@ -107,32 +113,43 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
 
-  //node-redis 클라이언트
-  const redisUrl = process.env.REDIS_URL;
-  const redisClient: RedisClientType = redisUrl
-    ? createClient({ url: redisUrl })
-    : createClient({
-        socket: {
-          host: process.env.REDIS_HOST ?? 'localhost',
-          port: Number(process.env.REDIS_PORT ?? 6379),
-        },
-        password: process.env.REDIS_PASSWORD || undefined,
-      });
+  // 로컬 개발(IS_DEV=true)이면 MemoryStore 사용 (Redis 불필요)
+  // 프로덕션이면 RedisStore 사용
+  const isDevMode = process.env.IS_DEV === 'true';
 
-  redisClient.on('error', (err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('Redis Client Error:', msg);
-  });
-  await redisClient.connect();
+  let store: session.Store;
 
-  expressApp.set('redisClient', redisClient);
+  if (isDevMode) {
+    console.log('[Session] IS_DEV=true → MemoryStore 사용 (로컬 전용)');
+    store = new session.MemoryStore();
+  } else {
+    //node-redis 클라이언트
+    const redisUrl = process.env.REDIS_URL;
+    const redisClient: RedisClientType = redisUrl
+      ? createClient({ url: redisUrl })
+      : createClient({
+          socket: {
+            host: process.env.REDIS_HOST ?? 'localhost',
+            port: Number(process.env.REDIS_PORT ?? 6379),
+          },
+          password: process.env.REDIS_PASSWORD || undefined,
+        });
 
-  type RedisStoreCtorArg = ConstructorParameters<typeof RedisStore>[0];
+    redisClient.on('error', (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Redis Client Error:', msg);
+    });
+    await redisClient.connect();
+    console.log('[Session] RedisStore 사용 (프로덕션)');
 
-  const store = new RedisStore({
-    client: redisClient,
-    prefix: 'sess:',
-  } satisfies RedisStoreCtorArg);
+    expressApp.set('redisClient', redisClient);
+
+    type RedisStoreCtorArg = ConstructorParameters<typeof RedisStore>[0];
+    store = new RedisStore({
+      client: redisClient,
+      prefix: 'sess:',
+    } satisfies RedisStoreCtorArg);
+  }
 
   expressApp.set('sessionStore', store);
 
@@ -144,6 +161,7 @@ async function bootstrap() {
     secret: process.env.SESSION_SECRET ?? 'change_this_secret',
     resave: false,
     saveUninitialized: false,
+    rolling: true, // 매 응답마다 Set-Cookie 강제 발송 (regenerate 이후 쿠키 누락 방지)
     proxy: true,
     cookie: {
       httpOnly: true,
@@ -159,6 +177,7 @@ async function bootstrap() {
     secret: process.env.SESSION_SECRET ?? 'change_this_secret',
     resave: false,
     saveUninitialized: false,
+    rolling: true, // 매 응답마다 Set-Cookie 강제 발송
     proxy: true,
     cookie: {
       httpOnly: true,
@@ -170,10 +189,13 @@ async function bootstrap() {
   });
 
   app.use((req, res, next) => {
+    // 로컬 테스트 시 'lax'와 'secure: false'를 사용하고,
+    // 프로덕션 환경 시 'none'과 'secure: true'를 사용 
     const origin = String(req.headers.origin ?? '');
     const isLocalOrigin =
-      origin.startsWith('http://localhost') ||
-      origin.startsWith('http://127.0.0.1');
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1') ||
+      process.env.NODE_ENV !== 'production';
 
     if (isLocalOrigin) return sessionMiddlewareLocal(req, res, next);
     return sessionMiddlewareCrossSite(req, res, next);

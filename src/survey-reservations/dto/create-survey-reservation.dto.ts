@@ -18,4 +18,10 @@ export class CreateSurveyReservationDto {
   @IsInt()
   @Min(0)
   insertAt?: number;
+
+  /** 관리자/매니저가 대리로 예약할 때 대상 계정 ID */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  assigneeId?: number;
 }
