@@ -30,8 +30,9 @@ type UpsertInput = {
   salaryAccount?: string;
   profileUrl?: string;
 
-  positionRank?: PositionRank;
-  teamName?: string;
+  positionRank?: PositionRank | null;
+  teamName?: string | null;
+  teamId?: string | null;
 
   docUrlResidentRegistration?: string | null;
   docUrlResidentAbstract?: string | null;
@@ -87,22 +88,54 @@ export class EmployeeInfoService {
 
   private normalize(dto: UpsertEmployeeInfoDto): UpsertInput {
     return {
-      name: dto.name?.trim() ?? undefined,
-      phone: dto.phone?.trim() ?? undefined,
-      emergencyContact: dto.emergencyContact?.trim() ?? undefined,
-      addressLine: dto.addressLine?.trim() ?? undefined,
-      salaryBankName: dto.salaryBankName?.trim() ?? undefined,
-      salaryAccount: dto.salaryAccount?.trim() ?? undefined,
-      profileUrl: dto.profileUrl?.trim() ?? undefined,
+      name: dto.name !== undefined ? dto.name?.trim() || undefined : undefined,
+      phone:
+        dto.phone !== undefined ? dto.phone?.trim() || undefined : undefined,
+      emergencyContact:
+        dto.emergencyContact !== undefined
+          ? dto.emergencyContact?.trim() || undefined
+          : undefined,
+      addressLine:
+        dto.addressLine !== undefined
+          ? dto.addressLine?.trim() || undefined
+          : undefined,
+      salaryBankName:
+        dto.salaryBankName !== undefined
+          ? dto.salaryBankName?.trim() || undefined
+          : undefined,
+      salaryAccount:
+        dto.salaryAccount !== undefined
+          ? dto.salaryAccount?.trim() || undefined
+          : undefined,
+      profileUrl:
+        dto.profileUrl !== undefined
+          ? dto.profileUrl?.trim() || undefined
+          : undefined,
 
-      positionRank: dto.positionRank,
-      teamName: dto.teamName?.trim() ?? undefined,
+      positionRank:
+        dto.positionRank !== undefined ? (dto.positionRank ?? null) : undefined,
+
+      teamName:
+        dto.teamName !== undefined ? dto.teamName?.trim() || null : undefined,
+
+      teamId: dto.teamId !== undefined ? dto.teamId?.trim() || null : undefined,
 
       docUrlResidentRegistration:
-        dto.docUrlResidentRegistration?.trim() ?? undefined,
-      docUrlResidentAbstract: dto.docUrlResidentAbstract?.trim() ?? undefined,
-      docUrlIdCard: dto.docUrlIdCard?.trim() ?? undefined,
-      docUrlFamilyRelation: dto.docUrlFamilyRelation?.trim() ?? undefined,
+        dto.docUrlResidentRegistration !== undefined
+          ? dto.docUrlResidentRegistration?.trim() || null
+          : undefined,
+      docUrlResidentAbstract:
+        dto.docUrlResidentAbstract !== undefined
+          ? dto.docUrlResidentAbstract?.trim() || null
+          : undefined,
+      docUrlIdCard:
+        dto.docUrlIdCard !== undefined
+          ? dto.docUrlIdCard?.trim() || null
+          : undefined,
+      docUrlFamilyRelation:
+        dto.docUrlFamilyRelation !== undefined
+          ? dto.docUrlFamilyRelation?.trim() || null
+          : undefined,
     };
   }
 
@@ -400,6 +433,392 @@ export class EmployeeInfoService {
   //   });
   // }
 
+  // async upsertByCredentialId(credentialId: string, dto: UpsertEmployeeInfoDto) {
+  //   return this.dataSource.transaction(async (tx) => {
+  //     const credRepo = tx.getRepository(AccountCredential);
+  //     const accRepo = tx.getRepository(Account);
+  //     const teamRepo = tx.getRepository(Team);
+  //     const tmRepo = tx.getRepository(TeamMember);
+  //     const sessionRepo = tx.getRepository(AccountSession);
+  //
+  //     const credential = await credRepo.findOne({
+  //       where: { id: String(credentialId) },
+  //     });
+  //     if (!credential) {
+  //       throw new NotFoundException('계정을 찾을 수 없습니다');
+  //     }
+  //
+  //     const account = await accRepo.findOne({
+  //       where: { credential_id: String(credential.id) },
+  //     });
+  //     if (!account) {
+  //       throw new NotFoundException('사용자 정보를 찾을 수 없습니다');
+  //     }
+  //
+  //     const input = this.normalize(dto);
+  //
+  //     // 중복 검사
+  //     if (input.phone) {
+  //       const dupPhone = await accRepo.findOne({
+  //         where: { phone: input.phone },
+  //       });
+  //
+  //       if (dupPhone && String(dupPhone.id) !== String(account.id)) {
+  //         throw new ConflictException('이미 사용 중인 연락처입니다');
+  //       }
+  //     }
+  //
+  //     if (input.salaryAccount) {
+  //       const dupSalary = await accRepo.findOne({
+  //         where: { salary_account: input.salaryAccount },
+  //       });
+  //
+  //       if (dupSalary && String(dupSalary.id) !== String(account.id)) {
+  //         throw new ConflictException('이미 사용 중인 급여 계좌번호입니다');
+  //       }
+  //     }
+  //
+  //     //직급 변경 감지
+  //     const prevRank = account.position_rank
+  //       ? String(account.position_rank)
+  //       : null;
+  //     const hasRankInRequest = input.positionRank !== undefined;
+  //     const nextRank = hasRankInRequest
+  //       ? input.positionRank
+  //         ? String(input.positionRank)
+  //         : null
+  //       : prevRank;
+  //
+  //     const rankChanged = hasRankInRequest && prevRank !== nextRank;
+  //
+  //     const becameTeamLeader =
+  //       prevRank !== PositionRank.TEAM_LEADER &&
+  //       nextRank === PositionRank.TEAM_LEADER;
+  //
+  //     const leftTeamLeader =
+  //       prevRank === PositionRank.TEAM_LEADER &&
+  //       nextRank !== PositionRank.TEAM_LEADER;
+  //
+  //     const isStillTeamLeader =
+  //       prevRank === PositionRank.TEAM_LEADER &&
+  //       nextRank === PositionRank.TEAM_LEADER;
+  //
+  //     const requestedTeamName =
+  //       input.teamName !== undefined
+  //         ? input.teamName
+  //           ? String(input.teamName).trim()
+  //           : null
+  //         : undefined;
+  //
+  //     // Account 부분 업데이트
+  //     account.name = input.name ?? account.name;
+  //     account.phone = input.phone ?? account.phone;
+  //     account.emergency_contact =
+  //       input.emergencyContact ?? account.emergency_contact;
+  //     account.address_line = input.addressLine ?? account.address_line;
+  //     account.salary_bank_name =
+  //       input.salaryBankName ?? account.salary_bank_name;
+  //     account.salary_account = input.salaryAccount ?? account.salary_account;
+  //     account.profile_url = input.profileUrl ?? account.profile_url;
+  //
+  //     if (hasRankInRequest) {
+  //       account.position_rank =
+  //         input.positionRank !== undefined
+  //           ? input.positionRank
+  //           : account.position_rank;
+  //     }
+  //
+  //     account.doc_url_resident_registration =
+  //       input.docUrlResidentRegistration !== undefined
+  //         ? input.docUrlResidentRegistration
+  //         : account.doc_url_resident_registration;
+  //
+  //     account.doc_url_resident_abstract =
+  //       input.docUrlResidentAbstract !== undefined
+  //         ? input.docUrlResidentAbstract
+  //         : account.doc_url_resident_abstract;
+  //
+  //     account.doc_url_id_card =
+  //       input.docUrlIdCard !== undefined
+  //         ? input.docUrlIdCard
+  //         : account.doc_url_id_card;
+  //
+  //     account.doc_url_family_relation =
+  //       input.docUrlFamilyRelation !== undefined
+  //         ? input.docUrlFamilyRelation
+  //         : account.doc_url_family_relation;
+  //
+  //     const requiredFilled =
+  //       !!account.name &&
+  //       !!account.phone &&
+  //       !!account.emergency_contact &&
+  //       !!account.address_line &&
+  //       !!account.salary_bank_name &&
+  //       !!account.salary_account;
+  //
+  //     account.is_profile_completed = requiredFilled;
+  //
+  //     const saved = await accRepo.save(account);
+  //
+  //     //role 동기화
+  //     let changedRole: 'admin' | 'manager' | 'staff' = credential.role;
+  //
+  //     if (rankChanged && credential.role !== 'admin') {
+  //       const nextRole = this.toRoleFromRank(nextRank as PositionRank | null);
+  //
+  //       if (credential.role !== nextRole) {
+  //         credential.role = nextRole;
+  //         await credRepo.save(credential);
+  //         changedRole = nextRole;
+  //       }
+  //     }
+  //
+  //     //팀장 승급 시 팀 생성/복구
+  //     if (becameTeamLeader) {
+  //       //기존 소속 전부 제거
+  //       await tmRepo
+  //         .createQueryBuilder()
+  //         .delete()
+  //         .from(TeamMember)
+  //         .where('account_id = :aid', { aid: String(saved.id) })
+  //         .execute();
+  //
+  //       let myTeam = await teamRepo.findOne({
+  //         where: { leader_account_id: String(saved.id) },
+  //       });
+  //
+  //       if (!myTeam) {
+  //         const baseName = saved.name ? `${saved.name} 팀` : `팀-${saved.id}`;
+  //         let finalName =
+  //           requestedTeamName && requestedTeamName.length > 0
+  //             ? requestedTeamName
+  //             : baseName;
+  //
+  //         const nameDup = await teamRepo.findOne({
+  //           where: { name: finalName },
+  //         });
+  //         if (nameDup) {
+  //           throw new ConflictException(
+  //             `팀 "${finalName}"이(가) 이미 존재합니다.`,
+  //           );
+  //         }
+  //
+  //         const makeCode = () =>
+  //           `TL-${saved.id}-${Date.now().toString(36)}`.toUpperCase();
+  //
+  //         let code = makeCode();
+  //
+  //         for (let i = 0; i < 5; i += 1) {
+  //           const codeDup = await teamRepo.findOne({
+  //             where: { code },
+  //           });
+  //           if (!codeDup) {
+  //             break;
+  //           }
+  //           code = makeCode();
+  //         }
+  //
+  //         const finalCodeDup = await teamRepo.findOne({
+  //           where: { code },
+  //         });
+  //         if (finalCodeDup) {
+  //           throw new ConflictException('팀 코드 생성 중 충돌이 발생했습니다.');
+  //         }
+  //
+  //         myTeam = await teamRepo.save(
+  //           teamRepo.create({
+  //             leader_account_id: String(saved.id),
+  //             name: finalName,
+  //             code,
+  //             description: null,
+  //             is_active: true,
+  //           }),
+  //         );
+  //       } else {
+  //         if (!myTeam.is_active) {
+  //           myTeam.is_active = true;
+  //         }
+  //
+  //         if (requestedTeamName !== undefined) {
+  //           if (!requestedTeamName) {
+  //             throw new ConflictException('팀 이름은 비워둘 수 없습니다.');
+  //           }
+  //
+  //           if (requestedTeamName !== myTeam.name) {
+  //             const dup = await teamRepo.findOne({
+  //               where: { name: requestedTeamName },
+  //             });
+  //
+  //             if (dup && String(dup.id) !== String(myTeam.id)) {
+  //               throw new ConflictException(
+  //                 `팀 "${requestedTeamName}"이(가) 이미 존재합니다.`,
+  //               );
+  //             }
+  //
+  //             myTeam.name = requestedTeamName;
+  //           }
+  //         }
+  //
+  //         myTeam = await teamRepo.save(myTeam);
+  //       }
+  //
+  //       const leaderMember = await tmRepo.findOne({
+  //         where: {
+  //           team_id: String(myTeam.id),
+  //           account_id: String(saved.id),
+  //           team_role: 'manager',
+  //         } as any,
+  //       });
+  //
+  //       if (!leaderMember) {
+  //         await tmRepo.save(
+  //           tmRepo.create({
+  //             team_id: String(myTeam.id),
+  //             account_id: String(saved.id),
+  //             team_role: 'manager',
+  //             is_primary: true,
+  //             joined_at: new Date().toISOString().slice(0, 10),
+  //           }),
+  //         );
+  //       }
+  //
+  //       //혹시 다른 팀에 남아있으면 제거
+  //       await tmRepo
+  //         .createQueryBuilder()
+  //         .delete()
+  //         .from(TeamMember)
+  //         .where('account_id = :aid AND team_id <> :tid', {
+  //           aid: String(saved.id),
+  //           tid: String(myTeam.id),
+  //         })
+  //         .execute();
+  //     }
+  //
+  //     //기존 팀장 유지 상태에서 teamName 변경
+  //     if (isStillTeamLeader && requestedTeamName !== undefined) {
+  //       if (!requestedTeamName) {
+  //         throw new ConflictException('팀 이름은 비워둘 수 없습니다.');
+  //       }
+  //
+  //       const myTeams = await tmRepo
+  //         .createQueryBuilder('tm')
+  //         .select(['tm.team_id AS teamId'])
+  //         .where('tm.account_id = :aid', { aid: String(saved.id) })
+  //         .groupBy('tm.team_id')
+  //         .getRawMany<{ teamId: string }>();
+  //
+  //       if (myTeams.length > 0) {
+  //         const teamIds = myTeams.map((row) => String(row.teamId));
+  //
+  //         const teams = await teamRepo
+  //           .createQueryBuilder('t')
+  //           .where('t.id IN (:...teamIds)', { teamIds })
+  //           .getMany();
+  //
+  //         for (const team of teams) {
+  //           if (team.name === requestedTeamName) {
+  //             continue;
+  //           }
+  //
+  //           const dup = await teamRepo.findOne({
+  //             where: { name: requestedTeamName },
+  //           });
+  //
+  //           if (dup && String(dup.id) !== String(team.id)) {
+  //             throw new ConflictException(
+  //               `팀 "${requestedTeamName}"이(가) 이미 존재합니다.`,
+  //             );
+  //           }
+  //
+  //           team.name = requestedTeamName;
+  //           await teamRepo.save(team);
+  //         }
+  //       } else {
+  //         const fallbackTeam = await teamRepo.findOne({
+  //           where: { leader_account_id: String(saved.id) },
+  //         });
+  //
+  //         if (fallbackTeam && fallbackTeam.name !== requestedTeamName) {
+  //           const dup = await teamRepo.findOne({
+  //             where: { name: requestedTeamName },
+  //           });
+  //
+  //           if (dup && String(dup.id) !== String(fallbackTeam.id)) {
+  //             throw new ConflictException(
+  //               `팀 "${requestedTeamName}"이(가) 이미 존재합니다.`,
+  //             );
+  //           }
+  //
+  //           fallbackTeam.name = requestedTeamName;
+  //           await teamRepo.save(fallbackTeam);
+  //         }
+  //       }
+  //     }
+  //
+  //     //팀장 해제 시 팀 삭제
+  //     if (leftTeamLeader) {
+  //       const myTeams = await tmRepo
+  //         .createQueryBuilder('tm')
+  //         .select(['tm.team_id AS teamId'])
+  //         .where('tm.account_id = :aid', { aid: String(saved.id) })
+  //         .groupBy('tm.team_id')
+  //         .getRawMany<{ teamId: string }>();
+  //
+  //       const teamIds = myTeams.map((row) => String(row.teamId));
+  //
+  //       if (teamIds.length > 0) {
+  //         await tmRepo
+  //           .createQueryBuilder()
+  //           .delete()
+  //           .from(TeamMember)
+  //           .where('team_id IN (:...tids)', { tids: teamIds })
+  //           .execute();
+  //
+  //         await teamRepo
+  //           .createQueryBuilder()
+  //           .delete()
+  //           .from(Team)
+  //           .where('id IN (:...tids)', { tids: teamIds })
+  //           .execute();
+  //       }
+  //     }
+  //
+  //     //세션 즉시 종료
+  //     if (rankChanged) {
+  //       await sessionRepo
+  //         .createQueryBuilder()
+  //         .update(AccountSession)
+  //         .set({
+  //           is_active: false,
+  //           deactivated_at: new Date(),
+  //         })
+  //         .where('credential_id = :cid', { cid: String(credentialId) })
+  //         .andWhere('is_active = 1')
+  //         .execute();
+  //     }
+  //
+  //     return {
+  //       id: saved.id,
+  //       credentialId: saved.credential_id,
+  //       name: saved.name,
+  //       phone: saved.phone,
+  //       is_profile_completed: saved.is_profile_completed,
+  //
+  //       position_rank: saved.position_rank,
+  //       profile_url: saved.profile_url,
+  //       doc_url_resident_registration: saved.doc_url_resident_registration,
+  //       doc_url_resident_abstract: saved.doc_url_resident_abstract,
+  //       doc_url_id_card: saved.doc_url_id_card,
+  //       doc_url_family_relation: saved.doc_url_family_relation,
+  //
+  //       role: changedRole,
+  //       rankChanged,
+  //       becameTeamLeader,
+  //       leftTeamLeader,
+  //     };
+  //   });
+  // }
+
   async upsertByCredentialId(credentialId: string, dto: UpsertEmployeeInfoDto) {
     return this.dataSource.transaction(async (tx) => {
       const credRepo = tx.getRepository(AccountCredential);
@@ -424,7 +843,6 @@ export class EmployeeInfoService {
 
       const input = this.normalize(dto);
 
-      // 중복 검사
       if (input.phone) {
         const dupPhone = await accRepo.findOne({
           where: { phone: input.phone },
@@ -445,7 +863,6 @@ export class EmployeeInfoService {
         }
       }
 
-      //직급 변경 감지
       const prevRank = account.position_rank
         ? String(account.position_rank)
         : null;
@@ -470,6 +887,8 @@ export class EmployeeInfoService {
         prevRank === PositionRank.TEAM_LEADER &&
         nextRank === PositionRank.TEAM_LEADER;
 
+      const isTeamLeaderNow = nextRank === PositionRank.TEAM_LEADER;
+
       const requestedTeamName =
         input.teamName !== undefined
           ? input.teamName
@@ -477,7 +896,19 @@ export class EmployeeInfoService {
             : null
           : undefined;
 
-      // Account 부분 업데이트
+      const requestedTeamId =
+        input.teamId !== undefined
+          ? input.teamId
+            ? String(input.teamId).trim()
+            : null
+          : undefined;
+
+      if (isTeamLeaderNow && requestedTeamId !== undefined) {
+        throw new ConflictException(
+          '팀장은 teamId로 별도 팀 배정을 할 수 없습니다.',
+        );
+      }
+
       account.name = input.name ?? account.name;
       account.phone = input.phone ?? account.phone;
       account.emergency_contact =
@@ -491,7 +922,7 @@ export class EmployeeInfoService {
       if (hasRankInRequest) {
         account.position_rank =
           input.positionRank !== undefined
-            ? input.positionRank
+            ? (input.positionRank ?? null)
             : account.position_rank;
       }
 
@@ -527,7 +958,6 @@ export class EmployeeInfoService {
 
       const saved = await accRepo.save(account);
 
-      //role 동기화
       let changedRole: 'admin' | 'manager' | 'staff' = credential.role;
 
       if (rankChanged && credential.role !== 'admin') {
@@ -540,9 +970,8 @@ export class EmployeeInfoService {
         }
       }
 
-      //팀장 승급 시 팀 생성/복구
+      // 팀장 승급 시 팀 생성/복구
       if (becameTeamLeader) {
-        //기존 소속 전부 제거
         await tmRepo
           .createQueryBuilder()
           .delete()
@@ -556,7 +985,7 @@ export class EmployeeInfoService {
 
         if (!myTeam) {
           const baseName = saved.name ? `${saved.name} 팀` : `팀-${saved.id}`;
-          let finalName =
+          const finalName =
             requestedTeamName && requestedTeamName.length > 0
               ? requestedTeamName
               : baseName;
@@ -633,7 +1062,6 @@ export class EmployeeInfoService {
           where: {
             team_id: String(myTeam.id),
             account_id: String(saved.id),
-            team_role: 'manager',
           } as any,
         });
 
@@ -647,9 +1075,15 @@ export class EmployeeInfoService {
               joined_at: new Date().toISOString().slice(0, 10),
             }),
           );
+        } else {
+          leaderMember.team_role = 'manager';
+          leaderMember.is_primary = true;
+          if (!leaderMember.joined_at) {
+            leaderMember.joined_at = new Date().toISOString().slice(0, 10);
+          }
+          await tmRepo.save(leaderMember);
         }
 
-        //혹시 다른 팀에 남아있으면 제거
         await tmRepo
           .createQueryBuilder()
           .delete()
@@ -661,7 +1095,7 @@ export class EmployeeInfoService {
           .execute();
       }
 
-      //기존 팀장 유지 상태에서 teamName 변경
+      // 기존 팀장 유지 상태에서 teamName 변경
       if (isStillTeamLeader && requestedTeamName !== undefined) {
         if (!requestedTeamName) {
           throw new ConflictException('팀 이름은 비워둘 수 없습니다.');
@@ -722,7 +1156,7 @@ export class EmployeeInfoService {
         }
       }
 
-      //팀장 해제 시 팀 삭제
+      // 팀장 해제 시 팀 삭제
       if (leftTeamLeader) {
         const myTeams = await tmRepo
           .createQueryBuilder('tm')
@@ -750,7 +1184,46 @@ export class EmployeeInfoService {
         }
       }
 
-      //세션 즉시 종료
+      // 일반 직원 단일 팀 배정/해제
+      if (!isTeamLeaderNow && requestedTeamId !== undefined) {
+        if (requestedTeamId === null) {
+          await tmRepo
+            .createQueryBuilder()
+            .delete()
+            .from(TeamMember)
+            .where('account_id = :aid', { aid: String(saved.id) })
+            .execute();
+        } else {
+          const targetTeam = await teamRepo.findOne({
+            where: {
+              id: String(requestedTeamId),
+              is_active: true,
+            },
+          });
+
+          if (!targetTeam) {
+            throw new NotFoundException('배정할 팀을 찾을 수 없습니다.');
+          }
+
+          await tmRepo
+            .createQueryBuilder()
+            .delete()
+            .from(TeamMember)
+            .where('account_id = :aid', { aid: String(saved.id) })
+            .execute();
+
+          await tmRepo.save(
+            tmRepo.create({
+              team_id: String(targetTeam.id),
+              account_id: String(saved.id),
+              team_role: 'staff',
+              is_primary: true,
+              joined_at: new Date().toISOString().slice(0, 10),
+            }),
+          );
+        }
+      }
+
       if (rankChanged) {
         await sessionRepo
           .createQueryBuilder()
@@ -763,6 +1236,13 @@ export class EmployeeInfoService {
           .andWhere('is_active = 1')
           .execute();
       }
+
+      const primaryTeamMember = await tmRepo.findOne({
+        where: {
+          account_id: String(saved.id),
+          is_primary: true,
+        } as any,
+      });
 
       return {
         id: saved.id,
@@ -782,6 +1262,7 @@ export class EmployeeInfoService {
         rankChanged,
         becameTeamLeader,
         leftTeamLeader,
+        teamId: primaryTeamMember ? primaryTeamMember.team_id : null,
       };
     });
   }
