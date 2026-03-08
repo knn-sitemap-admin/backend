@@ -43,7 +43,7 @@ export class UpsertEmployeeInfoDto {
 
   @IsOptional()
   @IsEnum(PositionRank)
-  positionRank?: PositionRank;
+  positionRank?: PositionRank | null;
 
   @IsOptional()
   @IsString()
@@ -51,18 +51,22 @@ export class UpsertEmployeeInfoDto {
   teamName?: string | null;
 
   @IsOptional()
-  @IsUrl()
-  docUrlResidentRegistration?: string | null; // 등본
+  @IsString()
+  teamId?: string | null;
 
   @IsOptional()
   @IsUrl()
-  docUrlResidentAbstract?: string | null; // 초본
+  docUrlResidentRegistration?: string | null;
 
   @IsOptional()
   @IsUrl()
-  docUrlIdCard?: string | null; // 신분증
+  docUrlResidentAbstract?: string | null;
 
   @IsOptional()
   @IsUrl()
-  docUrlFamilyRelation?: string | null; // 가족관계증명서
+  docUrlIdCard?: string | null;
+
+  @IsOptional()
+  @IsUrl()
+  docUrlFamilyRelation?: string | null;
 }
