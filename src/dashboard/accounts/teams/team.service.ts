@@ -11,6 +11,7 @@ import { UpdateTeamDto } from '../dto/update-team.dto';
 import { TeamMember } from '../entities/team-member.entity';
 import { AccountCredential } from '../entities/account-credential.entity';
 import { Account } from '../entities/account.entity';
+import { UpdateTeamNameDto } from '../dto/update-team-name.dto';
 
 @Injectable()
 export class TeamService {
@@ -21,6 +22,38 @@ export class TeamService {
     @InjectRepository(TeamMember)
     private readonly teamMemberRepository: Repository<TeamMember>,
   ) {}
+
+  //팀 이름 변경 로직
+  async updateName(id: string, dto: UpdateTeamNameDto) {
+    const team = await this.teamRepository.findOne({ where: { id } });
+    if (!team) {
+      throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
+    }
+
+    const nextName = dto.name.trim();
+
+    if (nextName.length === 0) {
+      throw new ConflictException('팀 이름은 비어 있을 수 없습니다.');
+    }
+
+    if (nextName !== team.name) {
+      const dup = await this.teamRepository.findOne({
+        where: { name: nextName },
+      });
+
+      if (dup) {
+        throw new ConflictException(`팀 "${nextName}"이(가) 이미 존재합니다.`);
+      }
+    }
+
+    team.name = nextName;
+    await this.teamRepository.save(team);
+
+    return {
+      id: team.id,
+      name: team.name,
+    };
+  }
 
   async create(dto: CreateTeamDto) {
     const nameDup = await this.teamRepository.findOne({
