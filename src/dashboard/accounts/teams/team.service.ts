@@ -157,6 +157,7 @@ export class TeamService {
         'tm.is_primary AS isPrimary',
         'tm.joined_at AS joinedAt',
         'a.id AS accountId',
+        'cred.id AS credentialId',
         'a.name AS name',
         'a.phone AS phone',
         'a.position_rank AS positionRank',
@@ -171,6 +172,7 @@ export class TeamService {
         isPrimary: 0 | 1 | boolean | string;
         joinedAt: string | null;
         accountId: string;
+        credentialId: string;
         name: string | null;
         phone: string | null;
         positionRank: string | null;
@@ -180,6 +182,7 @@ export class TeamService {
     const members = rows.map((r) => ({
       teamMemberId: String(r.teamMemberId),
       accountId: String(r.accountId),
+      credentialId: String(r.credentialId),
       name: r.name ?? null,
       phone: r.phone ?? null,
       positionRank: r.positionRank ?? null,
