@@ -21,6 +21,7 @@ export class FavoriteService {
       // 그룹 선택 / 생성
       let group: FavoriteGroup | null = null;
 
+      // 그룹 선택 or 생성
       if (dto.groupId) {
         group = await groupRepo.findOne({
           where: { id: dto.groupId, ownerAccountId: accountId },
@@ -29,9 +30,11 @@ export class FavoriteService {
       } else {
         if (!dto.title)
           throw new BadRequestException('groupId 또는 title 중 하나는 필수');
+
         group = await groupRepo.findOne({
           where: { ownerAccountId: accountId, title: dto.title },
         });
+
         if (!group) {
           const last = await groupRepo
             .createQueryBuilder('g')
@@ -48,6 +51,9 @@ export class FavoriteService {
           group = await groupRepo.save(group);
         }
       }
+
+      // ✅ 이 시점 이후 group은 무조건 존재함
+      if (!group) throw new NotFoundException('그룹 생성 실패');
 
       // 2. 아이템 추가
       let sortOrder = dto.sortOrder ?? null;

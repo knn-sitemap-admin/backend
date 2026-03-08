@@ -44,6 +44,7 @@ type ListItem = {
   vatEnabled: boolean;
   rebateUnits: number;
   supportAmount: number;
+  supportCashAmount: number; // Added this line
   isTaxed: boolean;
   companyPercent: number;
 
@@ -60,6 +61,13 @@ type ListItem = {
   myAmount?: number;
   bank?: string | null;
   account?: string | null;
+
+  participants?: Array<{
+    accountId: string | null;
+    name: string | null;
+    sharePercent: number;
+    isDisabled: boolean;
+  }>;
 };
 
 type AccountWithCredential = Account & {
@@ -97,6 +105,39 @@ export class ContractsService {
 
     if (!account) throw new ForbiddenException('유효하지 않은 세션입니다.');
     return account;
+  }
+
+  private async getParticipantsMap(contractIds: number[]) {
+    if (contractIds.length === 0) return new Map<number, ListItem['participants']>();
+
+    const assignees = await this.assigneeRepo
+      .createQueryBuilder('a')
+      .leftJoinAndSelect('a.account', 'acc')
+      .leftJoin('acc.credential', 'accCred')
+      .addSelect(['accCred.is_disabled'])
+      .where('a.contract_id IN (:...contractIds)', { contractIds })
+      .orderBy('a.contract_id', 'ASC')
+      .addOrderBy('a.sortOrder', 'ASC')
+      .getMany();
+
+    const map = new Map<number, ListItem['participants']>();
+    for (const a of assignees) {
+      const acc = (a.account as AccountWithCredential | null) ?? null;
+      const masked = maskIfDisabled({
+        isDisabled: Boolean(acc?.credential?.is_disabled),
+        name: acc?.name ?? null,
+      });
+
+      const list = map.get(Number(a.contractId)) ?? [];
+      list.push({
+        accountId: a.accountId,
+        name: masked.name,
+        sharePercent: Number(a.sharePercent),
+        isDisabled: masked.isDisabled,
+      });
+      map.set(Number(a.contractId), list);
+    }
+    return map;
   }
 
   private buildContractNo(yyyymmdd: string, id: number): string {
@@ -202,6 +243,7 @@ export class ContractsService {
         vatEnabled: dto.vat,
         rebateUnits: dto.rebate,
         supportAmount: dto.supportAmount,
+        supportCashAmount: dto.supportCashAmount ?? 0,
         isTaxed: dto.isTaxed,
         calcMemo: dto.calcMemo ?? null,
 
@@ -302,6 +344,10 @@ export class ContractsService {
       countQb.getCount(),
     ]);
 
+    const participantsMap = await this.getParticipantsMap(
+      items.map((c) => Number(c.id)),
+    );
+
     const mapped: ListItem[] = items.map((c) => {
       const createdBy = (c.createdBy as AccountWithCredential | null) ?? null;
 
@@ -311,10 +357,11 @@ export class ContractsService {
       });
 
       const calc = calcContractMoney({
-        brokerageFee: c.brokerageFee,
+        brokerageFee: Number(c.brokerageFee),
         vatEnabled: c.vatEnabled,
-        rebateUnits: c.rebateUnits,
-        supportAmount: c.supportAmount,
+        rebateUnits: Number(c.rebateUnits),
+        supportAmount: Number(c.supportAmount),
+        supportCashAmount: Number(c.supportCashAmount),
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
       });
@@ -343,13 +390,15 @@ export class ContractsService {
         vatEnabled: c.vatEnabled,
         rebateUnits: c.rebateUnits,
         supportAmount: c.supportAmount,
+        supportCashAmount: c.supportCashAmount,
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
 
-        vatAmount: calc.vatAmount,
+         vatAmount: calc.vatAmount,
         rebateAmount: calc.rebateAmount,
         grandTotal: calc.grandTotal,
         companyAmount: calc.companyAmount,
+        participants: participantsMap.get(Number(c.id)) ?? [],
       };
     });
 
@@ -421,6 +470,8 @@ export class ContractsService {
       myRows.map((r) => [Number(r.contractId), Number(r.sharePercent)]),
     );
 
+    const participantsMap = await this.getParticipantsMap(ids);
+
     const mapped: ListItem[] = contracts.map((c) => {
       const createdBy = (c.createdBy as AccountWithCredential | null) ?? null;
 
@@ -430,10 +481,11 @@ export class ContractsService {
       });
 
       const calc = calcContractMoney({
-        brokerageFee: c.brokerageFee,
+        brokerageFee: Number(c.brokerageFee),
         vatEnabled: c.vatEnabled,
-        rebateUnits: c.rebateUnits,
-        supportAmount: c.supportAmount,
+        rebateUnits: Number(c.rebateUnits),
+        supportAmount: Number(c.supportAmount),
+        supportCashAmount: Number(c.supportCashAmount),
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
       });
@@ -467,6 +519,7 @@ export class ContractsService {
         vatEnabled: c.vatEnabled,
         rebateUnits: c.rebateUnits,
         supportAmount: c.supportAmount,
+        supportCashAmount: c.supportCashAmount,
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
 
@@ -477,6 +530,7 @@ export class ContractsService {
 
         mySharePercent,
         myAmount,
+        participants: participantsMap.get(Number(c.id)) ?? [],
       };
     });
 
@@ -527,10 +581,11 @@ export class ContractsService {
     ]);
 
     const calc = calcContractMoney({
-      brokerageFee: contract.brokerageFee,
+      brokerageFee: Number(contract.brokerageFee),
       vatEnabled: contract.vatEnabled,
-      rebateUnits: contract.rebateUnits,
-      supportAmount: contract.supportAmount,
+      rebateUnits: Number(contract.rebateUnits),
+      supportAmount: Number(contract.supportAmount),
+      supportCashAmount: Number(contract.supportCashAmount),
       isTaxed: contract.isTaxed,
       companyPercent: Number(contract.companyPercent),
     });
@@ -565,6 +620,7 @@ export class ContractsService {
       vat: contract.vatEnabled,
       rebate: contract.rebateUnits,
       supportAmount: contract.supportAmount,
+      supportCashAmount: contract.supportCashAmount,
       isTaxed: contract.isTaxed,
       calcMemo: contract.calcMemo,
 
@@ -682,6 +738,7 @@ export class ContractsService {
       contract.vatEnabled = dto.vat ?? contract.vatEnabled;
       contract.rebateUnits = dto.rebate ?? contract.rebateUnits;
       contract.supportAmount = dto.supportAmount ?? contract.supportAmount;
+      contract.supportCashAmount = dto.supportCashAmount ?? contract.supportCashAmount;
       contract.isTaxed = dto.isTaxed ?? contract.isTaxed;
       contract.calcMemo = dto.calcMemo ?? contract.calcMemo;
 

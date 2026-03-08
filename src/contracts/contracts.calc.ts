@@ -3,6 +3,7 @@ export type CalcInput = {
   vatEnabled: boolean;
   rebateUnits: number;
   supportAmount: number;
+  supportCashAmount: number;
   isTaxed: boolean;
   companyPercent: number;
 };
@@ -32,7 +33,7 @@ export function calcContractMoney(input: CalcInput): CalcResult {
 
   const taxedDelta = input.isTaxed ? Math.round(delta * TAX_FACTOR) : delta;
 
-  const grandTotal = input.brokerageFee + vatAmount + taxedDelta;
+  const grandTotal = input.brokerageFee + vatAmount + taxedDelta - input.supportCashAmount;
 
   const companyAmount = Math.round(grandTotal * (input.companyPercent / 100));
   const staffPoolAmount = grandTotal - companyAmount;

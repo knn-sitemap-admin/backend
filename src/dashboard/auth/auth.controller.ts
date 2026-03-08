@@ -7,6 +7,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { AuthService } from './auth.service';
 import { SigninDto } from './dto/signin.dto';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
@@ -75,6 +76,24 @@ export class AuthController {
     // 5 저장 보장
     await new Promise<void>((resolve, reject) => {
       req.session.save((err: any) => (err ? reject(err) : resolve()));
+    });
+
+    // 5.1 수동 쿠키 설정 (express-session 자동 메커니즘이 NestJS와 충돌하는 경우 대비)
+    const isDevMode = process.env.IS_DEV === 'true';
+    const secret = (process.env.SESSION_SECRET ?? 'change_this_secret').split(',')[0];
+    const sig = crypto
+      .createHmac('sha256', secret)
+      .update(req.sessionID)
+      .digest('base64')
+      .replace(/=+$/, '');
+    const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
+    const maxAge = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
+    req.res.cookie('connect.sid', `s:${req.sessionID}.${sig}`, {
+      httpOnly: true,
+      secure: !isDevMode,         // 로컬: false, 프로덕션: true (HTTPS)
+      sameSite: isDevMode ? 'lax' : 'none', // 로컬: lax, 프로덕션: none (cross-site)
+      path: '/',
+      maxAge,
     });
 
     // 6 DB에 세션 등록 + 기존 세션 비활성화

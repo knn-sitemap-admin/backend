@@ -123,6 +123,7 @@ export class PerformanceService {
       (
         (CAST(c.rebateUnits AS DECIMAL(18,0)) * ${REBATE_UNIT_AMOUNT})
         - CAST(c.supportAmount AS DECIMAL(18,0))
+        - CAST(c.supportCashAmount AS DECIMAL(18,0))
       )
     `;
 

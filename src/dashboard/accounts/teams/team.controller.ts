@@ -15,6 +15,7 @@ import { SystemRole } from '../types/roles';
 import { CreateTeamDto } from '../dto/create-team.dto';
 import { UpdateTeamDto } from '../dto/update-team.dto';
 import { TeamService } from './team.service';
+import { UpdateTeamNameDto } from '../dto/update-team-name.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Controller('dashboard/accounts/teams')
@@ -27,6 +28,12 @@ export class TeamController {
   async create(@Body() dto: CreateTeamDto) {
     const created = await this.service.create(dto);
     return { message: '팀 생성', data: created };
+  }
+
+  @Patch(':id/name')
+  async updateName(@Param('id') id: string, @Body() dto: UpdateTeamNameDto) {
+    const updated = await this.service.updateName(id, dto);
+    return { message: '팀 이름 변경', data: updated };
   }
 
   @Roles(SystemRole.ADMIN, SystemRole.MANAGER, SystemRole.STAFF)

@@ -48,9 +48,15 @@ export class SurveyReservationsService {
     return rows;
   }
 
-  async create(meCredentialId: string, dto: CreateSurveyReservationDto) {
+  async create(meCredentialId: string, dto: CreateSurveyReservationDto, isPrivileged: boolean = false) {
     return this.dataSource.transaction(async (m) => {
       const myAccountId = await this.resolveMyAccountId(meCredentialId);
+
+      // 관리자/매니저가 대리 예약 시 대상 계정 ID 사용
+      let targetAccountId = myAccountId;
+      if (isPrivileged && dto.assigneeId) {
+        targetAccountId = String(dto.assigneeId);
+      }
 
       // 활성 draft 확인
       const draft = await m.getRepository(PinDraft).findOne({
@@ -74,7 +80,7 @@ export class SurveyReservationsService {
       const current = await surveyReservationRepo
         .createQueryBuilder('r')
         .setLock('pessimistic_write')
-        .where('r.assignee_id = :aid', { aid: myAccountId })
+        .where('r.assignee_id = :aid', { aid: targetAccountId })
         .andWhere('r.is_deleted = 0')
         .orderBy('r.sort_order', 'ASC')
         .addOrderBy('r.id', 'ASC')
@@ -91,7 +97,7 @@ export class SurveyReservationsService {
             .createQueryBuilder()
             .update()
             .set({ sortOrder: () => 'sort_order + 1' })
-            .where('assignee_id = :aid', { aid: myAccountId })
+            .where('assignee_id = :aid', { aid: targetAccountId })
             .andWhere('is_deleted = 0')
             .andWhere('sort_order >= :insertAt', { insertAt })
             .execute();
@@ -107,7 +113,7 @@ export class SurveyReservationsService {
       // insert
       const insert = await surveyReservationRepo.insert({
         pinDraft: { id: String(dto.pinDraftId) },
-        assignee: { id: myAccountId },
+        assignee: { id: targetAccountId },
         reservedDate: dto.reservedDate,
         sortOrder,
         isDeleted: false,
@@ -155,12 +161,12 @@ export class SurveyReservationsService {
     });
   }
 
-  async cancel(id: number, meCredentialId: string) {
+  async cancel(id: number, meCredentialId: string, isPrivileged: boolean = false) {
     return this.dataSource.transaction(async (m) => {
       const myAccountId = await this.resolveMyAccountId(meCredentialId);
       const surveyReservationRepo = m.getRepository(SurveyReservation);
 
-      const found = await surveyReservationRepo
+      const found = (await surveyReservationRepo
         .createQueryBuilder('r')
         .setLock('pessimistic_write')
         .select([
@@ -171,16 +177,16 @@ export class SurveyReservationsService {
           'r.pin_draft_id AS pinDraftId',
         ])
         .where('r.id = :id', { id })
-        .getRawOne<{
-          id: string;
-          assigneeId: string;
-          isDeleted: number;
-          sortOrder: number;
-          pinDraftId: string;
-        }>();
+        .getRawOne()) as {
+        id: string;
+        assigneeId: string;
+        isDeleted: number;
+        sortOrder: number;
+        pinDraftId: string;
+      } | null;
 
       if (!found) throw new NotFoundException('예약을 찾을 수 없습니다.');
-      if (String(found.assigneeId) !== String(myAccountId)) {
+      if (!isPrivileged && String(found.assigneeId) !== String(myAccountId)) {
         throw new ForbiddenException('내 예약만 취소할 수 있습니다.');
       }
       if (found.isDeleted) {
@@ -202,7 +208,7 @@ export class SurveyReservationsService {
         .createQueryBuilder()
         .update()
         .set({ sortOrder: () => 'sort_order - 1' })
-        .where('assignee_id = :aid', { aid: myAccountId })
+        .where('assignee_id = :aid', { aid: found.assigneeId })
         .andWhere('is_deleted = 0')
         .andWhere('sort_order > :deletedOrder', {
           deletedOrder: found.sortOrder,

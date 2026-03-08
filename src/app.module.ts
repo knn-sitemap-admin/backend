@@ -17,6 +17,7 @@ import { PerformanceModule } from './performance/performance.module';
 import { ReportsModule } from './reports/reports.module';
 import { NoticesModule } from './notices/notices.module';
 import { OwnerModule } from './owner/owner.module';
+import { LedgersModule } from './ledgers/ledgers.module';
 import { RequestQueryLogger } from './common/typeorm/request-query.logger';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -32,8 +33,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         password: process.env.DB_PASSWORD,
         database: process.env.DB_DATABASE,
         autoLoadEntities: true,
-        // synchronize: true, // 개발용
-        synchronize: false, // 배포용
+        synchronize: false, // 배포용 + 마이그레이션 적용 후
         logging: false, // 콘솔 로깅 끔
         logger: new RequestQueryLogger(), // 요청 단위로 쿼리만 수집
       }),
@@ -52,6 +52,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     ReportsModule,
     NoticesModule,
     OwnerModule,
+    LedgersModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController],

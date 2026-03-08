@@ -58,6 +58,10 @@ export class Contract {
   @Type(() => Number)
   supportAmount!: number; // 원 단위
 
+  @Column({ type: 'bigint', unsigned: true, default: 0 })
+  @Type(() => Number)
+  supportCashAmount!: number; // 원 단위
+
   @Column({ type: 'boolean', default: true })
   isTaxed!: boolean; // 3.3% 적용 여부(0.967)
 
