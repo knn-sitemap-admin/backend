@@ -913,6 +913,8 @@ export class EmployeeInfoService {
       .leftJoin(Team, 't', 't.id = tm.team_id')
       .select([
         'a.id AS accountId',
+        'cred.id AS credentialId',
+        'cred.role AS role',
         'a.profile_url AS profileUrl',
         'a.name AS name',
         'a.position_rank AS positionRank',
@@ -951,6 +953,8 @@ export class EmployeeInfoService {
 
     const baseRows = await baseQb.getRawMany<{
       accountId: string;
+      credentialId: string;
+      role: string;
       profileUrl: string | null;
       name: string | null;
       positionRank: PositionRank | null;
@@ -1095,6 +1099,8 @@ export class EmployeeInfoService {
       const id = String(r.accountId);
       return {
         accountId: id,
+        credentialId: r.credentialId,
+        role: r.role,
         profileUrl: r.profileUrl ?? null,
         name: r.name ?? null,
         positionRank: r.positionRank ?? null,

@@ -2,6 +2,8 @@ import { PositionRank } from '../entities/account.entity';
 
 export type EmployeeListItemDto = {
   accountId: string;
+  credentialId: string;
+  role: string;
 
   profileUrl: string | null;
   name: string | null;
