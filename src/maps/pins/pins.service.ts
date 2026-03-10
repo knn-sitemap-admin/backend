@@ -72,6 +72,7 @@ type DraftSearchItem = {
   id: string;
   lat: number;
   lng: number;
+  name: string | null;
   addressLine: string;
   draftState: 'BEFORE' | 'SCHEDULED';
 };
@@ -835,6 +836,20 @@ export class PinsService {
         { moveInMax: dto.minRealMoveInCostMax },
       );
     }
+    
+    // 5.5) 키워드 검색 (매물명/이름)
+    if (dto.q && dto.q.trim()) {
+      const keywords = dto.q.trim().split(/\s+/);
+      keywords.forEach((keyword, index) => {
+        qb.andWhere(
+          `(p.name LIKE :qStart${index} OR p.name LIKE :qSpace${index})`,
+          {
+            [`qStart${index}`]: `${keyword}%`,
+            [`qSpace${index}`]: `% ${keyword}%`,
+          },
+        );
+      });
+    }
 
     // 6) 필터된 핀 id 목록 조회
     const idRows = await qb
@@ -881,8 +896,8 @@ export class PinsService {
       }));
     }
 
-    // 7) 필터 사용 여부 (임시핀 숨길지 결정)
-    const hasAnyFilter =
+    // 7) 속성 필터 사용 여부 (임시핀 검색 제한용)
+    const hasPropertyFilter =
       rooms.length > 0 ||
       hasLoft ||
       hasTerrace ||
@@ -895,25 +910,42 @@ export class PinsService {
       (dto.buildingTypes?.length ?? 0) > 0 ||
       dto.minRealMoveInCostMax != null;
 
-    // 8) 임시핀 검색 (필터가 하나도 없을 때만)
+    // 8) 임시핀 검색 (속성 필터가 없고, 키워드만 있거나 아무 필터도 없을 때)
     let drafts: DraftSearchItem[] = [];
-    if (!hasAnyFilter) {
+    if (!hasPropertyFilter) {
       const draftRepo = this.pinRepository.manager.getRepository(PinDraft);
-      const draftsRaw = await draftRepo
+      const draftQb = draftRepo
         .createQueryBuilder('d')
         .select([
           'd.id AS id',
           'd.lat AS lat',
           'd.lng AS lng',
+          'd.name AS name',
           'd.addressLine AS addressLine',
         ])
-        .where('d.isActive = :active', { active: 1 })
+        .where('d.isActive = :active', { active: 1 });
+
+      if (dto.q && dto.q.trim()) {
+        const keywords = dto.q.trim().split(/\s+/);
+        keywords.forEach((keyword, index) => {
+          draftQb.andWhere(
+            `(d.name LIKE :dqStart${index} OR d.name LIKE :dqSpace${index})`,
+            {
+              [`dqStart${index}`]: `${keyword}%`,
+              [`dqSpace${index}`]: `% ${keyword}%`,
+            },
+          );
+        });
+      }
+
+      const draftsRaw = await draftQb
         .orderBy('d.createdAt', 'DESC')
         .limit(100)
         .getRawMany<{
           id: string;
           lat: string;
           lng: string;
+          name: string | null;
           addressLine: string;
         }>();
 
@@ -924,10 +956,7 @@ export class PinsService {
       const resvRows = draftIds.length
         ? await resvRepo
             .createQueryBuilder('r')
-            .select([
-              'r.pin_draft_id AS pinDraftId',
-              'r.assignee_id AS assigneeId',
-            ])
+            .select(['r.pin_draft_id AS pinDraftId', 'r.assignee_id AS assigneeId'])
             .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
             .andWhere('r.is_deleted = :isDeleted', { isDeleted: 0 })
             .getRawMany<{ pinDraftId: string; assigneeId: string }>()
@@ -954,27 +983,30 @@ export class PinsService {
       }
 
       drafts = draftsRaw
-        .map((d) => {
+        .map((d): DraftSearchItem | null => {
           const assignees =
             assigneesByDraft.get(String(d.id)) ?? new Set<string>();
           const hasReservation = assignees.size > 0;
           const isMine = !!myAccountId && assignees.has(String(myAccountId));
+          
+          const base = {
+            id: String(d.id),
+            lat: Number(d.lat),
+            lng: Number(d.lng),
+            name: d.name ?? null,
+            addressLine: d.addressLine,
+          };
+
           if (!hasReservation) {
             return {
-              id: String(d.id),
-              lat: Number(d.lat),
-              lng: Number(d.lng),
-              addressLine: d.addressLine,
-              draftState: 'BEFORE' as const,
+              ...base,
+              draftState: 'BEFORE',
             };
           }
           if (isMine) {
             return {
-              id: String(d.id),
-              lat: Number(d.lat),
-              lng: Number(d.lng),
-              addressLine: d.addressLine,
-              draftState: 'SCHEDULED' as const,
+              ...base,
+              draftState: 'SCHEDULED',
             };
           }
           return null;

@@ -83,4 +83,8 @@ export class SearchPinsDto {
   @IsInt()
   @Min(0)
   minRealMoveInCostMax?: number;
+
+  @IsOptional()
+  @Type(() => String)
+  q?: string;
 }
