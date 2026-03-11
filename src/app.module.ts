@@ -25,18 +25,23 @@ import { ScheduleModule } from '@nestjs/schedule';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({
-      useFactory: () => ({
-        type: 'mysql',
-        host: process.env.DB_HOST,
-        port: Number(process.env.DB_PORT ?? 3306),
-        username: process.env.DB_USERNAME,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_DATABASE,
-        autoLoadEntities: true,
-        synchronize: false, // 배포용 + 마이그레이션 적용 후
-        logging: false, // 콘솔 로깅 끔
-        logger: new RequestQueryLogger(), // 요청 단위로 쿼리만 수집
-      }),
+      useFactory: () => {
+        const isDev = process.env.IS_DEV === 'true';
+        return {
+          type: 'mysql',
+          host: isDev ? process.env.TEST_DB_HOST : process.env.DB_HOST,
+          port: Number(
+            (isDev ? process.env.TEST_DB_PORT : process.env.DB_PORT) ?? 3306,
+          ),
+          username: isDev ? process.env.TEST_DB_USERNAME : process.env.DB_USERNAME,
+          password: isDev ? process.env.TEST_DB_PASSWORD : process.env.DB_PASSWORD,
+          database: isDev ? process.env.TEST_DB_DATABASE : process.env.DB_DATABASE,
+          autoLoadEntities: true,
+          synchronize: false, // 배포용 + 마이그레이션 적용 후
+          logging: false, // 콘솔 로깅 끔
+          logger: new RequestQueryLogger(), // 요청 단위로 쿼리만 수집
+        };
+      },
     }),
     PinsModule,
     UnitsModule,

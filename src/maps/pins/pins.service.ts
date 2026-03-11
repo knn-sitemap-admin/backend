@@ -395,13 +395,10 @@ export class PinsService {
         const norm = dto.directions
           .map((d) => ({ direction: (d.direction ?? '').trim() }))
           .filter((d) => d.direction.length > 0);
-        const unique = Array.from(
-          new Map(norm.map((x) => [x.direction, x])).values(),
-        );
         await this.pinDirectionsService.replaceForPinWithManager(
           manager,
           pin.id,
-          unique,
+          norm,
         );
       }
 
@@ -696,10 +693,13 @@ export class PinsService {
 
       // 방향
       if (dto.directions !== undefined) {
+        const norm = (dto.directions ?? [])
+          .map((d) => ({ direction: (d.direction ?? '').trim() }))
+          .filter((d) => d.direction.length > 0);
         await this.pinDirectionsService.replaceForPinWithManager(
           manager,
           pin.id,
-          dto.directions ?? [],
+          norm,
         );
       }
 
