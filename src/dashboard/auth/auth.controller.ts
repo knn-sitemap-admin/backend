@@ -183,6 +183,8 @@ export class AuthController {
     return { message: '비밀번호 재설정 완료(관리자)', data };
   }
 
+  @UseGuards(SessionAuthGuard, RolesGuard)
+  @Roles(SystemRole.ADMIN)
   @Post('admin/force-reset-password')
   async forceResetByAdmin(@Body() dto: AdminResetDto, @Req() req: any) {
     const me = req.session?.user;

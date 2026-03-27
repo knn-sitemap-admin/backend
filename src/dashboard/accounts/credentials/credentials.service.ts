@@ -808,4 +808,20 @@ export class CredentialsService {
       profileUrl: r.profileUrl ?? null,
     }));
   }
+
+  async updatePassword(
+    credentialId: string,
+    newPassword: string,
+  ): Promise<void> {
+    const cred = await this.accountCredentialRepository.findOne({
+      where: { id: String(credentialId) },
+    });
+    if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+    cred.password = await this.bcrypt.hash(newPassword);
+    await this.accountCredentialRepository.save(cred);
+
+    // 모든 세션 즉시 종료
+    await this.deactivateAllSessionsByCredentialId(String(cred.id));
+  }
 }

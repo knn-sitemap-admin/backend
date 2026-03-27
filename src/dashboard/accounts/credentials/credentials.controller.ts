@@ -16,7 +16,7 @@ import { PatchCredentialDisableDto } from '../dto/patch-credential-disable.dto';
 import { PatchCredentialRoleDto } from '../dto/patch-credential-role.dto';
 import { CredentialsService } from './credentials.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
-import { PatchAccountRankDto } from '../dto/atch-account-rank.dto';
+import { PatchAccountPasswordDto } from '../dto/patch-account-password.dto';
 
 @UseGuards(SessionAuthGuard, RolesGuard)
 @Controller('dashboard/accounts/credentials')
@@ -61,28 +61,13 @@ export class CredentialsController {
     return { message: '계정 활성/비활성 변경', data: result };
   }
 
-  // 구조변경으로 안쓰임
-  // @Roles(SystemRole.ADMIN)
-  // @Patch(':id/role')
-  // async patchCredentialRole(
-  //   @Param('id') id: string,
-  //   @Body() dto: PatchCredentialRoleDto,
-  // ) {
-  //   const result = await this.service.setCredentialRole(id, dto.role);
-  //   return { message: '권한 변경', data: result };
-  // }
-
-  //구조변경으로 안쓰임
-  // @Patch(':id/position-rank')
-  // async patchPositionRank(
-  //   @Param('id') credentialId: string,
-  //   @Body() dto: PatchAccountRankDto,
-  // ) {
-  //   const data = await this.service.setAccountPositionRankAndSyncRole(
-  //     credentialId,
-  //     dto.positionRank,
-  //     dto.teamName,
-  //   );
-  //   return { message: '직급 변경', data };
-  // }
+  @Roles(SystemRole.ADMIN)
+  @Patch(':id/password')
+  async patchPassword(
+    @Param('id') id: string,
+    @Body() dto: PatchAccountPasswordDto,
+  ) {
+    await this.service.updatePassword(id, dto.password);
+    return { message: '비밀번호 변경 완료' };
+  }
 }
