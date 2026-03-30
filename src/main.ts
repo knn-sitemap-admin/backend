@@ -148,7 +148,6 @@ async function bootstrap() {
     store = new RedisStore({
       client: redisClient,
       prefix: 'sess:',
-      disableTouch: true,
     } satisfies RedisStoreCtorArg);
   }
 
@@ -162,7 +161,7 @@ async function bootstrap() {
     secret: process.env.SESSION_SECRET ?? 'change_this_secret',
     resave: false,
     saveUninitialized: false,
-    rolling: false, // 매 응답마다 Session/Cookie 터치 방지 (Redis 부하 및 TCP_OVERWINDOW 에러 방지)
+    rolling: true, // 매 응답마다 Set-Cookie 강제 발송 (regenerate 이후 쿠키 누락 방지)
     proxy: true,
     cookie: {
       httpOnly: true,
@@ -178,7 +177,7 @@ async function bootstrap() {
     secret: process.env.SESSION_SECRET ?? 'change_this_secret',
     resave: false,
     saveUninitialized: false,
-    rolling: false, // 매 응답마다 Session/Cookie 터치 방지 (Redis 부하 및 TCP_OVERWINDOW 에러 방지)
+    rolling: true, // 매 응답마다 Set-Cookie 강제 발송
     proxy: true,
     cookie: {
       httpOnly: true,
