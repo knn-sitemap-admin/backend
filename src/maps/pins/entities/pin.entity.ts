@@ -13,7 +13,7 @@ import { Unit } from '../../units/entities/unit.entity';
 import { PinOption } from '../../pin-options/entities/pin-option.entity';
 import { PinAreaGroup } from '../../pin_area_groups/entities/pin_area_group.entity';
 
-export type Grade3 = '상' | '중' | '하';
+export type Grade3 = string;
 export type BuildingType = 'APT' | 'OP' | '주택' | '근생' | '도생';
 
 export enum PinBadge {
@@ -125,16 +125,16 @@ export class Pin {
   parkingGrade: string | null = null;
 
   @Column({
-    type: 'enum',
-    enum: ['상', '중', '하'],
+    type: 'varchar',
+    length: 50,
     name: 'slope_grade',
     nullable: true,
   })
   slopeGrade: Grade3 | null = null;
 
   @Column({
-    type: 'enum',
-    enum: ['상', '중', '하'],
+    type: 'varchar',
+    length: 50,
     name: 'structure_grade',
     nullable: true,
   })

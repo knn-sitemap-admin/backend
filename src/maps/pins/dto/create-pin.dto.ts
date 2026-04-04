@@ -135,11 +135,13 @@ export class CreatePinDto {
   parkingGrade?: string | null;
 
   @IsOptional()
-  @IsEnum(['상', '중', '하'])
+  @IsString()
+  @MaxLength(50)
   slopeGrade?: Grade3 | null;
 
   @IsOptional()
-  @IsEnum(['상', '중', '하'])
+  @IsString()
+  @MaxLength(50)
   structureGrade?: Grade3 | null;
 
   @IsOptional()
