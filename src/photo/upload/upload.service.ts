@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import * as mime from 'mime-types';
 import {
+  DeleteObjectCommand,
   PutObjectCommand,
   S3Client,
   type ObjectCannedACL,
@@ -73,9 +74,28 @@ export class UploadService {
   }
 
   private sanitizeFilename(original: string): string {
-    const base = path.basename(original).replace(/[\u0000-\u001F\u007F]/g, '');
-    const replaced = base.replace(/\s+/g, '_');
-    return replaced.slice(0, 140);
+    // 1. Multer 인코딩 깨짐 수정 (Latin1 -> UTF-8)
+    // 브라우저에서 보낸 UTF-8 이름이 서버에서 Latin1로 읽히는 현상 방지
+    let decoded = original;
+    try {
+      if (typeof original === 'string') {
+        decoded = Buffer.from(original, 'latin1').toString('utf8');
+      }
+    } catch (e) {
+      decoded = original;
+    }
+
+    // 2. S3 Key 안전화: 영문, 숫자, 하이픈(-), 언더스코어(_), 점(.)만 허용
+    const base = path.basename(decoded);
+    const ext = path.extname(base);
+    const nameOnly = path.basename(base, ext);
+
+    // 영문/숫자/하이픈/언더스코어 이외의 모든 문자(한글 포함) 제거
+    const safeName = nameOnly.replace(/[^a-zA-Z0-9\-_]/g, '');
+
+    // 파일명이 완전히 비어버리는 경우 방지
+    const finalBase = safeName || 'file';
+    return (finalBase.slice(0, 100) + ext.toLowerCase()).replace(/\s+/g, '_');
   }
 
   private randomSuffix(bytes = 6): string {
@@ -197,6 +217,7 @@ export class UploadService {
           Metadata: {
             uploaded_by: String(userId),
             app_domain: domain,
+            original_name: encodeURIComponent(original),
           },
         });
 
@@ -225,5 +246,52 @@ export class UploadService {
     }
 
     return { urls, keys, domain, userId };
+  }
+  
+  /** URL에서 S3 Key 추출 */
+  extractKeyFromUrl(url: string): string | null {
+    if (!url) return null;
+    
+    // s3://bucket/key 형태
+    if (url.startsWith('s3://')) {
+      const parts = url.split('/');
+      if (parts.length < 4) return null;
+      return parts.slice(3).join('/');
+    }
+    
+    // https://bucket.s3.region.amazonaws.com/key 형태
+    if (url.includes('.s3.') && url.includes('.amazonaws.com/')) {
+      const parts = url.split('.amazonaws.com/');
+      if (parts.length < 2) return null;
+      return decodeURI(parts[1]);
+    }
+    
+    // 기타: 도메인이 포함된 경우 (CloudFront 등 커스텀 도메인 대응이 필요할 수 있음)
+    // 여기서는 기본 S3 URL만 처리
+    return null;
+  }
+
+  /** S3 오브젝트 삭제 */
+  async deleteFile(url: string): Promise<void> {
+    const key = this.extractKeyFromUrl(url);
+    if (!key) return;
+
+    try {
+      const cmd = new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+      await this.s3.send(cmd);
+      console.log(`[S3 Delete Success] key: ${key}`);
+    } catch (e: any) {
+      console.error(`[S3 Delete Error] key: ${key}, error: ${e.message}`);
+      // 굳이 예외를 던지지 않고 로그만 남김 (삭제 실패가 비즈니스 로직을 중단시키면 안 됨)
+    }
+  }
+
+  /** 여러 개 삭제 */
+  async deleteFiles(urls: string[]): Promise<void> {
+    if (!urls?.length) return;
+    await Promise.all(urls.map(url => this.deleteFile(url)));
   }
 }

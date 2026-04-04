@@ -4,12 +4,14 @@ import { PinPhoto } from './entities/pin-photo.entity';
 import { In, Repository } from 'typeorm';
 import { CreatePinPhotoDto } from './dto/create-pin-photo.dto';
 import { UpdatePinPhotoDto } from './dto/update-pin-photo.dto';
+import { UploadService } from '../upload/upload.service';
 
 @Injectable()
 export class PinPhotosService {
   constructor(
     @InjectRepository(PinPhoto)
     private readonly repo: Repository<PinPhoto>,
+    private readonly uploadService: UploadService,
   ) {}
 
   findByGroup(groupId: string) {
@@ -42,6 +44,13 @@ export class PinPhotosService {
   }
 
   async remove(photoIds: string[]) {
+    // [ cleanup ] S3에서 파일 실제 삭제
+    const photos = await this.repo.findBy({ id: In(photoIds) });
+    if (photos.length > 0) {
+      const urls = photos.map((p) => p.url).filter(Boolean);
+      await this.uploadService.deleteFiles(urls);
+    }
+
     const result = await this.repo.delete(photoIds);
     return { affected: result.affected ?? 0 };
   }

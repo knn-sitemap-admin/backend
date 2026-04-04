@@ -20,6 +20,7 @@ import { EmployeeListItemDto } from '../dto/employee-list.dto';
 import { PinDraft } from '../../../survey-reservations/entities/pin-draft.entity';
 import { EmployeeListQueryDto } from '../dto/employee-list-query.dto';
 import { AccountSession } from '../../auth/entities/account-session.entity';
+import { UploadService } from '../../../photo/upload/upload.service';
 
 type UpsertInput = {
   name?: string;
@@ -34,10 +35,10 @@ type UpsertInput = {
   teamName?: string | null;
   teamId?: string | null;
 
-  docUrlResidentRegistration?: string | null;
-  docUrlResidentAbstract?: string | null;
-  docUrlIdCard?: string | null;
-  docUrlFamilyRelation?: string | null;
+  docUrlResidentRegistration?: string[] | null;
+  docUrlResidentAbstract?: string[] | null;
+  docUrlIdCard?: string[] | null;
+  docUrlFamilyRelation?: string[] | null;
 };
 
 export type EmployeePickItemDto = {
@@ -70,6 +71,7 @@ export class EmployeeInfoService {
     private readonly contractRepository: Repository<Contract>,
     @InjectRepository(ContractAssignee)
     private readonly contractAssigneeRepository: Repository<ContractAssignee>,
+    private readonly uploadService: UploadService,
   ) {}
 
   // private normalize(dto: UpsertEmployeeInfoDto): UpsertEmployeeInfoDto {
@@ -122,19 +124,19 @@ export class EmployeeInfoService {
 
       docUrlResidentRegistration:
         dto.docUrlResidentRegistration !== undefined
-          ? dto.docUrlResidentRegistration?.trim() || null
+          ? dto.docUrlResidentRegistration ?? null
           : undefined,
       docUrlResidentAbstract:
         dto.docUrlResidentAbstract !== undefined
-          ? dto.docUrlResidentAbstract?.trim() || null
+          ? dto.docUrlResidentAbstract ?? null
           : undefined,
       docUrlIdCard:
         dto.docUrlIdCard !== undefined
-          ? dto.docUrlIdCard?.trim() || null
+          ? dto.docUrlIdCard ?? null
           : undefined,
       docUrlFamilyRelation:
         dto.docUrlFamilyRelation !== undefined
-          ? dto.docUrlFamilyRelation?.trim() || null
+          ? dto.docUrlFamilyRelation ?? null
           : undefined,
     };
   }
@@ -909,6 +911,18 @@ export class EmployeeInfoService {
         );
       }
 
+      // =========================
+      // [ cleanup ] 기존 URL들 백업 (삭제 여부 판단용)
+      // =========================
+      const oldProfileUrl = account.profile_url;
+      const oldDocReg = account.doc_url_resident_registration || [];
+      const oldDocAbs = account.doc_url_resident_abstract || [];
+      const oldDocId = account.doc_url_id_card || [];
+      const oldDocFam = account.doc_url_family_relation || [];
+
+      // =========================
+      // 3) 데이터 머지
+      // =========================
       account.name = input.name ?? account.name;
       account.phone = input.phone ?? account.phone;
       account.emergency_contact =
@@ -955,6 +969,45 @@ export class EmployeeInfoService {
         !!account.salary_account;
 
       account.is_profile_completed = requiredFilled;
+
+      // =========================
+      // 3.5) S3 파일 정리 (삭제된 파일들 버킷에서 제거)
+      // =========================
+      
+      // 1. 프로필 사진 (단일)
+      if (input.profileUrl !== undefined && oldProfileUrl !== input.profileUrl) {
+         if (oldProfileUrl) {
+            await this.uploadService.deleteFile(oldProfileUrl);
+         }
+      }
+      // 2. 등본 (배열)
+      if (input.docUrlResidentRegistration !== undefined) {
+        await this.cleanupUnusedFiles(
+          oldDocReg,
+          input.docUrlResidentRegistration || [],
+        );
+      }
+      // 3. 초본 (배열)
+      if (input.docUrlResidentAbstract !== undefined) {
+        await this.cleanupUnusedFiles(
+          oldDocAbs,
+          input.docUrlResidentAbstract || [],
+        );
+      }
+      // 4. 신분증 (배열)
+      if (input.docUrlIdCard !== undefined) {
+        await this.cleanupUnusedFiles(
+          oldDocId,
+          input.docUrlIdCard || [],
+        );
+      }
+      // 5. 가족관계증명서 (배열)
+      if (input.docUrlFamilyRelation !== undefined) {
+        await this.cleanupUnusedFiles(
+          oldDocFam,
+          input.docUrlFamilyRelation || [],
+        );
+      }
 
       const saved = await accRepo.save(account);
 
@@ -1593,5 +1646,23 @@ export class EmployeeInfoService {
         ongoingContracts: contractMap.get(id) ?? [],
       };
     });
+  }
+
+  /**
+   * S3 버킷에서 사용하지 않게 된 파일들을 삭제합니다.
+   * oldList 에는 있지만 newList 에는 없는 URL들을 찾아 S3에서 제거합니다.
+   */
+  private async cleanupUnusedFiles(
+    oldList: string[] | null | undefined,
+    newList: string[] | null | undefined,
+  ) {
+    if (!oldList || oldList.length === 0) return;
+
+    const nextSet = new Set(newList || []);
+    const toDelete = oldList.filter((url) => url && !nextSet.has(url));
+
+    if (toDelete.length > 0) {
+      await this.uploadService.deleteFiles(toDelete);
+    }
   }
 }

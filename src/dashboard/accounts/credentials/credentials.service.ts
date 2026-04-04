@@ -507,6 +507,10 @@ export class CredentialsService {
         'acc.is_profile_completed AS acc_is_profile_completed',
         'acc.is_deleted AS acc_is_deleted',
         'acc.deleted_at AS acc_deleted_at',
+        'acc.doc_url_resident_registration AS acc_doc_url_resident_registration',
+        'acc.doc_url_resident_abstract AS acc_doc_url_resident_abstract',
+        'acc.doc_url_id_card AS acc_doc_url_id_card',
+        'acc.doc_url_family_relation AS acc_doc_url_family_relation',
 
         'team.id AS team_id',
         'team.name AS team_name',
@@ -541,6 +545,10 @@ export class CredentialsService {
             isProfileCompleted: !!raw.acc_is_profile_completed,
             isDeleted: !!raw.acc_is_deleted,
             deletedAt: raw.acc_deleted_at,
+            docUrlResidentRegistration: raw.acc_doc_url_resident_registration,
+            docUrlResidentAbstract: raw.acc_doc_url_resident_abstract,
+            docUrlIdCard: raw.acc_doc_url_id_card,
+            docUrlFamilyRelation: raw.acc_doc_url_family_relation,
           }
         : null,
 

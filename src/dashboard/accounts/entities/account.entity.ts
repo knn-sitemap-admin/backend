@@ -60,17 +60,17 @@ export class Account {
   @Column({ type: 'boolean', default: false })
   is_profile_completed!: boolean;
 
-  @Column({ type: 'text', nullable: true })
-  doc_url_resident_registration!: string | null; // 등본
+  @Column({ type: 'json', nullable: true })
+  doc_url_resident_registration: string[] | null = null; // 등본
 
-  @Column({ type: 'text', nullable: true })
-  doc_url_resident_abstract!: string | null; // 초본
+  @Column({ type: 'json', nullable: true })
+  doc_url_resident_abstract: string[] | null = null; // 초본
 
-  @Column({ type: 'text', nullable: true })
-  doc_url_id_card!: string | null; // 신분증
+  @Column({ type: 'json', nullable: true })
+  doc_url_id_card: string[] | null = null; // 신분증
 
-  @Column({ type: 'text', nullable: true })
-  doc_url_family_relation!: string | null; // 가족관계증명서
+  @Column({ type: 'json', nullable: true })
+  doc_url_family_relation: string[] | null = null; // 가족관계증명서
 
   @Column({ type: 'boolean', default: false })
   is_deleted!: boolean;

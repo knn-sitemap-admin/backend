@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsEnum,
   IsOptional,
   IsString,
@@ -55,18 +56,22 @@ export class UpsertEmployeeInfoDto {
   teamId?: string | null;
 
   @IsOptional()
-  @IsUrl()
-  docUrlResidentRegistration?: string | null;
+  @IsArray()
+  @IsUrl({}, { each: true })
+  docUrlResidentRegistration?: string[] | null;
 
   @IsOptional()
-  @IsUrl()
-  docUrlResidentAbstract?: string | null;
+  @IsArray()
+  @IsUrl({}, { each: true })
+  docUrlResidentAbstract?: string[] | null;
 
   @IsOptional()
-  @IsUrl()
-  docUrlIdCard?: string | null;
+  @IsArray()
+  @IsUrl({}, { each: true })
+  docUrlIdCard?: string[] | null;
 
   @IsOptional()
-  @IsUrl()
-  docUrlFamilyRelation?: string | null;
+  @IsArray()
+  @IsUrl({}, { each: true })
+  docUrlFamilyRelation?: string[] | null;
 }

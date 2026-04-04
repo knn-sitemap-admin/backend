@@ -8,9 +8,11 @@ import {
   ManyToOne,
   JoinColumn,
   RelationId,
+  OneToMany,
 } from 'typeorm';
 import { Type } from 'class-transformer';
 import { Account } from '../../dashboard/accounts/entities/account.entity';
+import { ContractFile } from '../files/entities/file.entity';
 
 export type ContractStatus = 'ongoing' | 'done' | 'canceled' | 'rejected';
 
@@ -107,4 +109,7 @@ export class Contract {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
+
+  @OneToMany(() => ContractFile, (f) => f.contract)
+  files!: ContractFile[];
 }

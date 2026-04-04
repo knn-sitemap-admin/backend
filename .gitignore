@@ -2,7 +2,6 @@
 /dist
 /node_modules
 /build
-/src/common/migrations
 /src/common/migrations/*
 ## Logs
 #logs

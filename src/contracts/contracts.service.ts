@@ -19,6 +19,7 @@ import { ContractAssignee } from './assignees/entities/assignee.entity';
 import { ContractFile } from './files/entities/file.entity';
 
 import { maskIfDisabled } from '../common/mappers/account-visibility';
+import { UploadService } from '../photo/upload/upload.service';
 
 type Role = 'admin' | 'manager' | 'staff';
 
@@ -86,6 +87,7 @@ export class ContractsService {
     private readonly fileRepo: Repository<ContractFile>,
     @InjectRepository(Account)
     private readonly accountRepo: Repository<Account>,
+    private readonly uploadService: UploadService,
   ) {}
 
   private async resolveAccountByCredentialIdOrThrow(
@@ -775,6 +777,12 @@ export class ContractsService {
       }
 
       if (dto.urls !== undefined) {
+        // [ cleanup ] 기존 파일 URL들 백업
+        const existingFiles = await fRepo.find({
+          where: { contract: { id: Number(id) } as any },
+        });
+        const oldUrls = existingFiles.map((f) => f.url);
+        
         await fRepo.delete({ contract: { id: Number(id) } as any });
 
         if (dto.urls.length > 0) {
@@ -787,6 +795,13 @@ export class ContractsService {
           );
           await fRepo.save(rows);
         }
+
+        // 새 URL들에 포함되지 않은 예전 URL들을 S3에서 배제
+        const nextSet = new Set(dto.urls);
+        const toDelete = oldUrls.filter((u) => u && !nextSet.has(u));
+        if (toDelete.length > 0) {
+          await this.uploadService.deleteFiles(toDelete);
+        }
       }
     });
 
@@ -797,9 +812,18 @@ export class ContractsService {
     if (role === 'staff') throw new ForbiddenException('삭제 권한이 없습니다.');
     const found = await this.contractRepo.findOne({
       where: { id: Number(id) },
-      select: ['id'],
+      relations: ['files'],
     });
     if (!found) throw new NotFoundException('계약을 찾을 수 없습니다.');
+
+    // [ cleanup ] 계약 삭제 시 S3 파일들도 모두 삭제
+    if (found.files?.length) {
+      const urls = found.files.map((f) => f.url).filter(Boolean);
+      if (urls.length > 0) {
+        await this.uploadService.deleteFiles(urls);
+      }
+    }
+
     await this.contractRepo.delete({ id: Number(id) } as any);
   }
 }

@@ -23,6 +23,7 @@ import { FavoriteGroup } from '../../favorite/group/entities/group.entity';
 import { FavoriteGroupItem } from '../../favorite/item/entities/item.entity';
 import { Contract } from '../../contracts/entities/contract.entity';
 import { ContractAssignee } from '../../contracts/assignees/entities/assignee.entity';
+import { UploadModule } from '../../photo/upload/upload.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ContractAssignee } from '../../contracts/assignees/entities/assignee.en
     ]),
     BcryptModule,
     AuthModule,
+    UploadModule,
   ],
   controllers: [
     CredentialsController,
