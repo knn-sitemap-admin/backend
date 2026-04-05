@@ -64,4 +64,37 @@ export class TeamController {
     const result = await this.service.remove(id);
     return { message: '팀 삭제', data: result };
   }
+
+  // --- 수동 멤버 관리 API ---
+
+  @Roles(SystemRole.ADMIN)
+  @Post(':id/members')
+  async addMember(
+    @Param('id') id: string,
+    @Body('accountId') accountId: string,
+    @Body('role') role: 'manager' | 'staff',
+  ) {
+    const result = await this.service.addMember(id, accountId, role);
+    return { message: '팀 멤버 추가', data: result };
+  }
+
+  @Roles(SystemRole.ADMIN)
+  @Delete(':id/members/:accountId')
+  async removeMember(
+    @Param('id') id: string,
+    @Param('accountId') accountId: string,
+  ) {
+    const result = await this.service.removeMember(id, accountId);
+    return { message: '팀 멤버 제외', data: result };
+  }
+
+  @Roles(SystemRole.ADMIN)
+  @Patch(':id/leader')
+  async setLeader(
+    @Param('id') id: string,
+    @Body('accountId') accountId: string,
+  ) {
+    const result = await this.service.setLeader(id, accountId);
+    return { message: '팀장 임명', data: result };
+  }
 }

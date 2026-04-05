@@ -33,6 +33,14 @@ export class PinPhotosController {
     return { message: '사진 수정됨', data: await this.service.update(dto) };
   }
 
+  @Patch('batch')
+  async batchUpdate(@Body() patches: any[]) {
+    return {
+      message: '사진 일괄 수정됨',
+      data: await this.service.batchUpdate(patches),
+    };
+  }
+
   @Delete()
   async remove(@Body('photoIds') photoIds: string[]) {
     return {

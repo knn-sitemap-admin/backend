@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Delete,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -69,5 +70,12 @@ export class CredentialsController {
   ) {
     await this.service.updatePassword(id, dto.password);
     return { message: '비밀번호 변경 완료' };
+  }
+
+  @Roles(SystemRole.ADMIN)
+  @Delete(':id')
+  async softDelete(@Param('id') id: string) {
+    await this.service.softDelete(id);
+    return { message: '계정 가삭제 완료' };
   }
 }

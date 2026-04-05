@@ -36,11 +36,53 @@ export class PinPhotosService {
         this.repo.update(id, {
           isCover: dto.isCover,
           sortOrder: dto.sortOrder,
-          groupId: dto.moveGroupId, // id 타입 수정 필요
+          groupId: dto.moveGroupId,
         }),
       ),
     );
     return await this.repo.findBy({ id: In(dto.photoIds) });
+  }
+
+  async batchUpdate(patches: any[]) {
+    // eslint-disable-next-line no-console
+    console.log(`[PinPhotosService] BatchUpdate (QueryBuilder) started for ${patches.length} photos.`);
+    
+    const results = await Promise.allSettled(
+      patches.map(async (p, i) => {
+        const id = p.id;
+        const dto = p.dto || p;
+        const updateData: any = {};
+        
+        if (dto.caption !== undefined) updateData.caption = dto.caption;
+        if (dto.sortOrder !== undefined) updateData.sortOrder = dto.sortOrder;
+        if (dto.groupId !== undefined) updateData.groupId = dto.groupId;
+        if (dto.moveGroupId !== undefined) updateData.groupId = dto.moveGroupId;
+        if (dto.isCover !== undefined) updateData.isCover = dto.isCover;
+
+        if (Object.keys(updateData).length > 0) {
+          // eslint-disable-next-line no-console
+          console.log(`[QB item#${i}] Updating ID:${id} with`, updateData);
+          const res = await this.repo
+            .createQueryBuilder()
+            .update(PinPhoto)
+            .set(updateData)
+            .where('id = :id', { id })
+            .execute();
+          
+          if (res.affected === 0) {
+              console.warn(`[QB item#${i}] No row updated for ID:${id}`);
+          }
+          return res;
+        }
+      }),
+    );
+
+    // 3) 결과 통합 및 반환 (프론트엔드 assertArray 대응을 위해 배열로 반환)
+    const updatedIds = patches.map((p) => p.id);
+    return await this.repo.find({
+      where: { id: In(updatedIds) },
+      order: { sortOrder: 'ASC' },
+    });
   }
 
   async remove(photoIds: string[]) {

@@ -56,6 +56,8 @@ type ListItem = {
 
   // admin list에서는 회사 매출도 보이니 포함
   companyAmount: number;
+  teamLeaderAmount?: number;
+  salesPersonAmount?: number;
 
   // me list에서만 내려줌
   mySharePercent?: number;
@@ -68,6 +70,7 @@ type ListItem = {
     name: string | null;
     sharePercent: number;
     isDisabled: boolean;
+    role: Role;
   }>;
 };
 
@@ -88,7 +91,7 @@ export class ContractsService {
     @InjectRepository(Account)
     private readonly accountRepo: Repository<Account>,
     private readonly uploadService: UploadService,
-  ) {}
+  ) { }
 
   private async resolveAccountByCredentialIdOrThrow(
     credentialId: string,
@@ -116,7 +119,7 @@ export class ContractsService {
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.account', 'acc')
       .leftJoin('acc.credential', 'accCred')
-      .addSelect(['accCred.is_disabled'])
+      .addSelect(['accCred.is_disabled', 'accCred.role'])
       .where('a.contract_id IN (:...contractIds)', { contractIds })
       .orderBy('a.contract_id', 'ASC')
       .addOrderBy('a.sortOrder', 'ASC')
@@ -136,6 +139,7 @@ export class ContractsService {
         name: masked.name,
         sharePercent: Number(a.sharePercent),
         isDisabled: masked.isDisabled,
+        role: acc?.credential?.role ?? 'staff',
       });
       map.set(Number(a.contractId), list);
     }
@@ -396,10 +400,24 @@ export class ContractsService {
         isTaxed: c.isTaxed,
         companyPercent: Number(c.companyPercent),
 
-         vatAmount: calc.vatAmount,
+        vatAmount: calc.vatAmount,
         rebateAmount: calc.rebateAmount,
         grandTotal: calc.grandTotal,
         companyAmount: calc.companyAmount,
+
+        teamLeaderAmount: participantsMap.get(Number(c.id))?.reduce((acc, p) => {
+          if (p.role === 'manager' || p.role === 'admin') {
+            return acc + Math.round(calc.grandTotal * (p.sharePercent / 100));
+          }
+          return acc;
+        }, 0) ?? 0,
+        salesPersonAmount: participantsMap.get(Number(c.id))?.reduce((acc, p) => {
+          if (p.role !== 'manager' && p.role !== 'admin') {
+            return acc + Math.round(calc.grandTotal * (p.sharePercent / 100));
+          }
+          return acc;
+        }, 0) ?? 0,
+
         participants: participantsMap.get(Number(c.id)) ?? [],
       };
     });
@@ -461,12 +479,12 @@ export class ContractsService {
       ids.length === 0
         ? []
         : await this.assigneeRepo
-            .createQueryBuilder('a')
-            .select('a.contract_id', 'contractId')
-            .addSelect('a.sharePercent', 'sharePercent')
-            .where('a.contract_id IN (:...ids)', { ids })
-            .andWhere('a.account_id = :me', { me: String(me.id) })
-            .getRawMany<{ contractId: string; sharePercent: string }>();
+          .createQueryBuilder('a')
+          .select('a.contract_id', 'contractId')
+          .addSelect('a.sharePercent', 'sharePercent')
+          .where('a.contract_id IN (:...ids)', { ids })
+          .andWhere('a.account_id = :me', { me: String(me.id) })
+          .getRawMany<{ contractId: string; sharePercent: string }>();
 
     const myShareMap = new Map<number, number>(
       myRows.map((r) => [Number(r.contractId), Number(r.sharePercent)]),
@@ -529,6 +547,19 @@ export class ContractsService {
         rebateAmount: calc.rebateAmount,
         grandTotal: calc.grandTotal,
         companyAmount: calc.companyAmount,
+
+        teamLeaderAmount: participantsMap.get(Number(c.id))?.reduce((acc, p) => {
+          if (p.role === 'manager' || p.role === 'admin') {
+            return acc + Math.round(calc.grandTotal * (p.sharePercent / 100));
+          }
+          return acc;
+        }, 0) ?? 0,
+        salesPersonAmount: participantsMap.get(Number(c.id))?.reduce((acc, p) => {
+          if (p.role !== 'manager' && p.role !== 'admin') {
+            return acc + Math.round(calc.grandTotal * (p.sharePercent / 100));
+          }
+          return acc;
+        }, 0) ?? 0,
 
         mySharePercent,
         myAmount,
@@ -654,6 +685,7 @@ export class ContractsService {
           isDisabled: masked.isDisabled,
           sharePercent: Number(a.sharePercent),
           sortOrder: Number(a.sortOrder),
+          role: acc?.credential?.role ?? 'staff',
         };
       }),
 
@@ -782,7 +814,7 @@ export class ContractsService {
           where: { contract: { id: Number(id) } as any },
         });
         const oldUrls = existingFiles.map((f) => f.url);
-        
+
         await fRepo.delete({ contract: { id: Number(id) } as any });
 
         if (dto.urls.length > 0) {

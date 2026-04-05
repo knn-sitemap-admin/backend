@@ -9,6 +9,7 @@ export type EmployeeListItemDto = {
   name: string | null;
   positionRank: PositionRank | null;
   teamName: string; // 없으면 "미소속"
+  teamRole: string | null; // "manager" | "staff" | null
   phone: string | null;
 
   reservedPinDrafts: Array<{

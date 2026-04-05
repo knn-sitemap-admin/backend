@@ -111,7 +111,7 @@ export class TeamService {
         // 팀장(활성 계정만)
         'MAX(a.name) AS teamLeaderName',
         // 멤버 수도 활성 계정만 카운트
-        'COUNT(DISTINCT allm.id) AS memberCount',
+        'COUNT(DISTINCT allA.id) AS memberCount',
       ])
       .setParameters({ managerRole: 'manager', adminRole: 'admin' })
       .groupBy('t.id')
@@ -145,11 +145,10 @@ export class TeamService {
     const rows = await this.teamMemberRepository
       .createQueryBuilder('tm')
       .innerJoin('accounts', 'a', 'a.id = tm.account_id AND a.is_deleted = 0')
-      .innerJoin(
+      .leftJoin(
         'account_credentials',
         'cred',
-        'cred.id = a.credential_id AND cred.is_disabled = 0 AND cred.role <> :adminRole',
-        { adminRole: 'admin' },
+        'cred.id = a.credential_id AND a.is_deleted = 0',
       )
       .select([
         'tm.id AS teamMemberId',
@@ -236,14 +235,109 @@ export class TeamService {
     const team = await this.teamRepository.findOne({ where: { id } });
     if (!team) throw new NotFoundException('지정한 팀을 찾을 수 없습니다.');
 
-    const members = await this.teamMemberRepository.count({
-      where: { team_id: id },
-    });
+    const members = await this.teamMemberRepository
+      .createQueryBuilder('tm')
+      .innerJoin('accounts', 'a', 'a.id = tm.account_id AND a.is_deleted = 0')
+      .innerJoin(
+        'account_credentials',
+        'cred',
+        'cred.id = a.credential_id AND cred.is_disabled = 0 AND cred.role <> :adminRole',
+        { adminRole: 'admin' },
+      )
+      .where('tm.team_id = :id', { id })
+      .getCount();
+
     if (members > 0) {
-      throw new ConflictException('팀에 멤버가 있어 삭제할 수 없습니다.');
+      throw new ConflictException('팀에 활동 중인 멤버가 있어 삭제할 수 없습니다.');
     }
 
     await this.teamRepository.remove(team);
     return { id };
+  }
+
+  // --- 수동 멤버 관리 메서드 추가 ---
+
+  async addMember(teamId: string, accountId: string, role: 'manager' | 'staff') {
+    const team = await this.teamRepository.findOne({ where: { id: teamId } });
+    if (!team) throw new NotFoundException('팀을 찾을 수 없습니다.');
+
+    const account = await this.accountCredentialRepository.manager.findOne(Account, {
+      where: { id: String(accountId) },
+    });
+    if (!account) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+
+    // 기존 소속 제거 (단일 팀 소속 원칙)
+    await this.teamMemberRepository.delete({ account_id: accountId });
+
+    const member = this.teamMemberRepository.create({
+      team_id: teamId,
+      account_id: accountId,
+      team_role: role,
+      is_primary: true,
+      joined_at: new Date().toISOString().slice(0, 10),
+    });
+
+    await this.teamMemberRepository.save(member);
+
+    // 만약 manager로 추가한다면, 팀의 leader_account_id도 업데이트 고려?
+    // 보통은 setLeader를 따로 호출하는 것이 명확함.
+    
+    return this.get(teamId);
+  }
+
+  async removeMember(teamId: string, accountId: string) {
+    await this.teamMemberRepository.delete({ team_id: teamId, account_id: accountId });
+    
+    // 만약 이 사람이 팀장이었다면 leader_account_id 해제
+    const team = await this.teamRepository.findOne({ where: { id: teamId } });
+    if (team && String(team.leader_account_id) === String(accountId)) {
+      team.leader_account_id = null;
+      await this.teamRepository.save(team);
+    }
+
+    return this.get(teamId);
+  }
+
+  async setLeader(teamId: string, accountId: string) {
+    const team = await this.teamRepository.findOne({ where: { id: teamId } });
+    if (!team) throw new NotFoundException('팀을 찾을 수 없습니다.');
+
+    // 1. 기존 팀장 후보를 사원으로 강등 (옵션: 한 팀에 매니저는 한 명뿐이어야 함)
+    await this.teamMemberRepository.update(
+      { team_id: teamId, team_role: 'manager' },
+      { team_role: 'staff' }
+    );
+
+    // 2. 새 팀장을 해당 팀의 멤버로 추가/업데이트
+    let member = await this.teamMemberRepository.findOne({
+      where: { team_id: teamId, account_id: accountId },
+    });
+
+    if (!member) {
+      // 다른 팀에 있었다면 거기서 빼오기
+      await this.teamMemberRepository.delete({ account_id: accountId });
+      
+      member = this.teamMemberRepository.create({
+        team_id: teamId,
+        account_id: accountId,
+        team_role: 'manager',
+        is_primary: true,
+        joined_at: new Date().toISOString().slice(0, 10),
+      });
+    } else {
+      member.team_role = 'manager';
+      member.is_primary = true;
+    }
+    await this.teamMemberRepository.save(member);
+
+    // 3. 팀 엔티티의 리더 ID 업데이트
+    // 주의: leader_account_id (Unique Index) 충돌 방지를 위해 기존 이력 클리어
+    await this.teamRepository.update({ leader_account_id: accountId }, { leader_account_id: null });
+    
+    team.leader_account_id = accountId;
+    team.is_active = true; // 리더가 지정되면 활성화
+    await this.teamRepository.save(team);
+
+    return this.get(teamId);
   }
 }

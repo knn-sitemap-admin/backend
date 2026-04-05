@@ -393,11 +393,10 @@ export class CredentialsService {
   async listAllCredentials() {
     const rows = await this.accountCredentialRepository
       .createQueryBuilder('cred')
-      .leftJoinAndMapOne(
-        'cred.account',
+      .innerJoin(
         Account,
         'acc',
-        'acc.credential_id = cred.id',
+        'acc.credential_id = cred.id AND acc.is_deleted = 0',
       )
       .orderBy('cred.id', 'DESC')
       .getMany();
@@ -413,18 +412,24 @@ export class CredentialsService {
   }
 
   async setCredentialDisabled(id: string, disabled: boolean) {
+    console.log(`[CredentialsService] setCredentialDisabled 호출: id=${id}, disabled=${disabled}`);
     return this.dataSource.transaction(async (tx) => {
       const credRepo = tx.getRepository(AccountCredential);
       const accRepo = tx.getRepository(Account);
       const teamRepo = tx.getRepository(Team);
       const tmRepo = tx.getRepository(TeamMember);
+      const sessionRepo = tx.getRepository(AccountSession);
 
       const cred = await credRepo.findOne({ where: { id: String(id) } });
-      if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+      if (!cred) {
+        console.error(`[CredentialsService] 계정을 찾을 수 없음: id=${id}`);
+        throw new NotFoundException('계정을 찾을 수 없습니다.');
+      }
 
       // credential disable 토글
       cred.is_disabled = disabled;
       await credRepo.save(cred);
+      console.log(`[CredentialsService] 계정 비활성화 상태 저장 완료: ${cred.email}, is_disabled=${cred.is_disabled}`);
 
       // account 조회
       const account = await accRepo.findOne({
@@ -434,6 +439,7 @@ export class CredentialsService {
 
       // 직급이 팀장인 속한 팀 삭제
       if (disabled && account?.position_rank === PositionRank.TEAM_LEADER) {
+        console.log(`[CredentialsService] 팀장 계정 비활성화 감지 - 관련 팀 정리 시작: accountId=${account.id}`);
         const myTeams = await tmRepo
           .createQueryBuilder('tm')
           .select(['tm.team_id AS teamId'])
@@ -459,11 +465,20 @@ export class CredentialsService {
             .from(Team)
             .where('id IN (:...tids)', { tids: teamIds })
             .execute();
+          console.log(`[CredentialsService] 팀 및 팀원 정리 완료: teamIds=${teamIds}`);
         }
       }
 
-      // 세션 즉시 끊기
-      await this.deactivateAllSessionsByCredentialId(String(cred.id));
+      // 세션 즉시 끊기 (트랜잭션 내에서 처리)
+      const now = new Date();
+      await sessionRepo
+        .createQueryBuilder()
+        .update(AccountSession)
+        .set({ is_active: false, deactivated_at: now })
+        .where('credential_id = :cid', { cid: String(cred.id) })
+        .andWhere('is_active = 1')
+        .execute();
+      console.log(`[CredentialsService] 모든 세션 종료 처분 완료: credentialId=${cred.id}`);
 
       return { id: cred.id, disabled: cred.is_disabled };
     });
@@ -831,5 +846,34 @@ export class CredentialsService {
 
     // 모든 세션 즉시 종료
     await this.deactivateAllSessionsByCredentialId(String(cred.id));
+  }
+
+  async softDelete(credentialId: string): Promise<void> {
+    await this.dataSource.transaction(async (tx) => {
+      const credRepo = tx.getRepository(AccountCredential);
+      const accRepo = tx.getRepository(Account);
+
+      const cred = await credRepo.findOne({
+        where: { id: String(credentialId) },
+      });
+      if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+      const acc = await accRepo.findOne({
+        where: { credential_id: String(credentialId) },
+      });
+
+      if (acc) {
+        acc.is_deleted = true;
+        acc.deleted_at = new Date();
+        await accRepo.save(acc);
+      }
+
+      // 보안을 위해 계정 비활성화 처리
+      cred.is_disabled = true;
+      await credRepo.save(cred);
+
+      // 모든 세션 즉시 종료
+      await this.deactivateAllSessionsByCredentialId(String(cred.id));
+    });
   }
 }

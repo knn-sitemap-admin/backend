@@ -905,11 +905,13 @@ export class EmployeeInfoService {
             : null
           : undefined;
 
+      /* 팀장은 teamId 배정 제한을 주석 처리하여 어드민이 편하게 수정하도록 함
       if (isTeamLeaderNow && requestedTeamId !== undefined) {
         throw new ConflictException(
           '팀장은 teamId로 별도 팀 배정을 할 수 없습니다.',
         );
       }
+      */
 
       // =========================
       // [ cleanup ] 기존 URL들 백업 (삭제 여부 판단용)
@@ -1023,130 +1025,8 @@ export class EmployeeInfoService {
         }
       }
 
-      // 팀장 승급 시 팀 생성/복구
-      if (becameTeamLeader) {
-        await tmRepo
-          .createQueryBuilder()
-          .delete()
-          .from(TeamMember)
-          .where('account_id = :aid', { aid: String(saved.id) })
-          .execute();
+      // 팀 관련 자동 로직 제거됨 (팀 관리 탭에서 처리)
 
-        let myTeam = await teamRepo.findOne({
-          where: { leader_account_id: String(saved.id) },
-        });
-
-        if (!myTeam) {
-          const baseName = saved.name ? `${saved.name} 팀` : `팀-${saved.id}`;
-          const finalName =
-            requestedTeamName && requestedTeamName.length > 0
-              ? requestedTeamName
-              : baseName;
-
-          const nameDup = await teamRepo.findOne({
-            where: { name: finalName },
-          });
-          if (nameDup) {
-            throw new ConflictException(
-              `팀 "${finalName}"이(가) 이미 존재합니다.`,
-            );
-          }
-
-          const makeCode = () =>
-            `TL-${saved.id}-${Date.now().toString(36)}`.toUpperCase();
-
-          let code = makeCode();
-
-          for (let i = 0; i < 5; i += 1) {
-            const codeDup = await teamRepo.findOne({
-              where: { code },
-            });
-            if (!codeDup) {
-              break;
-            }
-            code = makeCode();
-          }
-
-          const finalCodeDup = await teamRepo.findOne({
-            where: { code },
-          });
-          if (finalCodeDup) {
-            throw new ConflictException('팀 코드 생성 중 충돌이 발생했습니다.');
-          }
-
-          myTeam = await teamRepo.save(
-            teamRepo.create({
-              leader_account_id: String(saved.id),
-              name: finalName,
-              code,
-              description: null,
-              is_active: true,
-            }),
-          );
-        } else {
-          if (!myTeam.is_active) {
-            myTeam.is_active = true;
-          }
-
-          if (requestedTeamName !== undefined) {
-            if (!requestedTeamName) {
-              throw new ConflictException('팀 이름은 비워둘 수 없습니다.');
-            }
-
-            if (requestedTeamName !== myTeam.name) {
-              const dup = await teamRepo.findOne({
-                where: { name: requestedTeamName },
-              });
-
-              if (dup && String(dup.id) !== String(myTeam.id)) {
-                throw new ConflictException(
-                  `팀 "${requestedTeamName}"이(가) 이미 존재합니다.`,
-                );
-              }
-
-              myTeam.name = requestedTeamName;
-            }
-          }
-
-          myTeam = await teamRepo.save(myTeam);
-        }
-
-        const leaderMember = await tmRepo.findOne({
-          where: {
-            team_id: String(myTeam.id),
-            account_id: String(saved.id),
-          } as any,
-        });
-
-        if (!leaderMember) {
-          await tmRepo.save(
-            tmRepo.create({
-              team_id: String(myTeam.id),
-              account_id: String(saved.id),
-              team_role: 'manager',
-              is_primary: true,
-              joined_at: new Date().toISOString().slice(0, 10),
-            }),
-          );
-        } else {
-          leaderMember.team_role = 'manager';
-          leaderMember.is_primary = true;
-          if (!leaderMember.joined_at) {
-            leaderMember.joined_at = new Date().toISOString().slice(0, 10);
-          }
-          await tmRepo.save(leaderMember);
-        }
-
-        await tmRepo
-          .createQueryBuilder()
-          .delete()
-          .from(TeamMember)
-          .where('account_id = :aid AND team_id <> :tid', {
-            aid: String(saved.id),
-            tid: String(myTeam.id),
-          })
-          .execute();
-      }
 
       // 기존 팀장 유지 상태에서 teamName 변경
       if (isStillTeamLeader && requestedTeamName !== undefined) {
@@ -1209,73 +1089,9 @@ export class EmployeeInfoService {
         }
       }
 
-      // 팀장 해제 시 팀 삭제
-      if (leftTeamLeader) {
-        const myTeams = await tmRepo
-          .createQueryBuilder('tm')
-          .select(['tm.team_id AS teamId'])
-          .where('tm.account_id = :aid', { aid: String(saved.id) })
-          .groupBy('tm.team_id')
-          .getRawMany<{ teamId: string }>();
 
-        const teamIds = myTeams.map((row) => String(row.teamId));
 
-        if (teamIds.length > 0) {
-          await tmRepo
-            .createQueryBuilder()
-            .delete()
-            .from(TeamMember)
-            .where('team_id IN (:...tids)', { tids: teamIds })
-            .execute();
 
-          await teamRepo
-            .createQueryBuilder()
-            .delete()
-            .from(Team)
-            .where('id IN (:...tids)', { tids: teamIds })
-            .execute();
-        }
-      }
-
-      // 일반 직원 단일 팀 배정/해제
-      if (!isTeamLeaderNow && requestedTeamId !== undefined) {
-        if (requestedTeamId === null) {
-          await tmRepo
-            .createQueryBuilder()
-            .delete()
-            .from(TeamMember)
-            .where('account_id = :aid', { aid: String(saved.id) })
-            .execute();
-        } else {
-          const targetTeam = await teamRepo.findOne({
-            where: {
-              id: String(requestedTeamId),
-              is_active: true,
-            },
-          });
-
-          if (!targetTeam) {
-            throw new NotFoundException('배정할 팀을 찾을 수 없습니다.');
-          }
-
-          await tmRepo
-            .createQueryBuilder()
-            .delete()
-            .from(TeamMember)
-            .where('account_id = :aid', { aid: String(saved.id) })
-            .execute();
-
-          await tmRepo.save(
-            tmRepo.create({
-              team_id: String(targetTeam.id),
-              account_id: String(saved.id),
-              team_role: 'staff',
-              is_primary: true,
-              joined_at: new Date().toISOString().slice(0, 10),
-            }),
-          );
-        }
-      }
 
       if (rankChanged) {
         await sessionRepo
@@ -1441,7 +1257,7 @@ export class EmployeeInfoService {
       .innerJoin(
         AccountCredential,
         'cred',
-        'cred.id = a.credential_id AND cred.is_disabled = 0',
+        'cred.id = a.credential_id',
       )
       .leftJoin(TeamMember, 'tm', 'tm.account_id = a.id')
       .leftJoin(Team, 't', 't.id = tm.team_id')
@@ -1454,9 +1270,10 @@ export class EmployeeInfoService {
         'a.position_rank AS positionRank',
         'a.phone AS phone',
         't.name AS teamName',
+        'tm.team_role AS teamRole',
+        'cred.is_disabled AS isDisabled',
       ])
       .where('a.is_deleted = 0')
-      .andWhere('cred.role <> :admin', { admin: 'admin' });
 
     if (nameKw.length > 0) {
       baseQb.andWhere('a.name LIKE :kw', { kw: `%${nameKw}%` });
@@ -1494,6 +1311,8 @@ export class EmployeeInfoService {
       positionRank: PositionRank | null;
       phone: string | null;
       teamName: string | null;
+      teamRole: string | null;
+      isDisabled: number | boolean;
     }>();
 
     const accountIds = baseRows.map((r) => String(r.accountId));
@@ -1640,10 +1459,12 @@ export class EmployeeInfoService {
         positionRank: r.positionRank ?? null,
         teamName: r.teamName ?? '미소속',
         phone: r.phone ?? null,
+        teamRole: r.teamRole ?? null,
 
         reservedPinDrafts: reservedMap.get(id) ?? [],
         favoritePins: favoriteMap.get(id) ?? [],
         ongoingContracts: contractMap.get(id) ?? [],
+        isDisabled: !!r.isDisabled,
       };
     });
   }
