@@ -18,6 +18,7 @@ import { Account } from '../dashboard/accounts/entities/account.entity';
 import { ContractAssignee } from './assignees/entities/assignee.entity';
 import { ContractFile } from './files/entities/file.entity';
 
+import { TeamMember } from '../dashboard/accounts/entities/team-member.entity';
 import { maskIfDisabled } from '../common/mappers/account-visibility';
 import { UploadService } from '../photo/upload/upload.service';
 
@@ -118,8 +119,13 @@ export class ContractsService {
     const assignees = await this.assigneeRepo
       .createQueryBuilder('a')
       .leftJoinAndSelect('a.account', 'acc')
-      .leftJoin('acc.credential', 'accCred')
-      .addSelect(['accCred.is_disabled', 'accCred.role'])
+      .leftJoinAndSelect('acc.credential', 'accCred')
+      .leftJoinAndMapOne(
+        'a.teamMember',
+        TeamMember,
+        'tm',
+        'tm.account_id = acc.id AND tm.is_primary = true',
+      )
       .where('a.contract_id IN (:...contractIds)', { contractIds })
       .orderBy('a.contract_id', 'ASC')
       .addOrderBy('a.sortOrder', 'ASC')
@@ -128,10 +134,19 @@ export class ContractsService {
     const map = new Map<number, ListItem['participants']>();
     for (const a of assignees) {
       const acc = (a.account as AccountWithCredential | null) ?? null;
+      const tm = (a as any).teamMember as TeamMember | null;
       const masked = maskIfDisabled({
         isDisabled: Boolean(acc?.credential?.is_disabled),
         name: acc?.name ?? null,
       });
+
+      const sysRole = acc?.credential?.role ?? 'staff';
+      const teamRole = tm?.team_role || null;
+      
+      // 실제 역할 결정: 시스템 매니저/어드민이거나, 팀 내 직함이 매니저면 'manager' 취급
+      const finalRole: Role = (sysRole === 'admin' || sysRole === 'manager' || teamRole === 'manager') 
+        ? 'manager' 
+        : 'staff';
 
       const list = map.get(Number(a.contractId)) ?? [];
       list.push({
@@ -139,7 +154,7 @@ export class ContractsService {
         name: masked.name,
         sharePercent: Number(a.sharePercent),
         isDisabled: masked.isDisabled,
-        role: acc?.credential?.role ?? 'staff',
+        role: finalRole,
       });
       map.set(Number(a.contractId), list);
     }

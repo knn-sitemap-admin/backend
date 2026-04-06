@@ -14,6 +14,8 @@ export type CompanyKpi = {
 export type TeamSummary = {
   teamId: string;
   teamName: string;
+  grossSales: number; // 팀 기여분 총 매출 합
+  netProfit: number; // 팀 기여분 순수익(회사몫) 합
   finalPayout: number; // 팀원 최종수당 합(직원풀 기준)
   contractCount: number; // distinct 계약
   memberCount: number; // team_members 기준
@@ -22,6 +24,8 @@ export type TeamSummary = {
 export type TopTeam = {
   teamId: string;
   teamName: string;
+  grossSales: number;
+  netProfit: number;
   finalPayout: number;
   contractCount: number;
   rank: 1 | 2 | 3;
@@ -38,7 +42,9 @@ export type TeamEmployeeItem = {
   accountId: string;
   name: string | null;
   positionRank: string | null;
-  finalPayout: number;
+  grossSales: number; // 개인 기여분 총 매출 합
+  netProfit: number; // 개인 기여분 순수익(회사몫) 합
+  finalPayout: number; // 본인 수당 합
   contractCount: number; // distinct 계약
 };
 

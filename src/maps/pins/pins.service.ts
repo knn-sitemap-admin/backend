@@ -92,7 +92,16 @@ export class PinsService {
 
   async getMapPins(dto: MapPinsDto): Promise<PointResp> {
     try {
-      const { swLat, swLng, neLat, neLng, isOld, isNew, favoriteOnly } = dto;
+      const {
+        swLat,
+        swLng,
+        neLat,
+        neLng,
+        isOld,
+        isNew,
+        favoriteOnly,
+        isCompleted,
+      } = dto;
 
       // swLat, swLng, neLat, neLng가 모두 있을 때만 영역 필터링 적용
       const hasBounds =
@@ -117,6 +126,9 @@ export class PinsService {
       }
       if (typeof isNew === 'boolean') {
         qb.andWhere('p.isNew = :isNew', { isNew });
+      }
+      if (typeof isCompleted === 'boolean') {
+        qb.andWhere('p.isCompleted = :isCompleted', { isCompleted });
       }
       if (favoriteOnly) {
         // 즐겨찾기 필터는 나중에 구현

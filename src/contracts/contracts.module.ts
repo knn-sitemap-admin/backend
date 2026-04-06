@@ -7,6 +7,8 @@ import { ContractsService } from './contracts.service';
 import { Contract } from './entities/contract.entity';
 
 import { Account } from '../dashboard/accounts/entities/account.entity';
+import { AccountCredential } from '../dashboard/accounts/entities/account-credential.entity';
+import { TeamMember } from '../dashboard/accounts/entities/team-member.entity';
 import { ContractAssignee } from './assignees/entities/assignee.entity';
 import { ContractFile } from './files/entities/file.entity';
 import { UploadModule } from '../photo/upload/upload.module';
@@ -18,6 +20,8 @@ import { UploadModule } from '../photo/upload/upload.module';
       ContractAssignee,
       ContractFile,
       Account,
+      AccountCredential,
+      TeamMember,
     ]),
     UploadModule,
   ],

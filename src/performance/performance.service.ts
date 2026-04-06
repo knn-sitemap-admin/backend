@@ -106,6 +106,14 @@ export class PerformanceService {
       return { startDate, endDate, label: `${y}년 ${q}분기` };
     }
 
+    if (type === 'ALL') {
+      return {
+        startDate: '2000-01-01',
+        endDate: '2099-12-31',
+        label: '전체',
+      };
+    }
+
     // YEAR
     if (!dto.year) {
       throw new BadRequestException('YEAR는 year가 필요합니다.');
@@ -142,7 +150,6 @@ export class PerformanceService {
   }
 
   private sqlCompanyAmountExpr(grandTotalExpr: string): string {
-    // companyAmount = round(grandTotal * (companyPercent/100))
     return `ROUND( (${grandTotalExpr}) * (c.companyPercent / 100) )`;
   }
 
@@ -155,12 +162,20 @@ export class PerformanceService {
 
   private sqlMyAmountExpr(staffPoolExpr: string): string {
     // myAmount = round(staffPool * (sharePercent/100))
-    return `ROUND( (${staffPoolExpr}) * (a.sharePercent / 100) )`;
+    return `ROUND( (${staffPoolExpr}) * (COALESCE(a.sharePercent, 0) / 100) )`;
   }
 
-  async getSummary(
-    dto: PerformanceFilterDto,
-  ): Promise<PerformanceSummaryResponse> {
+  private sqlGrossSalesContribExpr(grandTotalExpr: string): string {
+    // 개별 기여 매출 = grandTotal * (sharePercent/100)
+    return `ROUND( (${grandTotalExpr}) * (COALESCE(a.sharePercent, 0) / 100) )`;
+  }
+
+  private sqlNetProfitContribExpr(companyAmountExpr: string): string {
+    // 개별 기여 순수익(회사의 수익) = companyAmount * (sharePercent/100)
+    return `ROUND( (${companyAmountExpr}) * (COALESCE(a.sharePercent, 0) / 100) )`;
+  }
+
+  async getSummary(dto: PerformanceFilterDto): Promise<PerformanceSummaryResponse> {
     const range = this.resolveRange(dto);
 
     const grandTotalExpr = this.sqlGrandTotalExpr();
@@ -183,14 +198,13 @@ export class PerformanceService {
         contractCount: string;
       }>();
 
-    // 2) 총 인원수(비활성 제외)
-    // - 요구사항: 하드딜리트라 accounts.is_deleted는 의미 없고, is_disabled만 활성 판단으로 사용
+    // 2) 총 인원수
     const headcount = await this.credentialRepo
       .createQueryBuilder('cr')
       .where('cr.is_disabled = :d', { d: false })
       .getCount();
 
-    // 3) 팀 인원수 맵(기간 무관, team_members 기준)
+    // 3) 팀별 멤버 수
     const memberRows = await this.teamMemberRepo
       .createQueryBuilder('tm')
       .select('tm.team_id', 'teamId')
@@ -202,14 +216,12 @@ export class PerformanceService {
       memberRows.map((r) => [String(r.teamId), Number(r.memberCount)]),
     );
 
-    // 4) 팀별 실적 (0 포함 버전)
-    const staffPoolExpr = this.sqlStaffPoolExpr(
-      grandTotalExpr,
-      companyAmountExpr,
-    );
+    // 4) 팀별 실적
+    const staffPoolExpr = this.sqlStaffPoolExpr(grandTotalExpr, companyAmountExpr);
     const myAmountExpr = this.sqlMyAmountExpr(staffPoolExpr);
+    const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
+    const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
-    // ※ 핵심: 완료/기간 조건을 WHERE가 아니라 JOIN ON으로 넣어야 0팀이 살아있음
     const teamPerfRows = await this.teamRepo
       .createQueryBuilder('t')
       .leftJoin(TeamMember, 'tm', 'tm.team_id = t.id')
@@ -231,9 +243,9 @@ export class PerformanceService {
       )
       .select('t.id', 'teamId')
       .addSelect('t.name', 'teamName')
-      // c가 NULL이면 myAmountExpr도 NULL로 흐르므로 SUM 결과가 NULL될 수 있어 COALESCE로 0 처리
       .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
-      // 계약건수는 c.id 기준 distinct. c가 NULL이면 카운트 0.
+      .addSelect(`COALESCE(SUM(${gSalesContribExpr}), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(${nProfitContribExpr}), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
       .where('t.is_active = :act', { act: true })
       .groupBy('t.id')
@@ -243,6 +255,8 @@ export class PerformanceService {
         teamId: string;
         teamName: string;
         finalPayout: string;
+        grossSales: string;
+        netProfit: string;
         contractCount: string;
       }>();
 
@@ -250,6 +264,8 @@ export class PerformanceService {
       teamId: String(r.teamId),
       teamName: String(r.teamName),
       finalPayout: Number(r.finalPayout),
+      grossSales: Number(r.grossSales),
+      netProfit: Number(r.netProfit),
       contractCount: Number(r.contractCount),
       memberCount: memberCountMap.get(String(r.teamId)) ?? 0,
     }));
@@ -258,6 +274,8 @@ export class PerformanceService {
       teamId: t.teamId,
       teamName: t.teamName,
       finalPayout: t.finalPayout,
+      grossSales: t.grossSales,
+      netProfit: t.netProfit,
       contractCount: t.contractCount,
       rank: (idx + 1) as 1 | 2 | 3,
     }));
@@ -293,6 +311,8 @@ export class PerformanceService {
       companyAmountExpr,
     );
     const myAmountExpr = this.sqlMyAmountExpr(staffPoolExpr);
+    const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
+    const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
     // - 기준: team_members + accounts
     // - 계약 필터(완료/기간)는 Contract LEFT JOIN의 ON에 붙여야 0이 살아있음
@@ -325,6 +345,8 @@ export class PerformanceService {
       .addSelect('acc.name', 'name')
       .addSelect('acc.position_rank', 'positionRank')
       .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
+      .addSelect(`COALESCE(SUM(${gSalesContribExpr}), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(${nProfitContribExpr}), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
       // 팀원 리스트는 다 보여주되, 비활성 credential은 제외(너가 "비활성은 사실상 안 쓰지만"이라고 했으니 최소 안전장치)
       .where('(cr.is_disabled = 0 OR cr.is_disabled IS NULL)')
@@ -340,6 +362,8 @@ export class PerformanceService {
         name: string | null;
         positionRank: string | null;
         finalPayout: string;
+        grossSales: string;
+        netProfit: string;
         contractCount: string;
       }>();
 
@@ -351,6 +375,8 @@ export class PerformanceService {
         name: r.name ?? null,
         positionRank: r.positionRank ?? null,
         finalPayout: Number(r.finalPayout),
+        grossSales: Number(r.grossSales),
+        netProfit: Number(r.netProfit),
         contractCount: Number(r.contractCount),
       })),
     };

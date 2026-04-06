@@ -1,11 +1,11 @@
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 
-export type FilterType = 'THIS_MONTH' | 'MONTH' | 'QUARTER' | 'YEAR';
+export type FilterType = 'THIS_MONTH' | 'MONTH' | 'QUARTER' | 'YEAR' | 'ALL';
 
 export class PerformanceFilterDto {
   @IsOptional()
-  @IsEnum(['THIS_MONTH', 'MONTH', 'QUARTER', 'YEAR'])
+  @IsEnum(['THIS_MONTH', 'MONTH', 'QUARTER', 'YEAR', 'ALL'])
   filterType?: FilterType;
 
   @IsOptional()

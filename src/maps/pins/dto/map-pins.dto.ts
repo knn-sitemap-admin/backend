@@ -6,7 +6,7 @@ import {
   IsBoolean,
   IsEnum,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export enum DraftStateFilter {
   BEFORE = 'before',
@@ -52,22 +52,43 @@ export class MapPinsDto {
   // @Max(20)
   // zoom!: number;
 
-  @Type(() => Boolean)
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === "true" || value === "1" || value === true) return true;
+    if (value === "false" || value === "0" || value === false) return false;
+    return undefined;
+  })
   @IsBoolean()
   isOld?: boolean;
 
-  @Type(() => Boolean)
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === "true" || value === "1" || value === true) return true;
+    if (value === "false" || value === "0" || value === false) return false;
+    return undefined;
+  })
   @IsBoolean()
   isNew?: boolean;
 
-  @Type(() => Boolean)
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === "true" || value === "1" || value === true) return true;
+    if (value === "false" || value === "0" || value === false) return false;
+    return undefined;
+  })
   @IsBoolean()
   favoriteOnly?: boolean;
 
   @IsOptional()
   @IsEnum(DraftStateFilter)
   draftState?: DraftStateFilter;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === "true" || value === "1" || value === true) return true;
+    if (value === "false" || value === "0" || value === false) return false;
+    return undefined;
+  })
+  @IsBoolean()
+  isCompleted?: boolean;
 }
