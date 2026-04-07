@@ -85,4 +85,11 @@ export class EmployeeInfoController {
     const data = await this.service.getEmployeeList(query);
     return { message: '계정 리스트', data };
   }
+
+  @Roles(SystemRole.ADMIN)
+  @Get('diagnostics/orphans')
+  async checkOrphans() {
+    const result = await this.service.checkOrphans();
+    return { message: '데이터 정합성 진단 결과', data: result };
+  }
 }

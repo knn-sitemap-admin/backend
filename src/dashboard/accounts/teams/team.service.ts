@@ -80,12 +80,7 @@ export class TeamService {
   async list() {
     const qb = this.teamRepository
       .createQueryBuilder('t')
-      .leftJoin(
-        'team_members',
-        'tm',
-        'tm.team_id = t.id AND tm.team_role = :managerRole',
-      )
-      .leftJoin('accounts', 'a', 'a.id = tm.account_id AND a.is_deleted = 0')
+      .leftJoin('accounts', 'a', 'a.id = t.leader_account_id AND a.is_deleted = 0')
       .leftJoin(
         'account_credentials',
         'cred',

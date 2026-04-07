@@ -1191,8 +1191,10 @@ export class EmployeeInfoService {
         'acc.credential_id = cred.id AND acc.is_deleted = 0',
       )
       .leftJoin('team_members', 'tm', 'tm.account_id = acc.id')
-      .where('tm.id IS NULL')
+      .leftJoin('teams', 't', 't.id = tm.team_id')
+      .where('(tm.id IS NULL OR t.id IS NULL)')
       .andWhere('cred.is_disabled = 0')
+      .andWhere('cred.role != :adminRole', { adminRole: 'admin' })
       .select([
         'cred.id AS credentialId',
         'cred.email AS email',
@@ -1485,5 +1487,56 @@ export class EmployeeInfoService {
     if (toDelete.length > 0) {
       await this.uploadService.deleteFiles(toDelete);
     }
+  }
+
+  async checkOrphans() {
+    const accRepo = this.accountRepository;
+    const teamRepo = this.dataSource.getRepository(Team);
+    const tmRepo = this.dataSource.getRepository(TeamMember);
+
+    // 1. 팀 소속은 되어 있으나, 실제 팀이 존재하지 않는 고아 멤버
+    const orphanMembers = await tmRepo
+      .createQueryBuilder('tm')
+      .leftJoin(Team, 't', 't.id = tm.team_id')
+      .select(['tm.id AS teamMemberId', 'tm.account_id AS accountId', 'tm.team_id AS teamId'])
+      .where('t.id IS NULL')
+      .getRawMany();
+
+    // 2. 직급은 팀장이나, 어떤 팀의 리더로도 등록되지 않은 고아 팀장
+    const orphanLeaders = await accRepo
+      .createQueryBuilder('a')
+      .leftJoin(Team, 't', 't.leader_account_id = a.id')
+      .select(['a.id AS accountId', 'a.name AS name', 'a.position_rank AS positionRank'])
+      .where('a.position_rank = :rank', { rank: PositionRank.TEAM_LEADER })
+      .andWhere('t.id IS NULL')
+      .andWhere('a.is_deleted = 0')
+      .getRawMany();
+
+    // 3. 시스템 역할(role)과 직급(rank)이 불일치하는 케이스
+    const roleMismatches = await accRepo
+      .createQueryBuilder('a')
+      .innerJoin(AccountCredential, 'cred', 'cred.id = a.credential_id')
+      .select(['a.id AS accountId', 'a.name AS name', 'a.position_rank AS positionRank', 'cred.role AS currentRole'])
+      .where(
+        `((a.position_rank IN ('TEAM_LEADER', 'DIRECTOR', 'CEO') AND cred.role != 'manager') OR
+          (a.position_rank NOT IN ('TEAM_LEADER', 'DIRECTOR', 'CEO') AND cred.role = 'manager'))`,
+      )
+      .andWhere('a.is_deleted = 0')
+      .getRawMany();
+
+    // 4. 리더가 지정되어 있으나 해당 리더가 팀 멤버 목록에는 없는 케이스
+    const ghostLeaders = await teamRepo
+      .createQueryBuilder('t')
+      .leftJoin(TeamMember, 'tm', 'tm.team_id = t.id AND tm.account_id = t.leader_account_id')
+      .select(['t.id AS teamId', 't.name AS teamName', 't.leader_account_id AS leaderAccountId'])
+      .where('t.leader_account_id IS NOT NULL AND tm.id IS NULL')
+      .getRawMany();
+
+    return {
+      orphanMembers: { count: orphanMembers.length, data: orphanMembers },
+      orphanLeaders: { count: orphanLeaders.length, data: orphanLeaders },
+      roleMismatches: { count: roleMismatches.length, data: roleMismatches },
+      ghostLeaders: { count: ghostLeaders.length, data: ghostLeaders },
+    };
   }
 }
