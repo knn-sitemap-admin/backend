@@ -47,15 +47,6 @@ export class UpsertEmployeeInfoDto {
   positionRank?: PositionRank | null;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  teamName?: string | null;
-
-  @IsOptional()
-  @IsString()
-  teamId?: string | null;
-
-  @IsOptional()
   @IsArray()
   @IsUrl({}, { each: true })
   docUrlResidentRegistration?: string[] | null;

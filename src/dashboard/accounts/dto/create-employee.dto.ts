@@ -37,11 +37,6 @@ export class CreateEmployeeDto {
   team?: CreateTeamAssignDto;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  teamName?: string;
-
-  @IsOptional()
   @ValidateNested()
   @Type(() => UpsertEmployeeInfoDto)
   info?: UpsertEmployeeInfoDto;

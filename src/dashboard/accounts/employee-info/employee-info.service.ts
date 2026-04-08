@@ -32,8 +32,6 @@ type UpsertInput = {
   profileUrl?: string;
 
   positionRank?: PositionRank | null;
-  teamName?: string | null;
-  teamId?: string | null;
 
   docUrlResidentRegistration?: string[] | null;
   docUrlResidentAbstract?: string[] | null;
@@ -117,10 +115,6 @@ export class EmployeeInfoService {
       positionRank:
         dto.positionRank !== undefined ? (dto.positionRank ?? null) : undefined,
 
-      teamName:
-        dto.teamName !== undefined ? dto.teamName?.trim() || null : undefined,
-
-      teamId: dto.teamId !== undefined ? dto.teamId?.trim() || null : undefined,
 
       docUrlResidentRegistration:
         dto.docUrlResidentRegistration !== undefined
@@ -891,28 +885,6 @@ export class EmployeeInfoService {
 
       const isTeamLeaderNow = nextRank === PositionRank.TEAM_LEADER;
 
-      const requestedTeamName =
-        input.teamName !== undefined
-          ? input.teamName
-            ? String(input.teamName).trim()
-            : null
-          : undefined;
-
-      const requestedTeamId =
-        input.teamId !== undefined
-          ? input.teamId
-            ? String(input.teamId).trim()
-            : null
-          : undefined;
-
-      /* 팀장은 teamId 배정 제한을 주석 처리하여 어드민이 편하게 수정하도록 함
-      if (isTeamLeaderNow && requestedTeamId !== undefined) {
-        throw new ConflictException(
-          '팀장은 teamId로 별도 팀 배정을 할 수 없습니다.',
-        );
-      }
-      */
-
       // =========================
       // [ cleanup ] 기존 URL들 백업 (삭제 여부 판단용)
       // =========================
@@ -1026,68 +998,6 @@ export class EmployeeInfoService {
       }
 
       // 팀 관련 자동 로직 제거됨 (팀 관리 탭에서 처리)
-
-
-      // 기존 팀장 유지 상태에서 teamName 변경
-      if (isStillTeamLeader && requestedTeamName !== undefined) {
-        if (!requestedTeamName) {
-          throw new ConflictException('팀 이름은 비워둘 수 없습니다.');
-        }
-
-        const myTeams = await tmRepo
-          .createQueryBuilder('tm')
-          .select(['tm.team_id AS teamId'])
-          .where('tm.account_id = :aid', { aid: String(saved.id) })
-          .groupBy('tm.team_id')
-          .getRawMany<{ teamId: string }>();
-
-        if (myTeams.length > 0) {
-          const teamIds = myTeams.map((row) => String(row.teamId));
-
-          const teams = await teamRepo
-            .createQueryBuilder('t')
-            .where('t.id IN (:...teamIds)', { teamIds })
-            .getMany();
-
-          for (const team of teams) {
-            if (team.name === requestedTeamName) {
-              continue;
-            }
-
-            const dup = await teamRepo.findOne({
-              where: { name: requestedTeamName },
-            });
-
-            if (dup && String(dup.id) !== String(team.id)) {
-              throw new ConflictException(
-                `팀 "${requestedTeamName}"이(가) 이미 존재합니다.`,
-              );
-            }
-
-            team.name = requestedTeamName;
-            await teamRepo.save(team);
-          }
-        } else {
-          const fallbackTeam = await teamRepo.findOne({
-            where: { leader_account_id: String(saved.id) },
-          });
-
-          if (fallbackTeam && fallbackTeam.name !== requestedTeamName) {
-            const dup = await teamRepo.findOne({
-              where: { name: requestedTeamName },
-            });
-
-            if (dup && String(dup.id) !== String(fallbackTeam.id)) {
-              throw new ConflictException(
-                `팀 "${requestedTeamName}"이(가) 이미 존재합니다.`,
-              );
-            }
-
-            fallbackTeam.name = requestedTeamName;
-            await teamRepo.save(fallbackTeam);
-          }
-        }
-      }
 
 
 
