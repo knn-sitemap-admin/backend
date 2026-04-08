@@ -49,7 +49,7 @@ export class CredentialsService {
     private readonly bcrypt: BcryptService,
     @InjectRepository(AccountSession)
     private readonly accountSessionRepository: Repository<AccountSession>,
-  ) {}
+  ) { }
 
   private async deactivateAllSessionsByCredentialId(
     credentialId: string,
@@ -334,7 +334,6 @@ export class CredentialsService {
   }
 
   async setCredentialDisabled(id: string, disabled: boolean) {
-    console.log(`[CredentialsService] setCredentialDisabled 호출: id=${id}, disabled=${disabled}`);
     return this.dataSource.transaction(async (tx) => {
       const credRepo = tx.getRepository(AccountCredential);
       const accRepo = tx.getRepository(Account);
@@ -351,7 +350,6 @@ export class CredentialsService {
       // credential disable 토글
       cred.is_disabled = disabled;
       await credRepo.save(cred);
-      console.log(`[CredentialsService] 계정 비활성화 상태 저장 완료: ${cred.email}, is_disabled=${cred.is_disabled}`);
 
       // account 조회
       const account = await accRepo.findOne({
@@ -361,7 +359,6 @@ export class CredentialsService {
 
       // 직급이 팀장인 속한 팀 삭제
       if (disabled && account?.position_rank === PositionRank.TEAM_LEADER) {
-        console.log(`[CredentialsService] 팀장 계정 비활성화 감지 - 관련 팀 정리 시작: accountId=${account.id}`);
         const myTeams = await tmRepo
           .createQueryBuilder('tm')
           .select(['tm.team_id AS teamId'])
@@ -387,7 +384,6 @@ export class CredentialsService {
             .from(Team)
             .where('id IN (:...tids)', { tids: teamIds })
             .execute();
-          console.log(`[CredentialsService] 팀 및 팀원 정리 완료: teamIds=${teamIds}`);
         }
       }
 
@@ -400,7 +396,6 @@ export class CredentialsService {
         .where('credential_id = :cid', { cid: String(cred.id) })
         .andWhere('is_active = 1')
         .execute();
-      console.log(`[CredentialsService] 모든 세션 종료 처분 완료: credentialId=${cred.id}`);
 
       return { id: cred.id, disabled: cred.is_disabled };
     });
@@ -471,34 +466,34 @@ export class CredentialsService {
 
       account: raw.acc_id
         ? {
-            id: raw.acc_id,
-            name: raw.acc_name,
-            phone: raw.acc_phone,
-            emergencyContact: raw.acc_emergency_contact,
-            address: raw.acc_address_line,
-            salaryBankName: raw.acc_salary_bank_name,
-            salaryAccount: raw.acc_salary_account,
-            profileUrl: raw.acc_profile_url,
-            isProfileCompleted: !!raw.acc_is_profile_completed,
-            isDeleted: !!raw.acc_is_deleted,
-            deletedAt: raw.acc_deleted_at,
-            docUrlResidentRegistration: raw.acc_doc_url_resident_registration,
-            docUrlResidentAbstract: raw.acc_doc_url_resident_abstract,
-            docUrlIdCard: raw.acc_doc_url_id_card,
-            docUrlFamilyRelation: raw.acc_doc_url_family_relation,
-          }
+          id: raw.acc_id,
+          name: raw.acc_name,
+          phone: raw.acc_phone,
+          emergencyContact: raw.acc_emergency_contact,
+          address: raw.acc_address_line,
+          salaryBankName: raw.acc_salary_bank_name,
+          salaryAccount: raw.acc_salary_account,
+          profileUrl: raw.acc_profile_url,
+          isProfileCompleted: !!raw.acc_is_profile_completed,
+          isDeleted: !!raw.acc_is_deleted,
+          deletedAt: raw.acc_deleted_at,
+          docUrlResidentRegistration: raw.acc_doc_url_resident_registration,
+          docUrlResidentAbstract: raw.acc_doc_url_resident_abstract,
+          docUrlIdCard: raw.acc_doc_url_id_card,
+          docUrlFamilyRelation: raw.acc_doc_url_family_relation,
+        }
         : null,
 
       team: raw.team_id
         ? {
-            id: raw.team_id,
-            name: raw.team_name,
-            code: raw.team_code,
-            isActive: !!raw.team_is_active,
-            role: raw.tm_team_role ?? null,
-            isPrimary: !!raw.tm_is_primary,
-            joinedAt: raw.tm_joined_at,
-          }
+          id: raw.team_id,
+          name: raw.team_name,
+          code: raw.team_code,
+          isActive: !!raw.team_is_active,
+          role: raw.tm_team_role ?? null,
+          isPrimary: !!raw.tm_is_primary,
+          joinedAt: raw.tm_joined_at,
+        }
         : null,
     };
   }

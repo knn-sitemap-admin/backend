@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -16,6 +16,7 @@ import expressLayouts from 'express-ejs-layouts';
 import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const expressApp = app.getHttpAdapter().getInstance();
@@ -55,8 +56,28 @@ async function bootstrap() {
     }),
   );
 
-  //요청 로깅
-  app.use(morgan('combined'));
+  // 요청 로깅 (간소화된 커스텀 포맷)
+  app.use(
+    morgan((tokens, req, res) => {
+      const ua = tokens['user-agent'](req, res) || '';
+      const isMobile = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'PC';
+
+      let browser = 'Browser';
+      if (ua.includes('Firefox')) browser = 'Firefox';
+      else if (ua.includes('Edg')) browser = 'Edge';
+      else if (ua.includes('Chrome')) browser = 'Chrome';
+      else if (ua.includes('Safari')) browser = 'Safari';
+
+      return [
+        `[${tokens.method(req, res)}]`,
+        tokens.url(req, res),
+        `(${tokens.status(req, res)})`,
+        '-',
+        browser,
+        `(${isMobile})`,
+      ].join(' ');
+    }),
+  );
 
   // app.enableCors({
   //   origin: (origin, callback) => {
@@ -120,7 +141,6 @@ async function bootstrap() {
   let store: session.Store;
 
   if (isDevMode) {
-    console.log('[Session] IS_DEV=true → MemoryStore 사용 (로컬 전용)');
     store = new session.MemoryStore();
   } else {
     //node-redis 클라이언트
@@ -128,19 +148,19 @@ async function bootstrap() {
     const redisClient: RedisClientType = redisUrl
       ? createClient({ url: redisUrl })
       : createClient({
-          socket: {
-            host: process.env.REDIS_HOST ?? 'localhost',
-            port: Number(process.env.REDIS_PORT ?? 6379),
-          },
-          password: process.env.REDIS_PASSWORD || undefined,
-        });
+        socket: {
+          host: process.env.REDIS_HOST ?? 'localhost',
+          port: Number(process.env.REDIS_PORT ?? 6379),
+        },
+        password: process.env.REDIS_PASSWORD || undefined,
+      });
 
     redisClient.on('error', (err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('Redis Client Error:', msg);
+      logger.error('Redis Client Error:', msg);
     });
     await redisClient.connect();
-    console.log('[Session] RedisStore 사용 (프로덕션)');
+    logger.log('[Session] RedisStore 사용 (프로덕션)');
 
     expressApp.set('redisClient', redisClient);
 

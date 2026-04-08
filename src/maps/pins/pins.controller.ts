@@ -10,6 +10,7 @@ import {
   Query,
   Req,
   Header,
+  Logger,
 } from '@nestjs/common';
 import { PinsService } from './pins.service';
 import { CreatePinDto } from './dto/create-pin.dto';
@@ -19,6 +20,8 @@ import { SearchPinsDto } from './dto/search-pins.dto';
 
 @Controller('pins')
 export class PinsController {
+  private readonly logger = new Logger(PinsController.name);
+
   constructor(private readonly pinsService: PinsService) {}
 
   /**
@@ -76,7 +79,7 @@ export class PinsController {
       const pin = await this.pinsService.findDetail(id);
       return { data: pin };
     } catch (e) {
-      console.error('[GET /pins/:id ERROR]', e);
+      this.logger.error('[GET /pins/:id ERROR]', e);
       throw e;
     }
   }

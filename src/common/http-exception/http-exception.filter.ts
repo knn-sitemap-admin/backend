@@ -4,18 +4,21 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { request, response } from 'express';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const req = ctx.getRequest<Request & { originalUrl?: string }>();
     const res = ctx.getResponse();
 
     if (req.url.startsWith('/owner')) {
-      console.error('[VIEW ERROR]', exception);
+      this.logger.error('[VIEW ERROR]', exception);
       return;
     }
 

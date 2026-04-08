@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { HttpAdapterHost } from '@nestjs/core';
@@ -6,6 +6,8 @@ import type { RedisClientType } from 'redis';
 
 @Injectable()
 export class AppService {
+  private readonly logger = new Logger(AppService.name);
+
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly adapterHost: HttpAdapterHost,
@@ -40,7 +42,7 @@ export class AppService {
       const pong = await redisClient.ping();
       return pong === 'PONG';
     } catch (e) {
-      console.error('[health][redis] ping failed', {
+      this.logger.error('[health][redis] ping failed', {
         message: e instanceof Error ? e.message : String(e),
         code: (e as any)?.code,
       });

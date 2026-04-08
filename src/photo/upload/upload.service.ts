@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import type { Express } from 'express';
 import * as path from 'node:path';
@@ -27,6 +28,7 @@ type UploadResult = {
 
 @Injectable()
 export class UploadService {
+  private readonly logger = new Logger(UploadService.name);
   private readonly s3: S3Client;
   private readonly bucketName: string;
   private readonly region: string;
@@ -230,7 +232,7 @@ export class UploadService {
         urls.push(url);
         keys.push(key);
       } catch (e: any) {
-        console.error('PutObject ERR', {
+        this.logger.error('PutObject ERR', {
           key,
           name: e?.name,
           message: e?.message,
@@ -247,25 +249,25 @@ export class UploadService {
 
     return { urls, keys, domain, userId };
   }
-  
+
   /** URL에서 S3 Key 추출 */
   extractKeyFromUrl(url: string): string | null {
     if (!url) return null;
-    
+
     // s3://bucket/key 형태
     if (url.startsWith('s3://')) {
       const parts = url.split('/');
       if (parts.length < 4) return null;
       return parts.slice(3).join('/');
     }
-    
+
     // https://bucket.s3.region.amazonaws.com/key 형태
     if (url.includes('.s3.') && url.includes('.amazonaws.com/')) {
       const parts = url.split('.amazonaws.com/');
       if (parts.length < 2) return null;
       return decodeURI(parts[1]);
     }
-    
+
     // 기타: 도메인이 포함된 경우 (CloudFront 등 커스텀 도메인 대응이 필요할 수 있음)
     // 여기서는 기본 S3 URL만 처리
     return null;
@@ -282,9 +284,8 @@ export class UploadService {
         Key: key,
       });
       await this.s3.send(cmd);
-      console.log(`[S3 Delete Success] key: ${key}`);
     } catch (e: any) {
-      console.error(`[S3 Delete Error] key: ${key}, error: ${e.message}`);
+      this.logger.error(`[S3 Delete Error] key: ${key}, error: ${e.message}`);
       // 굳이 예외를 던지지 않고 로그만 남김 (삭제 실패가 비즈니스 로직을 중단시키면 안 됨)
     }
   }

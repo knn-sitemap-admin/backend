@@ -1,4 +1,4 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { requestContext } from '../../../common/request-context/request-context';
@@ -43,6 +43,8 @@ function maskResponseText(text: string): string {
 
 @Injectable()
 export class ApiLogMiddleware implements NestMiddleware {
+  private readonly logger = new Logger(ApiLogMiddleware.name);
+
   constructor(private readonly writer: ApiLogWriterService) {}
 
   use(req: Request & any, res: Response, next: () => void) {
@@ -116,7 +118,7 @@ export class ApiLogMiddleware implements NestMiddleware {
           });
         } catch (e) {
           // 로깅 실패해도 본 요청은 영향 없게
-          console.error('[ApiLogMiddleware] write failed', e);
+          this.logger.error('[ApiLogMiddleware] write failed', e);
         }
       });
 

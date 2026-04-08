@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Logger,
   Post,
   Req,
 } from '@nestjs/common';
@@ -12,6 +13,8 @@ import { PinDraftsService } from './pin-drafts.service';
 
 @Controller('pin-drafts')
 export class PinDraftsController {
+  private readonly logger = new Logger(PinDraftsController.name);
+
   constructor(private readonly service: PinDraftsService) {}
 
   /**
@@ -28,24 +31,17 @@ export class PinDraftsController {
       return { message: '임시핀 생성', data };
     } catch (err: any) {
       // 요청값 로깅 (민감정보 없으니 그대로)
-      console.error('[PinDraftsController.create] ERROR');
-      console.error('meCredentialId:', me || null);
-      console.error('dto:', dto);
-
-      // Nest/TypeORM 에러 상세
-      console.error('err.name:', err?.name);
-      console.error('err.message:', err?.message);
-      if (err?.response) console.error('err.response:', err.response);
-      if (err?.stack) console.error(err.stack);
-
-      // driverError가 있으면 더 자세히
-      const d = err?.driverError;
-      if (d) {
-        console.error('driverError.code:', d.code);
-        console.error('driverError.errno:', d.errno);
-        console.error('driverError.sqlState:', d.sqlState);
-        console.error('driverError.sqlMessage:', d.sqlMessage);
-      }
+      this.logger.error('[PinDraftsController.create] ERROR', {
+        meCredentialId: me || null,
+        dto,
+        error: {
+          name: err?.name,
+          message: err?.message,
+          response: err?.response,
+          stack: err?.stack,
+          driverError: err?.driverError,
+        },
+      });
 
       throw err;
     }

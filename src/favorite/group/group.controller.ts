@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   Patch,
   Query,
@@ -19,6 +20,8 @@ import { SessionAuthGuard } from '../../dashboard/auth/guards/session-auth.guard
 @Controller('favorite/group')
 @UseGuards(SessionAuthGuard)
 export class GroupController {
+  private readonly logger = new Logger(GroupController.name);
+
   constructor(private readonly service: GroupService) {}
 
   private getCredentialId(req: { session: SessionData }): string {
@@ -41,7 +44,7 @@ export class GroupController {
       const data = await this.service.getGroups(credentialId, withItems);
       return { message: '조회 성공', data };
     } catch (e: any) {
-      console.error('[GroupController.getGroups] error', {
+      this.logger.error('[GroupController.getGroups] error', {
         includeItems,
         errMessage: String(e?.message ?? e),
       });

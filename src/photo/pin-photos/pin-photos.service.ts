@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { PinPhoto } from './entities/pin-photo.entity';
 import { In, Repository } from 'typeorm';
@@ -8,11 +8,13 @@ import { UploadService } from '../upload/upload.service';
 
 @Injectable()
 export class PinPhotosService {
+  private readonly logger = new Logger(PinPhotosService.name);
+
   constructor(
     @InjectRepository(PinPhoto)
     private readonly repo: Repository<PinPhoto>,
     private readonly uploadService: UploadService,
-  ) {}
+  ) { }
 
   findByGroup(groupId: string) {
     return this.repo.find({ where: { groupId }, order: { sortOrder: 'ASC' } });
@@ -45,14 +47,13 @@ export class PinPhotosService {
 
   async batchUpdate(patches: any[]) {
     // eslint-disable-next-line no-console
-    console.log(`[PinPhotosService] BatchUpdate (QueryBuilder) started for ${patches.length} photos.`);
-    
+
     const results = await Promise.allSettled(
       patches.map(async (p, i) => {
         const id = p.id;
         const dto = p.dto || p;
         const updateData: any = {};
-        
+
         if (dto.caption !== undefined) updateData.caption = dto.caption;
         if (dto.sortOrder !== undefined) updateData.sortOrder = dto.sortOrder;
         if (dto.groupId !== undefined) updateData.groupId = dto.groupId;
@@ -61,16 +62,15 @@ export class PinPhotosService {
 
         if (Object.keys(updateData).length > 0) {
           // eslint-disable-next-line no-console
-          console.log(`[QB item#${i}] Updating ID:${id} with`, updateData);
           const res = await this.repo
             .createQueryBuilder()
             .update(PinPhoto)
             .set(updateData)
             .where('id = :id', { id })
             .execute();
-          
+
           if (res.affected === 0) {
-              console.warn(`[QB item#${i}] No row updated for ID:${id}`);
+            this.logger.warn(`[QB item#${i}] No row updated for ID:${id}`);
           }
           return res;
         }

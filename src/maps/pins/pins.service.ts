@@ -3,6 +3,7 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -77,8 +78,9 @@ type DraftSearchItem = {
   draftState: 'BEFORE' | 'SCHEDULED';
 };
 
-@Injectable()
 export class PinsService {
+  private readonly logger = new Logger(PinsService.name);
+
   constructor(
     @InjectRepository(Pin)
     private readonly pinRepository: Repository<Pin>,
@@ -241,8 +243,10 @@ export class PinsService {
         drafts,
       };
     } catch (err: any) {
-      console.error('getMapPins ERROR:', err.message);
-      console.error(err.stack);
+      this.logger.error('getMapPins ERROR:', {
+        message: err.message,
+        stack: err.stack,
+      });
       throw err;
     }
   }
@@ -516,7 +520,7 @@ export class PinsService {
       try {
         JSON.stringify(dto);
       } catch (serr) {
-        console.error('[PinService.findDetail SERIALIZE FAIL]', {
+        this.logger.error('[PinService.findDetail SERIALIZE FAIL]', {
           id,
           err: serr,
         });
@@ -526,7 +530,7 @@ export class PinsService {
       return dto;
     } catch (e) {
       // 무조건 스택 찍기
-      console.error('[PinService.findDetail ERROR]', {
+      this.logger.error('[PinService.findDetail ERROR]', {
         id,
         err: e,
       });
@@ -538,7 +542,7 @@ export class PinsService {
 
       // TypeORM 쿼리 실패면 원인 메시지를 좀 더 구체적으로 로그에 남김
       if (e instanceof QueryFailedError) {
-        console.error('[PinService.findDetail QueryFailedError]', {
+        this.logger.error('[PinService.findDetail QueryFailedError]', {
           id,
           message: (e as any).message,
           driverError: (e as any).driverError,

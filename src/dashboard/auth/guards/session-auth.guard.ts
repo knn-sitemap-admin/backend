@@ -2,12 +2,15 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from '../auth.service';
 
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
+  private readonly logger = new Logger(SessionAuthGuard.name);
+
   constructor(private readonly authService: AuthService) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -29,7 +32,7 @@ export class SessionAuthGuard implements CanActivate {
         deviceType: sUser.deviceType,
       });
     } catch (e: any) {
-      console.error('[SessionAuthGuard] validateActiveSession threw', {
+      this.logger.error('[SessionAuthGuard] validateActiveSession threw', {
         path: req.originalUrl,
         method: req.method,
         sid: sid ? `${sid.slice(0, 6)}…` : '',

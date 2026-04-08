@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -11,6 +12,8 @@ import { SurveyReservation } from './entities/survey-reservation.entity';
 
 @Injectable()
 export class PinDraftsService {
+  private readonly logger = new Logger(PinDraftsService.name);
+
   constructor(private readonly ds: DataSource) {}
 
   private async resolveMyAccountId(credId: string): Promise<string | null> {
@@ -53,38 +56,18 @@ export class PinDraftsService {
 
       return { draftId: draft.id };
     } catch (err: any) {
-      console.error('[PinDraftsService.create] ERROR');
-      console.error('meCredentialId:', meCredentialId);
-      console.error('dto:', dto);
-
-      // 변환값까지 확인
-      try {
-        const lat = Number.isFinite(dto?.lat)
-          ? Number(dto.lat.toFixed(7))
-          : dto?.lat;
-        const lng = Number.isFinite(dto?.lng)
-          ? Number(dto.lng.toFixed(7))
-          : dto?.lng;
-        console.error('latFixed7:', lat, 'lngFixed7:', lng);
-      } catch (e) {
-        console.error('lat/lng toFixed failed:', e);
-      }
-
-      console.error('err.name:', err?.name);
-      console.error('err.message:', err?.message);
-      if (err?.stack) console.error(err.stack);
-
-      // TypeORM QueryFailedError가 보통 여기로 들어옴
-      console.error('err.query:', err?.query);
-      console.error('err.parameters:', err?.parameters);
-
-      const d = err?.driverError;
-      if (d) {
-        console.error('driverError.code:', d.code);
-        console.error('driverError.errno:', d.errno);
-        console.error('driverError.sqlState:', d.sqlState);
-        console.error('driverError.sqlMessage:', d.sqlMessage);
-      }
+      this.logger.error('[PinDraftsService.create] ERROR', {
+        meCredentialId,
+        dto,
+        error: {
+          name: err?.name,
+          message: err?.message,
+          stack: err?.stack,
+          query: err?.query,
+          parameters: err?.parameters,
+          driverError: err?.driverError,
+        },
+      });
 
       throw err;
     }
