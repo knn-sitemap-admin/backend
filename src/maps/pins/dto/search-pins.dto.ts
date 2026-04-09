@@ -28,22 +28,38 @@ export class SearchPinsDto {
   rooms?: number[];
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === '1' || value === true || value === 1) return true;
+    if (value === 'false' || value === '0' || value === false || value === 0) return false;
+    return undefined;
+  })
   @IsBoolean()
   hasLoft?: boolean;
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === '1' || value === true || value === 1) return true;
+    if (value === 'false' || value === '0' || value === false || value === 0) return false;
+    return undefined;
+  })
   @IsBoolean()
   hasTerrace?: boolean;
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === '1' || value === true || value === 1) return true;
+    if (value === 'false' || value === '0' || value === false || value === 0) return false;
+    return undefined;
+  })
   @IsBoolean()
   hasTownhouse?: boolean;
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    if (value === 'true' || value === '1' || value === true || value === 1) return true;
+    if (value === 'false' || value === '0' || value === false || value === 0) return false;
+    return undefined;
+  })
   @IsBoolean()
   hasElevator?: boolean;
 

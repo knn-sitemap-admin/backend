@@ -53,3 +53,19 @@ export type TeamEmployeesResponse = {
   team: { teamId: string; teamName: string };
   employees: TeamEmployeeItem[];
 };
+
+export type EmployeeMonthlyStat = {
+  year: number;
+  month: number;
+  grossSales: number; // 개인 매출 기여
+  netProfit: number; // 회사 수익 기여
+  finalPayout: number; // 본인 수익
+  contractCount: number;
+};
+
+export type EmployeePerformanceResponse = {
+  accountId: string;
+  name: string | null;
+  positionRank: string | null;
+  monthlyStats: EmployeeMonthlyStat[];
+};

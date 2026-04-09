@@ -338,14 +338,21 @@ export class ContractsService {
 
     if (dto.q?.trim()) {
       const kw = `%${dto.q.trim()}%`;
+      // 담당자(생성자 및 참여자) 검색을 위해 조인 추가
+      qb.leftJoin('contract_assignees', 'ca_search', 'ca_search.contract_id = c.id')
+        .leftJoin('accounts', 'acc_search', 'acc_search.id = ca_search.account_id');
+
       qb.andWhere(
         `(c.contractNo LIKE :kw
           OR c.customerName LIKE :kw
           OR c.customerPhone LIKE :kw
           OR c.siteName LIKE :kw
-          OR c.siteAddress LIKE :kw)`,
+          OR c.siteAddress LIKE :kw
+          OR cb.name LIKE :kw
+          OR acc_search.name LIKE :kw)`,
         { kw },
       );
+      qb.distinct(true);
     }
 
     if (dto.status) qb.andWhere('c.status = :st', { st: dto.status });
@@ -460,12 +467,18 @@ export class ContractsService {
 
     if (dto.q?.trim()) {
       const kw = `%${dto.q.trim()}%`;
+      // 담당자(생성자 및 참여자) 검색을 위해 조인 추가
+      qb.leftJoin('contract_assignees', 'ca_search', 'ca_search.contract_id = c.id')
+        .leftJoin('accounts', 'acc_search', 'acc_search.id = ca_search.account_id');
+
       qb.andWhere(
         `(c.contractNo LIKE :kw
           OR c.customerName LIKE :kw
           OR c.customerPhone LIKE :kw
           OR c.siteName LIKE :kw
-          OR c.siteAddress LIKE :kw)`,
+          OR c.siteAddress LIKE :kw
+          OR cb.name LIKE :kw
+          OR acc_search.name LIKE :kw)`,
         { kw },
       );
     }

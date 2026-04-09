@@ -764,39 +764,41 @@ export class PinsService {
       .leftJoin('p.areaGroups', 'ag') // 면적 필터용
       .where('p.is_disabled = :active', { active: 0 });
 
-    // 0) 물리적 속성 필터 (Unit 기반)
+    // 0) 물리적 속성 필터 (Unit 기반 + Pin 기반) – '방/특징' 카테고리 (사용자 요청: OR 연산 그룹화)
     const rooms = dto.rooms ?? [];
     const hasTerrace = dto.hasTerrace === true;
     const hasLoft = dto.hasLoft === true;
     const hasTownhouse = dto.hasTownhouse === true;
 
-    // 0-1) 방 개수 필터
-    if (rooms.length > 0) {
-      qb.andWhere('u.rooms IN (:...rooms)', { rooms });
-    }
-
-    // 0-2) 복층 필터
-    if (hasLoft) {
-      qb.andWhere('u.has_loft = :hasLoft', { hasLoft: 1 });
-    }
-
-    // 0-3) 테라스 필터
-    if (hasTerrace) {
-      qb.andWhere('u.has_terrace = :hasTerrace', { hasTerrace: 1 });
-    }
-
-    // 0-4) 타운하우스 필터 (핀 기준)
-    if (hasTownhouse) {
-      qb.andWhere('p.badge = :townhouse', {
-        townhouse: PinBadge.TOWNHOUSE,
-      });
+    if (rooms.length > 0 || hasLoft || hasTerrace || hasTownhouse) {
+      qb.andWhere(
+        new Brackets((qbRoomGroup) => {
+          if (rooms.length > 0) {
+            qbRoomGroup.orWhere('u.rooms IN (:...rooms)', { rooms });
+          }
+          if (hasLoft) {
+            qbRoomGroup.orWhere('u.has_loft = :hasLoft', { hasLoft: 1 });
+          }
+          if (hasTerrace) {
+            qbRoomGroup.orWhere('u.has_terrace = :hasTerrace', { hasTerrace: 1 });
+          }
+          if (hasTownhouse) {
+            qbRoomGroup.orWhere('p.badge = :badgeTownhouse', {
+              badgeTownhouse: PinBadge.TOWNHOUSE,
+            });
+          }
+        }),
+      );
     }
 
     // 1) 엘리베이터 (핀 기준)
     if (typeof dto.hasElevator === 'boolean') {
-      qb.andWhere('p.has_elevator = :hasElevator', {
-        hasElevator: dto.hasElevator ? 1 : 0,
-      });
+      if (dto.hasElevator) {
+        qb.andWhere('p.has_elevator = 1');
+      } else {
+        // '없음' 선택 시, 명시적 0이거나 NULL인 경우 모두 포함(보수적 필터링)
+        qb.andWhere('(p.has_elevator = 0 OR p.has_elevator IS NULL)');
+      }
     }
 
     // 2) 매매가 (유닛 기준) – 기존 유지

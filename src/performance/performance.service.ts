@@ -381,4 +381,94 @@ export class PerformanceService {
       })),
     };
   }
+
+  /**
+   * 모든 활성 직원 목록 조회 (영업자별 실적 탭 버튼용)
+   */
+  async listEmployees() {
+    return this.accountRepo
+      .createQueryBuilder('acc')
+      .leftJoin('acc.credential', 'cr')
+      .select(['acc.id', 'acc.name', 'acc.position_rank'])
+      .where('acc.is_deleted = false')
+      .andWhere('(cr.is_disabled = false OR cr.is_disabled IS NULL)')
+      .orderBy('acc.name', 'ASC')
+      .getMany();
+  }
+
+  /**
+   * 특정 직원의 월별 실적 추이 조회 (영업자별 실적 탭 상세용)
+   */
+  async getEmployeePerformance(
+    accountId: string,
+    year: number,
+  ): Promise<any> {
+    const account = await this.accountRepo.findOne({
+      where: { id: String(accountId) } as any,
+    });
+    if (!account) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+
+    const grandTotalExpr = this.sqlGrandTotalExpr();
+    const companyAmountExpr = this.sqlCompanyAmountExpr(grandTotalExpr);
+    const staffPoolExpr = this.sqlStaffPoolExpr(
+      grandTotalExpr,
+      companyAmountExpr,
+    );
+    const myAmountExpr = this.sqlMyAmountExpr(staffPoolExpr);
+    const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
+    const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
+
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    // 월별 실적 조회
+    // MySQL/MariaDB 기준: MONTH(c.final_payment_date)
+    // SQLite: substr(final_payment_date, 6, 2)
+    // 여기서는 범용적으로 YEAR/MONTH를 다루기 위해 TypeORM의 raw query or specialized selection 사용
+    // DB가 MariaDB/MySQL이라 가정 (이전 코드에서 padding 등을 처리하는 방식이 그러함)
+    const rows = await this.contractRepo
+      .createQueryBuilder('c')
+      .innerJoin(ContractAssignee, 'a', 'a.contract_id = c.id')
+      .select('MONTH(c.final_payment_date)', 'month')
+      .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
+      .addSelect(`COALESCE(SUM(${gSalesContribExpr}), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(${nProfitContribExpr}), 0)`, 'netProfit')
+      .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
+      .where('a.account_id = :aid', { aid: String(accountId) })
+      .andWhere('c.status = :done', { done: 'done' })
+      .andWhere('c.final_payment_date >= :s AND c.final_payment_date <= :e', {
+        s: startDate,
+        e: endDate,
+      })
+      .groupBy('month')
+      .orderBy('month', 'ASC')
+      .getRawMany<{
+        month: string | number;
+        finalPayout: string;
+        grossSales: string;
+        netProfit: string;
+        contractCount: string;
+      }>();
+
+    // 1~12월 데이터 보장
+    const monthlyStats = Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      const found = rows.find((r) => Number(r.month) === m);
+      return {
+        year,
+        month: m,
+        grossSales: Number(found?.grossSales ?? 0),
+        netProfit: Number(found?.netProfit ?? 0),
+        finalPayout: Number(found?.finalPayout ?? 0),
+        contractCount: Number(found?.contractCount ?? 0),
+      };
+    });
+
+    return {
+      accountId: String(account.id),
+      name: account.name,
+      positionRank: account.position_rank,
+      monthlyStats,
+    };
+  }
 }
