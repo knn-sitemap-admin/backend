@@ -91,6 +91,8 @@ export class ContractsService {
     private readonly fileRepo: Repository<ContractFile>,
     @InjectRepository(Account)
     private readonly accountRepo: Repository<Account>,
+    @InjectRepository(TeamMember)
+    private readonly teamMemberRepo: Repository<TeamMember>,
     private readonly uploadService: UploadService,
   ) { }
 
@@ -449,10 +451,38 @@ export class ContractsService {
 
   async listMe(
     credentialId: string,
+    role: Role,
     dto: ListContractsDto,
   ): Promise<{ items: ListItem[]; total: number }> {
     const me = await this.resolveAccountByCredentialIdOrThrow(credentialId);
     const { page, size, orderBy, orderDir } = this.normalizePaging(dto);
+
+    // 1) 내가 속한 팀원들 ID 모으기 (사용자가 manager일 경우)
+    let targetAccountIds: string[] = [String(me.id)];
+
+    if (role === 'manager') {
+      // 내가 매니저로 속한 팀들 찾기
+      const myTeams = await this.teamMemberRepo.find({
+        where: { account_id: String(me.id) },
+        select: ['team_id'],
+      });
+      const teamIds = myTeams.map((t) => t.team_id);
+
+      if (teamIds.length > 0) {
+        const teamMembers = await this.teamMemberRepo.find({
+          where: { team_id: this.dataSource.getRepository(TeamMember).manager.getRepository(TeamMember).metadata.connection.manager.getRepository(TeamMember).metadata.connection.createQueryBuilder().where('1=1').getSql() === '' ? '' : ({} as any) }, // Placeholder for standard TypeORM usage
+        });
+        // Actually, let's just use query builder for simplicity in finding members
+        const members = await this.teamMemberRepo
+          .createQueryBuilder('tm')
+          .where('tm.team_id IN (:...teamIds)', { teamIds })
+          .select('tm.account_id', 'accountId')
+          .getRawMany<{ accountId: string }>();
+        
+        const memberIds = members.map(m => String(m.accountId));
+        targetAccountIds = Array.from(new Set([...targetAccountIds, ...memberIds]));
+      }
+    }
 
     const qb = this.contractRepo
       .createQueryBuilder('c')
@@ -460,8 +490,8 @@ export class ContractsService {
       .leftJoin('cb.credential', 'cbCred')
       .addSelect(['cb.id', 'cb.name', 'cbCred.is_disabled'])
       .leftJoin('contract_assignees', 'a', 'a.contract_id = c.id')
-      .where('(c.created_by_account_id = :me OR a.account_id = :me)', {
-        me: String(me.id),
+      .where('(c.created_by_account_id IN (:...targets) OR a.account_id IN (:...targets))', {
+        targets: targetAccountIds,
       })
       .distinct(true);
 

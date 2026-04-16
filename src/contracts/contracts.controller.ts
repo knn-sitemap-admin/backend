@@ -60,7 +60,11 @@ export class ContractsController {
     @Query() dto: ListContractsDto,
   ) {
     const credentialId = String(req.session?.user?.credentialId ?? '');
-    const data = await this.service.listMe(credentialId, dto);
+    const role = (req.session?.user?.role ?? 'staff') as
+      | 'admin'
+      | 'manager'
+      | 'staff';
+    const data = await this.service.listMe(credentialId, role, dto);
     return { data };
   }
 
