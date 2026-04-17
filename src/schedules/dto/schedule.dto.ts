@@ -90,6 +90,10 @@ export class UpdateScheduleDto {
   @IsString()
   @IsOptional()
   meetingType?: string;
+
+  @IsString()
+  @IsOptional()
+  createdByAccountId?: string;
 }
 
 export class ScheduleQueryDto {

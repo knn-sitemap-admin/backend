@@ -129,6 +129,9 @@ export class SchedulesService {
     if (dto.endDate !== undefined) schedule.end_date = new Date(dto.endDate);
     if (dto.isAllDay !== undefined) schedule.is_all_day = dto.isAllDay;
     if (dto.color !== undefined) schedule.color = dto.color;
+    if (isPowerful && dto.createdByAccountId !== undefined) {
+      schedule.created_by_account_id = dto.createdByAccountId;
+    }
 
     const saved = await this.scheduleRepo.save(schedule);
     return {
