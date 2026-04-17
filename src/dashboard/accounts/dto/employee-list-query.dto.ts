@@ -12,4 +12,7 @@ export class EmployeeListQueryDto {
   @IsString()
   @MaxLength(100)
   name?: string;
+
+  @IsOptional()
+  activeOnly?: boolean;
 }

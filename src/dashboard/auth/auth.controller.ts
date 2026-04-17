@@ -79,7 +79,6 @@ export class AuthController {
     });
 
     // 5.1 수동 쿠키 설정 (express-session 자동 메커니즘이 NestJS와 충돌하는 경우 대비)
-    const isDevMode = process.env.IS_DEV === 'true';
     const secret = (process.env.SESSION_SECRET ?? 'change_this_secret').split(',')[0];
     const sig = crypto
       .createHmac('sha256', secret)
@@ -88,10 +87,23 @@ export class AuthController {
       .replace(/=+$/, '');
     const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
     const maxAge = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
+
+    const origin = String(req.headers.origin ?? '');
+    const isLocalhost = 
+      origin.includes('localhost') || 
+      origin.includes('127.0.0.1') ||
+      req.hostname === 'localhost' ||
+      req.hostname === '127.0.0.1';
+
+    // 로컬 개발 환경이 아니면(또는 오리진이 리모트이면) 보안 강화
+    // SameSite: none, Secure: true (HTTPS 필수)
+    const cookieSecure = !isLocalhost && process.env.NODE_ENV === 'production';
+    const cookieSameSite = cookieSecure ? 'none' : 'lax';
+
     req.res.cookie('connect.sid', `s:${req.sessionID}.${sig}`, {
       httpOnly: true,
-      secure: !isDevMode,         // 로컬: false, 프로덕션: true (HTTPS)
-      sameSite: isDevMode ? 'lax' : 'none', // 로컬: lax, 프로덕션: none (cross-site)
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
       path: '/',
       maxAge,
     });

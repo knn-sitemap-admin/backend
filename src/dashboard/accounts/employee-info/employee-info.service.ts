@@ -1185,7 +1185,11 @@ export class EmployeeInfoService {
         'tm.team_role AS teamRole',
         'cred.is_disabled AS isDisabled',
       ])
-      .where('a.is_deleted = 0')
+      .where('a.is_deleted = :deleted', { deleted: false });
+
+    if (query.activeOnly === true || String(query.activeOnly) === 'true') {
+      baseQb.andWhere('cred.is_disabled = :disabled', { disabled: false });
+    }
 
     if (nameKw.length > 0) {
       baseQb.andWhere('a.name LIKE :kw', { kw: `%${nameKw}%` });

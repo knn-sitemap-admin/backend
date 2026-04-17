@@ -209,16 +209,19 @@ async function bootstrap() {
   });
 
   app.use((req, res, next) => {
-    // 로컬 테스트 시 'lax'와 'secure: false'를 사용하고,
-    // 프로덕션 환경 시 'none'과 'secure: true'를 사용 
+    // 로컬 접속인지 확인
     const origin = String(req.headers.origin ?? '');
     const isLocalOrigin =
       origin.includes('localhost') ||
       origin.includes('127.0.0.1') ||
-      process.env.NODE_ENV !== 'production';
+      req.hostname === 'localhost';
 
-    if (isLocalOrigin) return sessionMiddlewareLocal(req, res, next);
-    return sessionMiddlewareCrossSite(req, res, next);
+    // 배포 환경이고 로컬 오리진이 아니면 크로스 사이트 세션(Secure, SameSite:none) 사용
+    if (isProd && !isLocalOrigin) {
+      return sessionMiddlewareCrossSite(req, res, next);
+    }
+    
+    return sessionMiddlewareLocal(req, res, next);
   });
 
   //스웨거
