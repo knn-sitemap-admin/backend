@@ -68,9 +68,14 @@ export class SchedulesService {
     };
   }
 
-  async create(dto: CreateScheduleDto, credentialId: string) {
+  async create(dto: CreateScheduleDto, credentialId: string, role: string) {
     if (!credentialId) throw new BadRequestException('인증 정보가 없습니다.');
     const account = await this.resolveAccount(credentialId);
+
+    const isPowerful = role === 'admin' || role === 'manager';
+    const targetAccountId = (isPowerful && dto.createdByAccountId) 
+      ? dto.createdByAccountId 
+      : account.id;
 
     const schedule = this.scheduleRepo.create({
       title: dto.title,
@@ -83,7 +88,7 @@ export class SchedulesService {
       end_date: new Date(dto.endDate),
       is_all_day: dto.isAllDay || false,
       color: dto.color || 'blue',
-      created_by_account_id: account.id,
+      created_by_account_id: targetAccountId,
     });
 
     const saved = await this.scheduleRepo.save(schedule);
@@ -159,7 +164,7 @@ export class SchedulesService {
   }
 
   /** 일정 복원 */
-  async restore(id: number, credentialId: string) {
+  async restore(id: number, credentialId: string, role: string) {
     if (!credentialId) throw new BadRequestException('인증 정보가 없습니다.');
     const account = await this.resolveAccount(credentialId);
 
@@ -168,8 +173,10 @@ export class SchedulesService {
     });
     if (!schedule) throw new NotFoundException('복원할 일정을 찾을 수 없습니다.');
 
-    // 본인 일정만 복원 가능 (혹은 정책에 따라 관리자)
-    if (String(schedule.created_by_account_id) !== String(account.id)) {
+    const isPowerful = role === 'admin' || role === 'manager';
+    const isOwner = String(schedule.created_by_account_id) === String(account.id);
+
+    if (!isOwner && !isPowerful) {
       throw new ForbiddenException('복원 권한이 없습니다.');
     }
 
@@ -184,12 +191,14 @@ export class SchedulesService {
   }
 
   /** 삭제된 일정 목록 조회 */
-  async listDeleted(credentialId: string) {
+  async listDeleted(credentialId: string, role: string) {
     if (!credentialId) throw new BadRequestException('인증 정보가 없습니다.');
     const account = await this.resolveAccount(credentialId);
 
+    const isPowerful = role === 'admin' || role === 'manager';
+    
     const items = await this.scheduleRepo.find({
-      where: { created_by_account_id: account.id, is_deleted: true },
+      where: isPowerful ? { is_deleted: true } : { created_by_account_id: account.id, is_deleted: true },
       relations: ['createdByAccount'],
       order: { deleted_at: 'DESC' },
     });

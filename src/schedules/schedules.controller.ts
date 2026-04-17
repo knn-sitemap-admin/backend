@@ -26,13 +26,15 @@ export class SchedulesController {
   @Get('deleted')
   async findDeleted(@Req() req: any) {
     const credId = req.session?.user?.credentialId;
-    return this.schedulesService.listDeleted(credId);
+    const role = req.session?.user?.role || 'staff';
+    return this.schedulesService.listDeleted(credId, role);
   }
 
   @Post()
   async create(@Body() dto: CreateScheduleDto, @Req() req: any) {
     const credId = req.session?.user?.credentialId;
-    return this.schedulesService.create(dto, credId);
+    const role = req.session?.user?.role || 'staff';
+    return this.schedulesService.create(dto, credId, role);
   }
 
   @Put(':id')
@@ -56,6 +58,7 @@ export class SchedulesController {
   @Post(':id/restore')
   async restore(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const credId = req.session?.user?.credentialId;
-    return this.schedulesService.restore(id, credId);
+    const role = req.session?.user?.role || 'staff';
+    return this.schedulesService.restore(id, credId, role);
   }
 }

@@ -43,6 +43,10 @@ export class CreateScheduleDto {
   @IsString()
   @IsOptional()
   meetingType?: string;
+
+  @IsString()
+  @IsOptional()
+  createdByAccountId?: string;
 }
 
 export class UpdateScheduleDto {
