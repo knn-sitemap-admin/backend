@@ -469,10 +469,7 @@ export class ContractsService {
       const teamIds = myTeams.map((t) => t.team_id);
 
       if (teamIds.length > 0) {
-        const teamMembers = await this.teamMemberRepo.find({
-          where: { team_id: this.dataSource.getRepository(TeamMember).manager.getRepository(TeamMember).metadata.connection.manager.getRepository(TeamMember).metadata.connection.createQueryBuilder().where('1=1').getSql() === '' ? '' : ({} as any) }, // Placeholder for standard TypeORM usage
-        });
-        // Actually, let's just use query builder for simplicity in finding members
+        // 내 팀원들 ID 찾기
         const members = await this.teamMemberRepo
           .createQueryBuilder('tm')
           .where('tm.team_id IN (:...teamIds)', { teamIds })
