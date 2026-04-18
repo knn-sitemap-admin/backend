@@ -16,14 +16,38 @@ export class SessionAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
 
-    const sUser = req.session?.user;
-    const sid = String(req.sessionID ?? '');
+    let sUser = req.session?.user;
+    let sid = String(req.sessionID ?? '');
 
+    // [JWT 대응 추가] 세션이 없으면 Authorization 헤더 확인
     if (!sUser || !sid) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const decoded = await this.authService.verifyToken(token);
+        if (decoded) {
+          // 세션 구조와 동일하게 req.user 및 가짜 세션 데이터 구성
+          sUser = {
+            credentialId: decoded.sub,
+            role: decoded.role,
+            deviceType: 'mobile', // 토큰 사용은 모바일 앱으로 간주
+          };
+          req.session.user = sUser; // 하위 호환성을 위해 세션 객체에도 주입
+          sid = 'JWT_SESSION'; // validateActiveSession 통과를 위한 더미 ID
+        }
+      }
+    }
+
+    if (!sUser) {
       throw new UnauthorizedException('로그인이 필요합니다');
     }
 
-    // 기존 로직 유지 + 예외 로그만 추가(원인 파악용)
+    // JWT로 복구된 경우 DB 세션 검증 생략 혹은 별도 처리
+    if (sid === 'JWT_SESSION') {
+      return true;
+    }
+
+    // 기존 세션 로직 유지
     let res: any;
     try {
       res = await this.authService.validateActiveSession({

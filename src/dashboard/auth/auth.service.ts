@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as jwt from 'jsonwebtoken';
 import { AccountCredential } from '../accounts/entities/account-credential.entity';
 import { BcryptService } from '../../common/hashing/bcrypt.service';
 import { Account } from '../accounts/entities/account.entity';
@@ -15,6 +16,7 @@ import { AccountSession } from './entities/account-session.entity';
 type SigninResult = {
   credentialId: string;
   role: 'admin' | 'manager' | 'staff';
+  accessToken: string;
 };
 
 type DeviceType = 'pc' | 'mobile';
@@ -292,9 +294,25 @@ export class AuthService {
       String(credential.id),
     );
 
+    // JWT 토큰 생성 (앱용)
+    const secretStr = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'change_this_secret';
+    const primarySecret = secretStr.split(',')[0].trim();
+    const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
+
+    const accessToken = jwt.sign(
+      {
+        sub: String(credential.id),
+        email: credential.email,
+        role: effectiveRole,
+      },
+      primarySecret,
+      { expiresIn: `${ttlHours}h` },
+    );
+
     return {
       credentialId: credential.id,
       role: effectiveRole,
+      accessToken,
     };
   }
 
@@ -347,5 +365,18 @@ export class AuthService {
     });
 
     return !!account1;
+  }
+
+  /**
+   * JWT 토큰 검증 (앱용 가드에서 사용)
+   */
+  async verifyToken(token: string): Promise<any> {
+    const secretStr = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'change_this_secret';
+    const primarySecret = secretStr.split(',')[0].trim();
+    try {
+      return jwt.verify(token, primarySecret);
+    } catch (e) {
+      return null;
+    }
   }
 }

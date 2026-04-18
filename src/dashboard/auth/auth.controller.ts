@@ -155,6 +155,7 @@ export class AuthController {
         credentialId: String(base.credentialId),
         role: base.role,
         deviceType,
+        accessToken: base.accessToken,
         expiresAt: reg.expiresAt.toISOString(),
       },
     };
