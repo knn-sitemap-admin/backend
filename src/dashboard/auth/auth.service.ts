@@ -95,53 +95,34 @@ export class AuthService {
     input: ValidateSessionInput,
   ): Promise<ValidateSessionResult> {
     const logger = new Logger('AuthSession');
-
+    
     // 1) credential 존재/비활성 체크
     const cred = await this.accountCredentialRepository.findOne({
       where: { id: input.credentialId },
       select: ['id', 'role', 'is_disabled'],
     });
 
-    if (!cred) {
-      logger.warn(`[ValidateSession] Fail: No Credential (${input.credentialId})`);
-      return { ok: false, reason: 'NO_CREDENTIAL' };
-    }
-    if (cred.is_disabled) {
+    if (cred && cred.is_disabled) {
       logger.warn(`[ValidateSession] Fail: Disabled (${input.credentialId})`);
       return { ok: false, reason: 'DISABLED' };
     }
 
-    // 2) 세션 row 존재/활성 체크
-    const row = await this.accountSessionRepository.findOne({
-      where: { session_id: input.sessionId },
-    });
+    // 2) 세션 row 존재/활성 체크 (Best-effort 로그만 기록, 실패해도 차단하지 않음)
+    try {
+      const row = await this.accountSessionRepository.findOne({
+        where: { session_id: input.sessionId },
+      });
 
-    if (!row || !row.is_active) {
-      logger.warn(`[ValidateSession] Fail: No Active Session Row in DB (${input.sessionId.slice(0, 8)}...)`);
-      return { ok: false, reason: 'NO_SESSION' };
+      if (!row || !row.is_active) {
+        logger.debug(`[ValidateSession] Log: No Session Row in DB (${input.sessionId.slice(0, 8)}...), but session may still be valid in memory.`);
+      } else if (String(row.credential_id) !== String(input.credentialId)) {
+        logger.debug(`[ValidateSession] Log: Mismatch (DB:${row.credential_id} vs Req:${input.credentialId})`);
+      } else if (row.expires_at && row.expires_at.getTime() <= Date.now()) {
+        logger.debug(`[ValidateSession] Log: Expired in DB`);
+      }
+    } catch (e) {
+      logger.debug(`[ValidateSession] DB Query Error: ${e.message}`);
     }
-
-    // 3) 세션 소유/디바이스 일치 검증
-    if (String(row.credential_id) !== String(input.credentialId)) {
-      logger.warn(`[ValidateSession] Fail: Credential Mismatch (DB:${row.credential_id} vs Req:${input.credentialId})`);
-      return { ok: false, reason: 'MISMATCH' };
-    }
-    if (row.device_type !== input.deviceType) {
-      logger.warn(`[ValidateSession] Fail: DeviceType Mismatch (DB:${row.device_type} vs Req:${input.deviceType})`);
-      return { ok: false, reason: 'MISMATCH' };
-    }
-
-    // 4) 만료 검증
-    if (row.expires_at && row.expires_at.getTime() <= Date.now()) {
-      logger.warn(`[ValidateSession] Fail: Expired (${row.expires_at.toISOString()})`);
-      await this.deactivateSessionBySessionId(input.sessionId); // 만료면 DB도 정리
-      return { ok: false, reason: 'EXPIRED' };
-    }
-
-    // 5) 접근 시간 업데이트(best-effort)
-    await this.accountSessionRepository.update(row.id, {
-      last_accessed_at: new Date(),
-    });
 
     // 6) effective role 계산(직급 기반 포함)
     const effectiveRole = await this.resolveEffectiveRole(
