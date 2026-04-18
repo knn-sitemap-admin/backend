@@ -15,6 +15,7 @@ export class SessionAuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
+    const path = req.originalUrl;
 
     let sUser = req.session?.user;
     let sid = String(req.sessionID ?? '');
@@ -34,7 +35,12 @@ export class SessionAuthGuard implements CanActivate {
           };
           req.session.user = sUser; // 하위 호환성을 위해 세션 객체에도 주입
           sid = 'JWT_SESSION'; // validateActiveSession 통과를 위한 더미 ID
+          this.logger.log(`[JWT Auth] Success: ${decoded.sub} for path ${path}`);
+        } else {
+          this.logger.warn(`[JWT Auth] Fail: Invalid Token for path ${path}`);
         }
+      } else {
+        this.logger.debug(`[Auth Check] No Session and No Auth Header for path ${path}`);
       }
     }
 

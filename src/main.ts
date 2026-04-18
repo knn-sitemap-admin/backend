@@ -74,9 +74,24 @@ async function bootstrap() {
     : Array.from(new Set([...corsOrigins, ...devExtraOrigins]));
 
   app.enableCors({
-    // PAGE_URL이 비어도 로컬 테스트를 위해 dev에서는 true로 열어둠
-    origin: finalOrigins.length ? finalOrigins : isProd ? false : true,
+    origin: (origin, callback) => {
+      // 프론트엔드 도메인들 허용
+      const allowedOrigins = [
+        process.env.PAGE_URL,
+        'http://localhost:3000',
+        'http://localhost:3050',
+      ].filter(Boolean);
+
+      if (!origin || allowedOrigins.some(ao => origin.includes(ao as string))) {
+        callback(null, true);
+      } else {
+        callback(null, true); // 운영 편의를 위한 전체 허용 (배포 초기 단계)
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Accept, Authorization, x-bootstrap-token',
     credentials: true,
+    exposedHeaders: ['Authorization'],
   });
 
   // 요청 로깅 (간소화된 커스텀 포맷)
