@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -41,14 +42,14 @@ type ValidateSessionInput = {
 type ValidateSessionResult =
   | { ok: true; role: 'admin' | 'manager' | 'staff' }
   | {
-      ok: false;
-      reason:
-        | 'NO_CREDENTIAL'
-        | 'DISABLED'
-        | 'NO_SESSION'
-        | 'EXPIRED'
-        | 'MISMATCH';
-    };
+    ok: false;
+    reason:
+    | 'NO_CREDENTIAL'
+    | 'DISABLED'
+    | 'NO_SESSION'
+    | 'EXPIRED'
+    | 'MISMATCH';
+  };
 
 @Injectable()
 export class AuthService {
@@ -60,7 +61,7 @@ export class AuthService {
     private readonly bcrypt: BcryptService,
     @InjectRepository(AccountSession)
     private readonly accountSessionRepository: Repository<AccountSession>,
-  ) {}
+  ) { }
 
   private isManagerRank(rank: string | null | undefined): boolean {
     return rank === 'TEAM_LEADER' || rank === 'DIRECTOR';
@@ -91,32 +92,46 @@ export class AuthService {
   async validateActiveSession(
     input: ValidateSessionInput,
   ): Promise<ValidateSessionResult> {
+    const logger = new Logger('AuthSession');
+
     // 1) credential 존재/비활성 체크
     const cred = await this.accountCredentialRepository.findOne({
       where: { id: input.credentialId },
       select: ['id', 'role', 'is_disabled'],
     });
 
-    if (!cred) return { ok: false, reason: 'NO_CREDENTIAL' };
-    if (cred.is_disabled) return { ok: false, reason: 'DISABLED' };
+    if (!cred) {
+      logger.warn(`[ValidateSession] Fail: No Credential (${input.credentialId})`);
+      return { ok: false, reason: 'NO_CREDENTIAL' };
+    }
+    if (cred.is_disabled) {
+      logger.warn(`[ValidateSession] Fail: Disabled (${input.credentialId})`);
+      return { ok: false, reason: 'DISABLED' };
+    }
 
     // 2) 세션 row 존재/활성 체크
     const row = await this.accountSessionRepository.findOne({
       where: { session_id: input.sessionId },
     });
 
-    if (!row || !row.is_active) return { ok: false, reason: 'NO_SESSION' };
+    if (!row || !row.is_active) {
+      logger.warn(`[ValidateSession] Fail: No Active Session Row in DB (${input.sessionId.slice(0, 8)}...)`);
+      return { ok: false, reason: 'NO_SESSION' };
+    }
 
     // 3) 세션 소유/디바이스 일치 검증
     if (String(row.credential_id) !== String(input.credentialId)) {
+      logger.warn(`[ValidateSession] Fail: Credential Mismatch (DB:${row.credential_id} vs Req:${input.credentialId})`);
       return { ok: false, reason: 'MISMATCH' };
     }
     if (row.device_type !== input.deviceType) {
+      logger.warn(`[ValidateSession] Fail: DeviceType Mismatch (DB:${row.device_type} vs Req:${input.deviceType})`);
       return { ok: false, reason: 'MISMATCH' };
     }
 
     // 4) 만료 검증
     if (row.expires_at && row.expires_at.getTime() <= Date.now()) {
+      logger.warn(`[ValidateSession] Fail: Expired (${row.expires_at.toISOString()})`);
       await this.deactivateSessionBySessionId(input.sessionId); // 만료면 DB도 정리
       return { ok: false, reason: 'EXPIRED' };
     }

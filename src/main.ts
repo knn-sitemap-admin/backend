@@ -45,9 +45,9 @@ async function bootstrap() {
   });
 
   //배포
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
 
-  //보안 헤더 (로컬 개발 시 CORP를 cross-origin으로 설정해 Set-Cookie 차단 방지)
+  //보안 헤더
   app.use(
     helmet({
       crossOriginResourcePolicy: {
@@ -55,48 +55,6 @@ async function bootstrap() {
       },
     }),
   );
-
-  // 요청 로깅 (간소화된 커스텀 포맷)
-  app.use(
-    morgan((tokens, req, res) => {
-      const ua = tokens['user-agent'](req, res) || '';
-      const isMobile = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'PC';
-
-      let browser = 'Browser';
-      if (ua.includes('Firefox')) browser = 'Firefox';
-      else if (ua.includes('Edg')) browser = 'Edge';
-      else if (ua.includes('Chrome')) browser = 'Chrome';
-      else if (ua.includes('Safari')) browser = 'Safari';
-
-      return [
-        `[${tokens.method(req, res)}]`,
-        tokens.url(req, res),
-        `(${tokens.status(req, res)})`,
-        '-',
-        browser,
-        `(${isMobile})`,
-      ].join(' ');
-    }),
-  );
-
-  // app.enableCors({
-  //   origin: (origin, callback) => {
-  //     if (!origin) return callback(null, true);
-  //     return callback(null, true);
-  //   },
-  //   credentials: true,
-  //   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  //   allowedHeaders: ['Content-Type', 'Authorization'],
-  // });
-
-  // const corsOrigins = (process.env.PAGE_URL ?? '')
-  //   .split(',')
-  //   .map((s) => s.trim())
-  //   .filter(Boolean);
-  // app.enableCors({
-  //   origin: corsOrigins.length ? corsOrigins : false,
-  //   credentials: true,
-  // });
 
   const corsOrigins = (process.env.PAGE_URL ?? '')
     .split(',')
@@ -120,6 +78,29 @@ async function bootstrap() {
     origin: finalOrigins.length ? finalOrigins : isProd ? false : true,
     credentials: true,
   });
+
+  // 요청 로깅 (간소화된 커스텀 포맷)
+  app.use(
+    morgan((tokens, req, res) => {
+      const ua = tokens['user-agent'](req, res) || '';
+      const isMobile = /mobile|android|iphone|ipad/i.test(ua) ? 'Mobile' : 'PC';
+
+      let browser = 'Browser';
+      if (ua.includes('Firefox')) browser = 'Firefox';
+      else if (ua.includes('Edg')) browser = 'Edge';
+      else if (ua.includes('Chrome')) browser = 'Chrome';
+      else if (ua.includes('Safari')) browser = 'Safari';
+
+      return [
+        `[${tokens.method(req, res)}]`,
+        tokens.url(req, res),
+        `(${tokens.status(req, res)})`,
+        '-',
+        browser,
+        `(${isMobile})`,
+      ].join(' ');
+    }),
+  );
 
   //전역 파이프
   app.useGlobalPipes(
@@ -181,7 +162,7 @@ async function bootstrap() {
     secret: process.env.SESSION_SECRET ?? 'change_this_secret',
     resave: false,
     saveUninitialized: false,
-    rolling: true, // 매 응답마다 Set-Cookie 강제 발송 (regenerate 이후 쿠키 누락 방지)
+    rolling: true,
     proxy: true,
     cookie: {
       httpOnly: true,
@@ -192,36 +173,45 @@ async function bootstrap() {
     },
   });
 
-  const sessionMiddlewareCrossSite = session({
-    store,
-    secret: process.env.SESSION_SECRET ?? 'change_this_secret',
-    resave: false,
-    saveUninitialized: false,
-    rolling: true, // 매 응답마다 Set-Cookie 강제 발송
-    proxy: true,
-    cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      path: '/',
-      maxAge: ttlMs,
-    },
-  });
-
   app.use((req, res, next) => {
-    // 로컬 접속인지 확인
     const origin = String(req.headers.origin ?? '');
     const isLocalOrigin =
       origin.includes('localhost') ||
       origin.includes('127.0.0.1') ||
-      req.hostname === 'localhost';
+      req.hostname === 'localhost' ||
+      req.hostname.startsWith('192.168.') ||
+      req.hostname.startsWith('10.');
 
-    // 배포 환경이고 로컬 오리진이 아니면 크로스 사이트 세션(Secure, SameSite:none) 사용
+    /**
+     * [SameSite 정책]
+     * 아이폰 Safari는 SameSite:none을 차단하는 경우가 많으므로
+     * 가능하면 Lax를 기본으로 사용하고, 리모트 환경에서만 유연하게 전환
+     */
+    let sameSite: 'lax' | 'none' | 'strict' = 'lax';
+    let secure = false;
+
     if (isProd && !isLocalOrigin) {
-      return sessionMiddlewareCrossSite(req, res, next);
+      secure = true;
+      // railway.app 도메인 등 크로스 사이트가 확실한 경우만 none 사용
+      const isCrossSite = origin && !origin.includes('notemap') && !origin.includes('railway.app');
+      sameSite = isCrossSite ? 'none' : 'lax';
     }
-    
-    return sessionMiddlewareLocal(req, res, next);
+
+    return session({
+      store,
+      secret: process.env.SESSION_SECRET ?? 'change_this_secret',
+      resave: false,
+      saveUninitialized: false,
+      rolling: true,
+      proxy: true,
+      cookie: {
+        httpOnly: true,
+        secure,
+        sameSite,
+        path: '/',
+        maxAge: ttlMs,
+      },
+    })(req, res, next);
   });
 
   //스웨거

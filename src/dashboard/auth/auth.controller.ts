@@ -79,12 +79,17 @@ export class AuthController {
     });
 
     // 5.1 수동 쿠키 설정 (express-session 자동 메커니즘이 NestJS와 충돌하는 경우 대비)
-    const secret = (process.env.SESSION_SECRET ?? 'change_this_secret').split(',')[0];
+    const secretStr = process.env.SESSION_SECRET ?? 'change_this_secret';
+    const secrets = secretStr.split(',').map(s => s.trim()).filter(Boolean);
+    const primarySecret = secrets[0];
+    
+    // express-session의 cookie-signature 방식 (s:sessionid.sig)
     const sig = crypto
-      .createHmac('sha256', secret)
+      .createHmac('sha256', primarySecret)
       .update(req.sessionID)
       .digest('base64')
       .replace(/=+$/, '');
+      
     const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
     const maxAge = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
@@ -93,12 +98,25 @@ export class AuthController {
       origin.includes('localhost') || 
       origin.includes('127.0.0.1') ||
       req.hostname === 'localhost' ||
-      req.hostname === '127.0.0.1';
+      req.hostname === '127.0.0.1' ||
+      req.hostname.startsWith('192.168.') ||
+      req.hostname.startsWith('10.');
 
-    // 로컬 개발 환경이 아니면(또는 오리진이 리모트이면) 보안 강화
-    // SameSite: none, Secure: true (HTTPS 필수)
-    const cookieSecure = !isLocalhost && process.env.NODE_ENV === 'production';
-    const cookieSameSite = cookieSecure ? 'none' : 'lax';
+    /**
+     * [iPhone/Safari 대응]
+     * SameSite: None은 크로스 사이트(다른 도메인)일 때만 필요하지만 Safari ITP가 이를 차단하는 경우가 많음.
+     * 프론트와 백엔드가 같은 도메인(예: *.notemap.kr)을 공유한다면 Lax가 훨씬 유리함.
+     */
+    let cookieSameSite: 'lax' | 'none' | 'strict' = 'lax';
+    let cookieSecure = false;
+
+    if (process.env.NODE_ENV === 'production' && !isLocalhost) {
+      cookieSecure = true;
+      // 프론트엔드가 Railway 업스트림 도메인 등을 사용하여 완전히 다른 도메인일 때만 none 사용
+      // 만약 커스텀 도메인을 쓴다면 기본적으로 lax가 더 안전함
+      const isCrossDomain = origin && !origin.includes('notemap') && !origin.includes('railway.app');
+      cookieSameSite = isCrossDomain ? 'none' : 'lax';
+    }
 
     req.res.cookie('connect.sid', `s:${req.sessionID}.${sig}`, {
       httpOnly: true,
