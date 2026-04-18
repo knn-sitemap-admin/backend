@@ -173,6 +173,22 @@ async function bootstrap() {
     },
   });
 
+  const sessionMiddlewareCrossSite = session({
+    store,
+    secret: process.env.SESSION_SECRET ?? 'change_this_secret',
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    proxy: true,
+    cookie: {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none', // 다시 none으로 고정하여 401 즉시 해결
+      path: '/',
+      maxAge: ttlMs,
+    },
+  });
+
   app.use((req, res, next) => {
     const origin = String(req.headers.origin ?? '');
     const isLocalOrigin =
@@ -182,36 +198,10 @@ async function bootstrap() {
       req.hostname.startsWith('192.168.') ||
       req.hostname.startsWith('10.');
 
-    /**
-     * [SameSite 정책]
-     * 아이폰 Safari는 SameSite:none을 차단하는 경우가 많으므로
-     * 가능하면 Lax를 기본으로 사용하고, 리모트 환경에서만 유연하게 전환
-     */
-    let sameSite: 'lax' | 'none' | 'strict' = 'lax';
-    let secure = false;
-
     if (isProd && !isLocalOrigin) {
-      secure = true;
-      // railway.app 도메인 등 크로스 사이트가 확실한 경우만 none 사용
-      const isCrossSite = origin && !origin.includes('notemap') && !origin.includes('railway.app');
-      sameSite = isCrossSite ? 'none' : 'lax';
+      return sessionMiddlewareCrossSite(req, res, next);
     }
-
-    return session({
-      store,
-      secret: process.env.SESSION_SECRET ?? 'change_this_secret',
-      resave: false,
-      saveUninitialized: false,
-      rolling: true,
-      proxy: true,
-      cookie: {
-        httpOnly: true,
-        secure,
-        sameSite,
-        path: '/',
-        maxAge: ttlMs,
-      },
-    })(req, res, next);
+    return sessionMiddlewareLocal(req, res, next);
   });
 
   //스웨거
