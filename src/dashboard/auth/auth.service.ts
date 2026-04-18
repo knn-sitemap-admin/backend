@@ -95,7 +95,7 @@ export class AuthService {
     input: ValidateSessionInput,
   ): Promise<ValidateSessionResult> {
     const logger = new Logger('AuthSession');
-    
+
     // 1) credential 존재/비활성 체크
     const cred = await this.accountCredentialRepository.findOne({
       where: { id: input.credentialId },
