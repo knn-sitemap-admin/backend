@@ -157,7 +157,10 @@ async function bootstrap() {
   const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
   const ttlMs = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
-  const sessionMiddlewareLocal = session({
+  // 운영 환경 판별 강화
+  const isActualProd = process.env.NODE_ENV === 'production' || process.env.IS_DEV !== 'true';
+
+  const sessionMiddleware = session({
     store,
     secret: process.env.SESSION_SECRET ?? 'change_this_secret',
     resave: false,
@@ -166,43 +169,14 @@ async function bootstrap() {
     proxy: true,
     cookie: {
       httpOnly: true,
-      secure: false,
-      sameSite: 'lax',
+      secure: isActualProd, 
+      sameSite: isActualProd ? 'none' : 'lax', 
       path: '/',
       maxAge: ttlMs,
     },
   });
 
-  const sessionMiddlewareCrossSite = session({
-    store,
-    secret: process.env.SESSION_SECRET ?? 'change_this_secret',
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    proxy: true,
-    cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none', // 다시 none으로 고정하여 401 즉시 해결
-      path: '/',
-      maxAge: ttlMs,
-    },
-  });
-
-  app.use((req, res, next) => {
-    const origin = String(req.headers.origin ?? '');
-    const isLocalOrigin =
-      origin.includes('localhost') ||
-      origin.includes('127.0.0.1') ||
-      req.hostname === 'localhost' ||
-      req.hostname.startsWith('192.168.') ||
-      req.hostname.startsWith('10.');
-
-    if (isProd && !isLocalOrigin) {
-      return sessionMiddlewareCrossSite(req, res, next);
-    }
-    return sessionMiddlewareLocal(req, res, next);
-  });
+  app.use(sessionMiddleware);
 
   //스웨거
   const config = new DocumentBuilder()

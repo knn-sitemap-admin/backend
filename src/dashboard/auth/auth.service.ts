@@ -260,16 +260,31 @@ export class AuthService {
   }
 
   async signin(email: string, password: string): Promise<SigninResult> {
+    const logger = new Logger('AuthSignin');
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    logger.log(`[Signin Attempt] Email: ${normalizedEmail}`);
+
     const credential = await this.accountCredentialRepository.findOne({
-      where: { email },
+      where: { email: normalizedEmail },
     });
-    if (!credential || credential.is_disabled) {
-      throw new UnauthorizedException('인증 실패');
+
+    if (!credential) {
+      logger.warn(`[Signin Fail] No User Found for Email: ${email}`);
+      throw new UnauthorizedException('인증 실패 (사용자 없음)');
     }
+
+    if (credential.is_disabled) {
+      logger.warn(`[Signin Fail] Account Disabled: ${email}`);
+      throw new UnauthorizedException('인증 실패 (중지된 계정)');
+    }
+
     const ok = await this.bcrypt.compare(password, credential.password);
     if (!ok) {
-      throw new UnauthorizedException('인증 실패');
+      logger.warn(`[Signin Fail] Password Mismatch: ${email}`);
+      throw new UnauthorizedException('인증 실패 (비밀번호 불일치)');
     }
+
+    logger.log(`[Signin Success] Email: ${email}, Role: ${credential.role}`);
 
     const effectiveRole = await this.resolveEffectiveRole(
       String(credential.id),
