@@ -276,8 +276,6 @@ export class AuthService {
       throw new UnauthorizedException('인증 실패');
     }
 
-    logger.log(`[Signin Success] Email: ${email}, Role: ${credential.role}`);
-
     const effectiveRole = await this.resolveEffectiveRole(
       String(credential.id),
     );
