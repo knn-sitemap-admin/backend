@@ -28,6 +28,7 @@ export class SessionAuthGuard implements CanActivate {
           deviceType: 'mobile',
         };
         req.user = user;
+        // 세션이 있으면 넣어주고, 없어도(Stateless) JWT가 유효하면 통과시킵니다.
         if (req.session) {
           req.session.user = user;
         }
