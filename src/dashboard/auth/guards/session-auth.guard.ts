@@ -16,27 +16,34 @@ export class SessionAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
 
-    let sUser = req.session?.user;
-    let sid = String(req.sessionID ?? '');
-
-    // [JWT 대응 추가] 세션이 없으면 Authorization 헤더 확인
-    if (!sUser || !sid) {
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
+    // 1. [JWT 인증 우선순위] Authorization 헤더 확인
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
         const decoded = await this.authService.verifyToken(token);
         if (decoded) {
-          // 세션 구조와 동일하게 req.user 및 가짜 세션 데이터 구성
-          sUser = {
+          // 토큰이 유효하면 세션 상태와 무관하게 즉시 통과
+          req.user = {
             credentialId: decoded.sub,
             role: decoded.role,
-            deviceType: 'mobile', // 토큰 사용은 모바일 앱으로 간주
+            deviceType: 'mobile',
           };
-          req.session.user = sUser; // 하위 호환성을 위해 세션 객체에도 주입
-          sid = 'JWT_SESSION'; // validateActiveSession 통과를 위한 더미 ID
+          // 기존 세션 코드 호환성을 위해 주입
+          if (req.session) {
+            req.session.user = req.user;
+          }
+          return true;
         }
+      } catch (e) {
+        // 토큰이 유효하지 않은 경우 명시적 예외 처리
+        throw new UnauthorizedException('유효하지 않은 토큰입니다');
       }
     }
+
+    // 2. [세션 인증] 쿠키 기반 인증 시도
+    let sUser = req.session?.user;
+    let sid = String(req.sessionID ?? '');
 
     if (!sUser) {
       throw new UnauthorizedException('로그인이 필요합니다');
