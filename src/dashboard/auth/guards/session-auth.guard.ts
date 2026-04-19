@@ -24,20 +24,21 @@ export class SessionAuthGuard implements CanActivate {
         const decoded = await this.authService.verifyToken(token);
         if (decoded) {
           // 토큰이 유효하면 세션 상태와 무관하게 즉시 통과
-          req.user = {
+          const sUser = {
             credentialId: decoded.sub,
             role: decoded.role,
             deviceType: 'mobile',
           };
+          req.user = sUser;
           // 기존 세션 코드 호환성을 위해 주입
           if (req.session) {
-            req.session.user = req.user;
+            req.session.user = sUser;
           }
           return true;
         }
       } catch (e) {
-        // 토큰이 유효하지 않은 경우 명시적 예외 처리
-        throw new UnauthorizedException('유효하지 않은 토큰입니다');
+        // 📍 진단용: 토큰은 왔는데 검증이 실패한 경우
+        throw new UnauthorizedException('TOKEN_INVALID');
       }
     }
 
@@ -46,7 +47,8 @@ export class SessionAuthGuard implements CanActivate {
     let sid = String(req.sessionID ?? '');
 
     if (!sUser) {
-      throw new UnauthorizedException('로그인이 필요합니다');
+      // 📍 진단용: 토큰도 없고 세션도 없는 경우
+      throw new UnauthorizedException('NO_TOKEN_OR_SESSION');
     }
 
     // JWT로 복구된 경우 DB 세션 검증 생략 혹은 별도 처리
