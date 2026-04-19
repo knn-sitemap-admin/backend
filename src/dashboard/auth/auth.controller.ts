@@ -78,20 +78,20 @@ export class AuthController {
       req.session.save((err: any) => (err ? reject(err) : resolve()));
     });
 
-    // 5.1 수동 쿠키 설정 (express-session 자동 메커니즘이 NestJS와 충돌하는 경우 대비)
-    const secretStr = process.env.SESSION_SECRET ?? 'change_this_secret';
-    const secrets = secretStr.split(',').map(s => s.trim()).filter(Boolean);
-    const primarySecret = secrets[0];
+    // // 5.1 수동 쿠키 설정 (express-session 자동 메커니즘이 NestJS와 충돌하는 경우 대비)
+    // const secretStr = process.env.SESSION_SECRET ?? 'change_this_secret';
+    // const secrets = secretStr.split(',').map(s => s.trim()).filter(Boolean);
+    // const primarySecret = secrets[0];
 
-    // express-session의 cookie-signature 방식 (s:sessionid.sig)
-    const sig = crypto
-      .createHmac('sha256', primarySecret)
-      .update(req.sessionID)
-      .digest('base64')
-      .replace(/=+$/, '');
+    // // express-session의 cookie-signature 방식 (s:sessionid.sig)
+    // const sig = crypto
+    //   .createHmac('sha256', primarySecret)
+    //   .update(req.sessionID)
+    //   .digest('base64')
+    //   .replace(/=+$/, '');
 
-    const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
-    const maxAge = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
+    // const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
+    // const maxAge = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
     const origin = String(req.headers.origin ?? '');
     const isLocalhost =
@@ -118,13 +118,13 @@ export class AuthController {
       cookieSameSite = 'none';
     }
 
-    req.res.cookie('connect.sid', `s:${req.sessionID}.${sig}`, {
-      httpOnly: true,
-      secure: cookieSecure,
-      sameSite: cookieSameSite,
-      path: '/',
-      maxAge,
-    });
+    // req.res.cookie('connect.sid', `s:${req.sessionID}.${sig}`, {
+    //   httpOnly: true,
+    //   secure: cookieSecure,
+    //   sameSite: cookieSameSite,
+    //   path: '/',
+    //   maxAge,
+    // });
 
     // 6 DB에 세션 등록 + 기존 세션 비활성화
     const sessionId = String(req.sessionID);
