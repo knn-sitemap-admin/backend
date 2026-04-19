@@ -27,7 +27,7 @@ function destroySessionById(store: any, sid: string): Promise<void> {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly service: AuthService) {}
+  constructor(private readonly service: AuthService) { }
 
   /**
    * @remarks
@@ -82,20 +82,20 @@ export class AuthController {
     const secretStr = process.env.SESSION_SECRET ?? 'change_this_secret';
     const secrets = secretStr.split(',').map(s => s.trim()).filter(Boolean);
     const primarySecret = secrets[0];
-    
+
     // express-session의 cookie-signature 방식 (s:sessionid.sig)
     const sig = crypto
       .createHmac('sha256', primarySecret)
       .update(req.sessionID)
       .digest('base64')
       .replace(/=+$/, '');
-      
+
     const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
     const maxAge = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
     const origin = String(req.headers.origin ?? '');
-    const isLocalhost = 
-      origin.includes('localhost') || 
+    const isLocalhost =
+      origin.includes('localhost') ||
       origin.includes('127.0.0.1') ||
       req.hostname === 'localhost' ||
       req.hostname === '127.0.0.1' ||
@@ -112,10 +112,10 @@ export class AuthController {
 
     if (process.env.NODE_ENV === 'production' && !isLocalhost) {
       cookieSecure = true;
-      // 프론트엔드가 Railway 업스트림 도메인 등을 사용하여 완전히 다른 도메인일 때만 none 사용
-      // 만약 커스텀 도메인을 쓴다면 기본적으로 lax가 더 안전함
-      const isCrossDomain = origin && !origin.includes('notemap') && !origin.includes('railway.app');
-      cookieSameSite = isCrossDomain ? 'none' : 'lax';
+      // [iPhone/Safari ITP 대응]
+      // Railway 서브도메인 간(frontend-... vs backend-...)은 브라우저에서 Cross-Site로 간주됨.
+      // 따라서 상용 환경에서는 항상 SameSite=None; Secure 설정이 필요함.
+      cookieSameSite = 'none';
     }
 
     req.res.cookie('connect.sid', `s:${req.sessionID}.${sig}`, {
