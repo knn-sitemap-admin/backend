@@ -16,40 +16,32 @@ export class SessionAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
 
-    // 1. [JWT 인증 우선순위] Authorization 헤더 확인
+    // 1. JWT 기반 인증 시도 (쿠키 차단 환경 대응)
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      try {
-        const decoded = await this.authService.verifyToken(token);
-        if (decoded) {
-          // 토큰이 유효하면 세션 상태와 무관하게 즉시 통과
-          const sUser = {
-            credentialId: decoded.sub,
-            role: decoded.role,
-            deviceType: 'mobile',
-          };
-          req.user = sUser;
-          // 기존 세션 코드 호환성을 위해 주입
-          if (req.session) {
-            req.session.user = sUser;
-          }
-          return true;
+      const decoded = await this.authService.verifyToken(token);
+      if (decoded) {
+        const user = {
+          credentialId: decoded.sub,
+          role: decoded.role,
+          deviceType: 'mobile',
+        };
+        req.user = user;
+        if (req.session) {
+          req.session.user = user;
         }
-      } catch (e) {
-        // 📍 진단용: 토큰은 왔는데 검증이 실패한 경우
-        throw new UnauthorizedException('TOKEN_INVALID');
+        return true;
       }
     }
 
-    // 2. [세션 인증] 쿠키 기반 인증 시도
-    let sUser = req.session?.user;
-    let sid = String(req.sessionID ?? '');
-
-    if (!sUser) {
-      // 📍 진단용: 토큰도 없고 세션도 없는 경우
-      throw new UnauthorizedException('NO_TOKEN_OR_SESSION');
+    // 2. 세션 기반 인증 시도
+    if (req.session?.user) {
+      return true;
     }
+
+    throw new UnauthorizedException('로그인이 필요합니다');
+  }
 
     // JWT로 복구된 경우 DB 세션 검증 생략 혹은 별도 처리
     if (sid === 'JWT_SESSION') {
