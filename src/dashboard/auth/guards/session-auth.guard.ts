@@ -36,19 +36,14 @@ export class SessionAuthGuard implements CanActivate {
     }
 
     // 2. 세션 기반 인증 시도
-    if (req.session?.user) {
-      return true;
+    const sUser = req.session?.user;
+    const sid = String(req.sessionID ?? '');
+
+    if (!sUser || !sid) {
+      throw new UnauthorizedException('로그인이 필요합니다');
     }
 
-    throw new UnauthorizedException('로그인이 필요합니다');
-  }
-
-    // JWT로 복구된 경우 DB 세션 검증 생략 혹은 별도 처리
-    if (sid === 'JWT_SESSION') {
-      return true;
-    }
-
-    // 기존 세션 로직 유지
+    // 기존 세션 로직: DB 세션 검증
     let res: any;
     try {
       res = await this.authService.validateActiveSession({
@@ -59,16 +54,11 @@ export class SessionAuthGuard implements CanActivate {
     } catch (e: any) {
       this.logger.error('[SessionAuthGuard] validateActiveSession threw', {
         path: req.originalUrl,
-        method: req.method,
         sid: sid ? `${sid.slice(0, 6)}…` : '',
         credentialId: String(sUser?.credentialId ?? ''),
-        deviceType: sUser?.deviceType ?? '',
-        errName: String(e?.name ?? ''),
         errMessage: String(e?.message ?? e),
-        errCode: e && (e.code ?? e.errno) ? String(e.code ?? e.errno) : '',
-        stack: e?.stack ? String(e.stack) : '',
       });
-      throw e; // 기존 동작 유지(원래 500이던 건 그대로 500)
+      throw e;
     }
 
     if (res.ok) {
@@ -86,7 +76,6 @@ export class SessionAuthGuard implements CanActivate {
       return true;
     }
 
-    // 기존 세션은 그대로 유지
     throw new UnauthorizedException('세션이 만료되었거나 유효하지 않습니다');
   }
 }
