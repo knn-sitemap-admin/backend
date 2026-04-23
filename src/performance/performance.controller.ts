@@ -42,4 +42,10 @@ export class PerformanceController {
     const data = await this.service.getEmployeePerformance(accountId, targetYear);
     return { message: '영업자별 실적 추이', data };
   }
+
+  @Get('available-periods')
+  async availablePeriods() {
+    const data = await this.service.getAvailablePeriods();
+    return { message: '데이터가 존재하는 기간 목록', data };
+  }
 }

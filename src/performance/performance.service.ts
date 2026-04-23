@@ -567,4 +567,62 @@ export class PerformanceService {
       monthlyStats,
     };
   }
+
+  /**
+   * 데이터가 존재하는 연도와 월 목록 조회
+   */
+  async getAvailablePeriods() {
+    // 1. 일정 데이터가 있는 연도/월
+    const scheduleRows = await this.scheduleRepo
+      .createQueryBuilder('s')
+      .select('YEAR(s.start_date)', 'year')
+      .addSelect('MONTH(s.start_date)', 'month')
+      .where('s.is_deleted = :isDeleted', { isDeleted: false })
+      .andWhere("s.meeting_type != '휴무'")
+      .groupBy('year')
+      .addGroupBy('month')
+      .getRawMany<{ year: number; month: number }>();
+
+    // 2. 계약 데이터가 있는 연도/월 (성공한 계약 기준)
+    const contractRows = await this.contractRepo
+      .createQueryBuilder('c')
+      .select('YEAR(c.final_payment_date)', 'year')
+      .addSelect('MONTH(c.final_payment_date)', 'month')
+      .where('c.status = :done', { done: 'done' })
+      .groupBy('year')
+      .addGroupBy('month')
+      .getRawMany<{ year: number; month: number }>();
+
+    // 3. 데이터 통합 및 중복 제거
+    const all = [...scheduleRows, ...contractRows];
+    const yearMonthMap = new Map<number, Set<number>>();
+
+    all.forEach(r => {
+      const y = Number(r.year);
+      const m = Number(r.month);
+      if (!y || !m) return;
+      
+      let monthSet = yearMonthMap.get(y);
+      if (!monthSet) {
+        monthSet = new Set<number>();
+        yearMonthMap.set(y, monthSet);
+      }
+      monthSet.add(m);
+    });
+
+    const years = Array.from(yearMonthMap.keys()).sort((a, b) => b - a);
+    const yearMonths: { year: number; month: number }[] = [];
+    
+    years.forEach(y => {
+      const monthSet = yearMonthMap.get(y);
+      if (monthSet) {
+        const sortedMonths = Array.from(monthSet).sort((a, b) => b - a);
+        sortedMonths.forEach(m => {
+          yearMonths.push({ year: y, month: m });
+        });
+      }
+    });
+
+    return { years, yearMonths };
+  }
 }
