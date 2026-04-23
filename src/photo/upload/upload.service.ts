@@ -281,8 +281,8 @@ export class UploadService {
   }
 
   /** 여러 개의 경로를 URL 배열로 변환 */
-  getFileUrls(pathsOrUrls: (string | null | undefined)[]): string[] {
-    if (!pathsOrUrls?.length) return [];
+  getFileUrls(pathsOrUrls: (string | null | undefined)[] | null | undefined): string[] {
+    if (!pathsOrUrls || !Array.isArray(pathsOrUrls) || pathsOrUrls.length === 0) return [];
     return pathsOrUrls.map(p => this.getFileUrl(p)).filter(Boolean);
   }
 
