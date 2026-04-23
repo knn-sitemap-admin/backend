@@ -52,7 +52,10 @@ export class SchedulesService {
     }
 
     if (query?.assignedStaffId) {
-      qb.andWhere('s.created_by_account_id = :staffId', { staffId: query.assignedStaffId });
+      qb.andWhere('(s.created_by_account_id = :staffId OR s.category = :holidayCat)', { 
+        staffId: query.assignedStaffId,
+        holidayCat: '휴무'
+      });
     }
 
     if (query?.onlyHolidays) {
