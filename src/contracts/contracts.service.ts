@@ -574,7 +574,7 @@ export class ContractsService {
 
       const mySharePercent = myShareMap.get(Number(c.id)) ?? 0;
       const myAmount = Math.round(
-        calc.staffPoolAmount * (mySharePercent / 100),
+        calc.grandTotal * (mySharePercent / 100),
       );
 
       return {
@@ -690,7 +690,7 @@ export class ContractsService {
       (a) => String(a.accountId ?? '') === String(me.id),
     );
     const mySharePercent = my ? Number(my.sharePercent) : 0;
-    const myAmount = Math.round(calc.staffPoolAmount * (mySharePercent / 100));
+    const myAmount = Math.round(calc.grandTotal * (mySharePercent / 100));
 
     const createdBy =
       (contract.createdBy as AccountWithCredential | null) ?? null;

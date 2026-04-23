@@ -227,7 +227,6 @@ export class PerformanceService {
       (
         (CAST(c.rebateUnits AS DECIMAL(18,0)) * ${REBATE_UNIT_AMOUNT})
         - CAST(c.supportAmount AS DECIMAL(18,0))
-        - CAST(c.supportCashAmount AS DECIMAL(18,0))
       )
     `;
 
@@ -241,6 +240,7 @@ export class PerformanceService {
               ELSE (${deltaExpr})
             END
           )
+        - CAST(c.supportCashAmount AS DECIMAL(18,0))
       )
     `;
   }
@@ -249,26 +249,20 @@ export class PerformanceService {
     return `ROUND( (${grandTotalExpr}) * (c.companyPercent / 100) )`;
   }
 
-  private sqlStaffPoolExpr(
-    grandTotalExpr: string,
-    companyAmountExpr: string,
-  ): string {
-    return `( (${grandTotalExpr}) - (${companyAmountExpr}) )`;
-  }
-
-  private sqlMyAmountExpr(staffPoolExpr: string): string {
-    // myAmount = round(staffPool * (sharePercent/100))
-    return `ROUND( (${staffPoolExpr}) * (COALESCE(a.sharePercent, 0) / 100) )`;
-  }
-
-  private sqlGrossSalesContribExpr(grandTotalExpr: string): string {
-    // 개별 기여 매출 = grandTotal * (sharePercent/100)
+  private sqlMyAmountExpr(grandTotalExpr: string): string {
+    // sharePercent는 전체 매출 대비 절대 비율이므로 grandTotal에 직접 곱함
     return `ROUND( (${grandTotalExpr}) * (COALESCE(a.sharePercent, 0) / 100) )`;
   }
 
+  private sqlGrossSalesContribExpr(grandTotalExpr: string): string {
+    // 개별 기여 매출 = 전체 매출 * (내 지분 / 전체 직원 지분 합계)
+    // 전체 직원 지분 합계 = 100 - 회사비율
+    return `ROUND( (${grandTotalExpr}) * (COALESCE(a.sharePercent, 0) / NULLIF(100 - c.companyPercent, 0)) )`;
+  }
+
   private sqlNetProfitContribExpr(companyAmountExpr: string): string {
-    // 개별 기여 순수익(회사의 수익) = companyAmount * (sharePercent/100)
-    return `ROUND( (${companyAmountExpr}) * (COALESCE(a.sharePercent, 0) / 100) )`;
+    // 개별 기여 순수익(회사의 수익) = 회사 수익 * (내 지분 / 전체 직원 지분 합계)
+    return `ROUND( (${companyAmountExpr}) * (COALESCE(a.sharePercent, 0) / NULLIF(100 - c.companyPercent, 0)) )`;
   }
 
   async getSummary(dto: PerformanceFilterDto): Promise<PerformanceSummaryResponse> {
@@ -313,8 +307,7 @@ export class PerformanceService {
     );
 
     // 4) 팀별 실적
-    const staffPoolExpr = this.sqlStaffPoolExpr(grandTotalExpr, companyAmountExpr);
-    const myAmountExpr = this.sqlMyAmountExpr(staffPoolExpr);
+    const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
     const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
     const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
@@ -402,11 +395,7 @@ export class PerformanceService {
 
     const grandTotalExpr = this.sqlGrandTotalExpr();
     const companyAmountExpr = this.sqlCompanyAmountExpr(grandTotalExpr);
-    const staffPoolExpr = this.sqlStaffPoolExpr(
-      grandTotalExpr,
-      companyAmountExpr,
-    );
-    const myAmountExpr = this.sqlMyAmountExpr(staffPoolExpr);
+    const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
     const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
     const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
@@ -506,11 +495,7 @@ export class PerformanceService {
 
     const grandTotalExpr = this.sqlGrandTotalExpr();
     const companyAmountExpr = this.sqlCompanyAmountExpr(grandTotalExpr);
-    const staffPoolExpr = this.sqlStaffPoolExpr(
-      grandTotalExpr,
-      companyAmountExpr,
-    );
-    const myAmountExpr = this.sqlMyAmountExpr(staffPoolExpr);
+    const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
     const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
     const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
