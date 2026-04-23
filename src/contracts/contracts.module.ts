@@ -12,6 +12,7 @@ import { TeamMember } from '../dashboard/accounts/entities/team-member.entity';
 import { ContractAssignee } from './assignees/entities/assignee.entity';
 import { ContractFile } from './files/entities/file.entity';
 import { UploadModule } from '../photo/upload/upload.module';
+import { Schedule } from '../schedules/entities/schedule.entity';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UploadModule } from '../photo/upload/upload.module';
       Account,
       AccountCredential,
       TeamMember,
+      Schedule,
     ]),
     UploadModule,
   ],

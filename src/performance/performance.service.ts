@@ -20,6 +20,7 @@ import { Team } from '../dashboard/accounts/entities/team.entity';
 import { TeamMember } from '../dashboard/accounts/entities/team-member.entity';
 import { Account } from '../dashboard/accounts/entities/account.entity';
 import { AccountCredential } from '../dashboard/accounts/entities/account-credential.entity';
+import { Schedule } from 'src/schedules/entities/schedule.entity';
 
 const TAX_FACTOR = 0.967;
 const VAT_RATE = 0.1;
@@ -66,7 +67,102 @@ export class PerformanceService {
     private readonly accountRepo: Repository<Account>,
     @InjectRepository(AccountCredential)
     private readonly credentialRepo: Repository<AccountCredential>,
-  ) {}
+    @InjectRepository(Schedule)
+    private readonly scheduleRepo: Repository<Schedule>,
+  ) { }
+
+  async getPlatformStatistics(dto: PerformanceFilterDto) {
+    const range = this.resolveRange(dto);
+    const { accountId } = dto;
+
+    const query = this.scheduleRepo
+      .createQueryBuilder('s')
+      .leftJoin('contracts', 'c', 'c.scheduleId = s.id')
+      .select("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END", 'platform')
+      // 계약 완료 (해당 일정에 연결된 계약이 done이거나, 동일인/현장으로 성사된 건이 있는 경우)
+      .addSelect(`
+        COUNT(DISTINCT CASE 
+          WHEN c.status = 'done' OR EXISTS (
+            SELECT 1 FROM contracts c2 
+            WHERE c2.customerPhone = s.customer_phone 
+            AND c2.siteName = s.location 
+            AND c2.status = 'done'
+          ) THEN s.id 
+          ELSE NULL END
+        )`, 'contracted')
+      // 부결 (연결된 계약이 rejected이고, 동일인/현장으로 성사된 건이 없는 경우)
+      .addSelect(`
+        COUNT(DISTINCT CASE 
+          WHEN c.status = 'rejected' AND NOT EXISTS (
+            SELECT 1 FROM contracts c3 
+            WHERE c3.customerPhone = s.customer_phone 
+            AND c3.siteName = s.location 
+            AND c3.status = 'done'
+          ) THEN s.id 
+          ELSE NULL END
+        )`, 'rejected')
+      // 취소 (일정/계약이 canceled이고, 동일인/현장으로 성사된 건이 없는 경우)
+      .addSelect(`
+        COUNT(DISTINCT CASE 
+          WHEN (s.status = 'canceled' OR c.status = 'canceled') AND NOT EXISTS (
+            SELECT 1 FROM contracts c4 
+            WHERE c4.customerPhone = s.customer_phone 
+            AND c4.siteName = s.location 
+            AND c4.status = 'done'
+          ) THEN s.id 
+          ELSE NULL END
+        )`, 'canceled')
+      // 신규 (정상 상태, 미팅타입 '신규', 계약 없음, 동일인/현장 성공 건 없음)
+      .addSelect(`
+        COUNT(DISTINCT CASE 
+          WHEN s.status = 'normal' AND s.meeting_type = '신규' AND c.id IS NULL AND NOT EXISTS (
+            SELECT 1 FROM contracts c5 
+            WHERE c5.customerPhone = s.customer_phone 
+            AND c5.siteName = s.location 
+            AND c5.status = 'done'
+          ) THEN s.id 
+          ELSE NULL END
+        )`, 'new_meeting')
+      // 재미팅 (정상 상태, 미팅타입 '재미팅', 계약 없음, 동일인/현장 성공 건 없음)
+      .addSelect(`
+        COUNT(DISTINCT CASE 
+          WHEN s.status = 'normal' AND s.meeting_type = '재미팅' AND c.id IS NULL AND NOT EXISTS (
+            SELECT 1 FROM contracts c6 
+            WHERE c6.customerPhone = s.customer_phone 
+            AND c6.siteName = s.location 
+            AND c6.status = 'done'
+          ) THEN s.id 
+          ELSE NULL END
+        )`, 're_meeting')
+      .where('s.is_deleted = :isDeleted', { isDeleted: false })
+      .andWhere("s.meeting_type != '휴무'")
+      .andWhere('s.start_date >= :s AND s.start_date <= :e', {
+        s: range.startDate,
+        e: range.endDate,
+      });
+
+    if (accountId) {
+      query.andWhere('s.created_by_account_id = :aid', { aid: accountId });
+    }
+
+    const rows = await query
+      .groupBy("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END")
+      .orderBy('contracted', 'DESC')
+      .getRawMany();
+
+    return {
+      resolvedRange: range,
+      statistics: rows.map(r => ({
+        platform: r.platform || '기타',
+        newCount: Number(r.new_meeting || 0),
+        reCount: Number(r.re_meeting || 0),
+        canceledCount: Number(r.canceled || 0),
+        contractedCount: Number(r.contracted || 0),
+        rejectedCount: Number(r.rejected || 0),
+        totalCount: Number(r.new_meeting || 0) + Number(r.re_meeting || 0) + Number(r.canceled || 0) + Number(r.contracted || 0) + Number(r.rejected || 0)
+      }))
+    };
+  }
 
   private resolveRange(dto: PerformanceFilterDto): ResolvedRange {
     const type: FilterType = dto.filterType ?? 'THIS_MONTH';

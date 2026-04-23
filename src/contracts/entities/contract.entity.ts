@@ -9,10 +9,12 @@ import {
   JoinColumn,
   RelationId,
   OneToMany,
+  OneToOne,
 } from 'typeorm';
 import { Type } from 'class-transformer';
 import { Account } from '../../dashboard/accounts/entities/account.entity';
 import { ContractFile } from '../files/entities/file.entity';
+import { Schedule } from '../../schedules/entities/schedule.entity';
 
 export type ContractStatus = 'ongoing' | 'done' | 'canceled' | 'rejected';
 
@@ -103,6 +105,13 @@ export class Contract {
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   account!: string | null;
+
+  @OneToOne(() => Schedule, (s) => s.contract, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'scheduleId' })
+  schedule?: Schedule;
+
+  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  scheduleId!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

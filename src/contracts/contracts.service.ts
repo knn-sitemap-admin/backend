@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -21,6 +22,7 @@ import { ContractFile } from './files/entities/file.entity';
 import { TeamMember } from '../dashboard/accounts/entities/team-member.entity';
 import { maskIfDisabled } from '../common/mappers/account-visibility';
 import { UploadService } from '../photo/upload/upload.service';
+import { Schedule } from 'src/schedules/entities/schedule.entity';
 
 type Role = 'admin' | 'manager' | 'staff';
 
@@ -40,6 +42,7 @@ type ListItem = {
 
   siteName: string;
   siteAddress: string;
+  salesTeamPhone: string;
 
   // 원본
   brokerageFee: number;
@@ -93,6 +96,8 @@ export class ContractsService {
     private readonly accountRepo: Repository<Account>,
     @InjectRepository(TeamMember)
     private readonly teamMemberRepo: Repository<TeamMember>,
+    @InjectRepository(Schedule)
+    private readonly scheduleRepo: Repository<Schedule>,
     private readonly uploadService: UploadService,
   ) { }
 
@@ -144,10 +149,10 @@ export class ContractsService {
 
       const sysRole = acc?.credential?.role ?? 'staff';
       const teamRole = tm?.team_role || null;
-      
+
       // 실제 역할 결정: 시스템 매니저/어드민이거나, 팀 내 직함이 매니저면 'manager' 취급
-      const finalRole: Role = (sysRole === 'admin' || sysRole === 'manager' || teamRole === 'manager') 
-        ? 'manager' 
+      const finalRole: Role = (sysRole === 'admin' || sysRole === 'manager' || teamRole === 'manager')
+        ? 'manager'
         : 'staff';
 
       const list = map.get(Number(a.contractId)) ?? [];
@@ -281,6 +286,7 @@ export class ContractsService {
         salesTeamPhone: dto.salesTeamPhone,
         bank: dto.bank ?? null,
         account: dto.account ?? null,
+        scheduleId: dto.scheduleId ?? null,
       });
 
       const saved = await cRepo.save(created);
@@ -412,6 +418,7 @@ export class ContractsService {
 
         siteName: c.siteName,
         siteAddress: c.siteAddress,
+        salesTeamPhone: c.salesTeamPhone,
 
         bank: c.bank ?? null,
         account: c.account ?? null,
@@ -475,7 +482,7 @@ export class ContractsService {
           .where('tm.team_id IN (:...teamIds)', { teamIds })
           .select('tm.account_id', 'accountId')
           .getRawMany<{ accountId: string }>();
-        
+
         const memberIds = members.map(m => String(m.accountId));
         targetAccountIds = Array.from(new Set([...targetAccountIds, ...memberIds]));
       }
@@ -586,6 +593,7 @@ export class ContractsService {
 
         siteName: c.siteName,
         siteAddress: c.siteAddress,
+        salesTeamPhone: c.salesTeamPhone,
 
         bank: c.bank ?? null,
         account: c.account ?? null,
@@ -889,6 +897,53 @@ export class ContractsService {
         if (toDelete.length > 0) {
           await this.uploadService.deleteFiles(toDelete);
         }
+      }
+
+      // [ 양방향 동기화 ] 계약 수정 시 연결된 일정 및 계약 소유자 정보 동기화
+      try {
+        if (contract.scheduleId || dto.assignees !== undefined || dto.customerPhone !== undefined) {
+          const firstAssigneeId = (dto.assignees && dto.assignees.length > 0) ? String(dto.assignees[0].accountId) : null;
+
+          // 1. 계약 자체의 소유자(createdBy) 동기화 (달력 잔금일 라벨 색상/이름용)
+          if (firstAssigneeId) {
+            console.log(`[Reverse-Sync] 계약(ID: ${id})의 소유자를 새 담당자(ID: ${firstAssigneeId})로 변경 중...`);
+            contract.createdBy = { id: firstAssigneeId } as any;
+            await cRepo.save(contract);
+          }
+
+          // 2. 연결된 일정(Schedule) 동기화
+          if (contract.scheduleId) {
+            console.log(`[Reverse-Sync] 연결된 일정(ID: ${contract.scheduleId})을 찾아 동기화 시도...`);
+            const linkedSchedule = await this.scheduleRepo.findOne({ where: { id: Number(contract.scheduleId) as any } });
+            
+            if (linkedSchedule) {
+              let isScheduleUpdated = false;
+              
+              if (firstAssigneeId && String(linkedSchedule.created_by_account_id) !== firstAssigneeId) {
+                console.log(`[Reverse-Sync] 일정 담당자 변경: ${linkedSchedule.created_by_account_id} -> ${firstAssigneeId}`);
+                linkedSchedule.created_by_account_id = firstAssigneeId;
+                isScheduleUpdated = true;
+              }
+              
+              if (dto.customerPhone !== undefined && linkedSchedule.customer_phone !== dto.customerPhone) {
+                console.log(`[Reverse-Sync] 일정 고객 연락처 동기화: ${dto.customerPhone}`);
+                linkedSchedule.customer_phone = dto.customerPhone;
+                isScheduleUpdated = true;
+              }
+
+              if (isScheduleUpdated) {
+                await this.scheduleRepo.save(linkedSchedule);
+                console.log(`[Reverse-Sync] 연결된 일정 동기화 완료`);
+              }
+            } else {
+              console.warn(`[Reverse-Sync] 연결된 일정(ID: ${contract.scheduleId})을 DB에서 찾을 수 없습니다.`);
+            }
+          }
+        }
+      } catch (revSyncError) {
+        console.error('[Reverse-Sync Error] 계약 -> 일정 동기화 중 오류 발생:', revSyncError);
+        // 사용자에게 상세 사유 전달
+        throw new InternalServerErrorException(`일정 동기화 실패: ${revSyncError.message}`);
       }
     });
 

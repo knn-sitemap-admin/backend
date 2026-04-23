@@ -12,6 +12,12 @@ export class PerformanceController {
     return { message: '실적 요약', data };
   }
 
+  @Get('platform-statistics')
+  async platformStatistics(@Query() dto: PerformanceFilterDto) {
+    const data = await this.service.getPlatformStatistics(dto);
+    return { message: '플랫폼별 통계', data };
+  }
+
   @Get('teams/:teamId')
   async teamEmployees(
     @Param('teamId') teamId: string,

@@ -5,6 +5,7 @@ import {
   MaxLength,
   IsBoolean,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateScheduleDto {
   @IsString()
@@ -38,7 +39,11 @@ export class CreateScheduleDto {
 
   @IsString()
   @IsOptional()
-  customerPhoneLast4?: string;
+  customerPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  platform?: string;
 
   @IsString()
   @IsOptional()
@@ -85,7 +90,11 @@ export class UpdateScheduleDto {
 
   @IsString()
   @IsOptional()
-  customerPhoneLast4?: string;
+  customerPhone?: string;
+
+  @IsString()
+  @IsOptional()
+  platform?: string;
 
   @IsString()
   @IsOptional()
@@ -94,6 +103,10 @@ export class UpdateScheduleDto {
   @IsString()
   @IsOptional()
   createdByAccountId?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: 'normal' | 'canceled';
 }
 
 export class ScheduleQueryDto {
@@ -104,4 +117,13 @@ export class ScheduleQueryDto {
   @IsDateString()
   @IsOptional()
   to?: string;
+
+  @IsString()
+  @IsOptional()
+  assignedStaffId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  onlyHolidays?: boolean;
 }

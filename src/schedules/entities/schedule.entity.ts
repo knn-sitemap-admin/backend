@@ -6,8 +6,10 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  OneToOne,
 } from 'typeorm';
 import { Account } from '../../dashboard/accounts/entities/account.entity';
+import { Contract } from '../../contracts/entities/contract.entity';
 
 @Entity('schedules')
 export class Schedule {
@@ -25,8 +27,10 @@ export class Schedule {
   @Column({ type: 'varchar', length: 255, nullable: true })
   location!: string | null;
 
-  @Column({ type: 'varchar', length: 10, nullable: true })
-  customer_phone_last_4!: string | null;
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  customer_phone!: string | null;
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  platform!: string | null;
 
   @Column({ type: 'datetime' })
   start_date!: Date;
@@ -59,6 +63,12 @@ export class Schedule {
   @Column({ type: 'varchar', length: 20, nullable: true, default: '신규' })
   meeting_type!: string | null;
 
+  @Column({ type: 'varchar', length: 20, default: 'normal' })
+  status!: 'normal' | 'canceled';
+
   @Column({ type: 'datetime', nullable: true })
   deleted_at!: Date | null;
+
+  @OneToOne(() => Contract, (c) => c.schedule)
+  contract?: Contract;
 }

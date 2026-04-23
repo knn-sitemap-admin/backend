@@ -28,4 +28,7 @@ export class PerformanceFilterDto {
   @Min(1)
   @Max(4)
   quarter?: number;
+
+  @IsOptional()
+  accountId?: string;
 }

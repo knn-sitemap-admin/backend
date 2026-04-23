@@ -115,6 +115,10 @@ export class CreateContractDto {
   account?: string;
 
   @IsOptional()
+  @IsString()
+  scheduleId?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(50)
   @IsUrl({ require_protocol: true }, { each: true })
