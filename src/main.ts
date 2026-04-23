@@ -83,6 +83,7 @@ async function bootstrap() {
       'Accept',
       'Authorization',
       'x-bootstrap-token',
+      '_t',
     ],
     credentials: true,
     exposedHeaders: ['Set-Cookie', 'Authorization'],
