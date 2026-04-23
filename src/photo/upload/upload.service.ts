@@ -44,6 +44,8 @@ export class UploadService {
     (process.env.S3_OBJECT_PUBLIC ?? 'false') === 'true';
   private readonly usePathStyle: boolean =
     (process.env.AWS_S3_FORCE_PATH_STYLE ?? 'false') === 'true';
+  private readonly cdnBaseUrl: string =
+    process.env.CDN_BASE_URL?.replace(/\/$/, '') || '';
 
   constructor() {
     this.region = process.env.AWS_REGION || 'ap-northeast-2';
@@ -225,9 +227,14 @@ export class UploadService {
 
         await this.s3.send(cmd);
 
-        const url = this.isPublic
-          ? `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${encodeURI(key)}`
-          : `s3://${this.bucketName}/${key}`;
+        let url: string;
+        if (this.cdnBaseUrl) {
+          url = `${this.cdnBaseUrl}/${encodeURI(key)}`;
+        } else if (this.isPublic) {
+          url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${encodeURI(key)}`;
+        } else {
+          url = `s3://${this.bucketName}/${key}`;
+        }
 
         urls.push(url);
         keys.push(key);
@@ -266,6 +273,12 @@ export class UploadService {
       const parts = url.split('.amazonaws.com/');
       if (parts.length < 2) return null;
       return decodeURI(parts[1]);
+    }
+
+    // CDN_BASE_URL 형태 처리
+    if (this.cdnBaseUrl && url.startsWith(this.cdnBaseUrl)) {
+      const relativePath = url.substring(this.cdnBaseUrl.length).replace(/^\//, '');
+      return decodeURI(relativePath);
     }
 
     // 기타: 도메인이 포함된 경우 (CloudFront 등 커스텀 도메인 대응이 필요할 수 있음)
