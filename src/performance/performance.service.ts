@@ -278,7 +278,7 @@ export class PerformanceService {
       .addSelect(`COALESCE(SUM(${companyAmountExpr}), 0)`, 'netProfit')
       .addSelect(`COUNT(c.id)`, 'contractCount')
       .where('c.status = :done', { done: 'done' })
-      .andWhere('c.finalPaymentDate >= :s AND c.finalPaymentDate <= :e', {
+      .andWhere('c.contractDate >= :s AND c.contractDate <= :e', {
         s: range.startDate,
         e: range.endDate,
       })
@@ -321,8 +321,8 @@ export class PerformanceService {
         `
       c.id = a.contract_id
       AND c.status = :done
-      AND c.final_payment_date >= :s
-      AND c.final_payment_date <= :e
+      AND c.contract_date >= :s
+      AND c.contract_date <= :e
     `,
         {
           done: 'done',
@@ -417,8 +417,8 @@ export class PerformanceService {
         `
         c.id = a.contract_id
         AND c.status = :done
-        AND c.final_payment_date >= :s
-        AND c.final_payment_date <= :e
+        AND c.contract_date >= :s
+        AND c.contract_date <= :e
       `,
         {
           done: 'done',
@@ -496,28 +496,26 @@ export class PerformanceService {
     const grandTotalExpr = this.sqlGrandTotalExpr();
     const companyAmountExpr = this.sqlCompanyAmountExpr(grandTotalExpr);
     const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
-    const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
+    
+    // 영업자 개인 뷰에서는 '기여 매출'을 쪼개지 않고 해당 계약의 전체 금액(grandTotal)으로 보여줌
+    const gSalesFullExpr = grandTotalExpr; 
     const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
 
     // 월별 실적 조회
-    // MySQL/MariaDB 기준: MONTH(c.final_payment_date)
-    // SQLite: substr(final_payment_date, 6, 2)
-    // 여기서는 범용적으로 YEAR/MONTH를 다루기 위해 TypeORM의 raw query or specialized selection 사용
-    // DB가 MariaDB/MySQL이라 가정 (이전 코드에서 padding 등을 처리하는 방식이 그러함)
     const rows = await this.contractRepo
       .createQueryBuilder('c')
       .innerJoin(ContractAssignee, 'a', 'a.contract_id = c.id')
-      .select('MONTH(c.final_payment_date)', 'month')
+      .select('MONTH(c.contract_date)', 'month')
       .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
-      .addSelect(`COALESCE(SUM(${gSalesContribExpr}), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(${gSalesFullExpr}), 0)`, 'grossSales')
       .addSelect(`COALESCE(SUM(${nProfitContribExpr}), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
       .where('a.account_id = :aid', { aid: String(accountId) })
       .andWhere('c.status = :done', { done: 'done' })
-      .andWhere('c.final_payment_date >= :s AND c.final_payment_date <= :e', {
+      .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
         s: startDate,
         e: endDate,
       })
@@ -571,8 +569,8 @@ export class PerformanceService {
     // 2. 계약 데이터가 있는 연도/월 (성공한 계약 기준)
     const contractRows = await this.contractRepo
       .createQueryBuilder('c')
-      .select('YEAR(c.final_payment_date)', 'year')
-      .addSelect('MONTH(c.final_payment_date)', 'month')
+      .select('YEAR(c.contract_date)', 'year')
+      .addSelect('MONTH(c.contract_date)', 'month')
       .where('c.status = :done', { done: 'done' })
       .groupBy('year')
       .addGroupBy('month')
