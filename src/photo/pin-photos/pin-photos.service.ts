@@ -16,8 +16,12 @@ export class PinPhotosService {
     private readonly uploadService: UploadService,
   ) { }
 
-  findByGroup(groupId: string) {
-    return this.repo.find({ where: { groupId }, order: { sortOrder: 'ASC' } });
+  async findByGroup(groupId: string) {
+    const photos = await this.repo.find({ where: { groupId }, order: { sortOrder: 'ASC' } });
+    return photos.map(p => ({
+      ...p,
+      url: this.uploadService.getFileUrl(p.url),
+    }));
   }
 
   async add(groupId: string, dto: CreatePinPhotoDto) {
@@ -79,10 +83,14 @@ export class PinPhotosService {
 
     // 3) 결과 통합 및 반환 (프론트엔드 assertArray 대응을 위해 배열로 반환)
     const updatedIds = patches.map((p) => p.id);
-    return await this.repo.find({
+    const photos = await this.repo.find({
       where: { id: In(updatedIds) },
       order: { sortOrder: 'ASC' },
     });
+    return photos.map(p => ({
+      ...p,
+      url: this.uploadService.getFileUrl(p.url),
+    }));
   }
 
   async remove(photoIds: string[]) {

@@ -725,7 +725,7 @@ export class ContractsService {
       bank: contract.bank ?? null,
       account: contract.account ?? null,
 
-      urls: files.map((f) => f.url),
+      urls: this.uploadService.getFileUrls(files.map((f) => f.url)),
 
       assignees: assignees.map((a) => {
         const acc = (a.account as AccountWithCredential | null) ?? null;

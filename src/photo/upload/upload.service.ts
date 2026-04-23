@@ -257,6 +257,35 @@ export class UploadService {
     return { urls, keys, domain, userId };
   }
 
+  /**
+   * 저장된 경로(Key) 혹은 기존 URL을 접근 가능한 CDN URL로 변환합니다.
+   * DB에서 데이터를 불러와 클라이언트에 전달할 때 사용합니다.
+   */
+  getFileUrl(pathOrUrl: string | null | undefined): string {
+    if (!pathOrUrl) return '';
+
+    // 1. 이미 전체 HTTP 주소인 경우 (S3 혹은 기존 CDN 주소)
+    if (pathOrUrl.startsWith('http')) {
+      // 혹시 S3 직접 주소라면 CDN 주소로 치환 시도 (선택 사항)
+      if (this.cdnBaseUrl && pathOrUrl.includes('.s3.') && pathOrUrl.includes('.amazonaws.com/')) {
+        const key = this.extractKeyFromUrl(pathOrUrl);
+        if (key) return `${this.cdnBaseUrl}/${encodeURI(key)}`;
+      }
+      return pathOrUrl;
+    }
+
+    // 2. 상대 경로(Key)인 경우 CDN 베이스 주소를 붙임
+    const base = this.cdnBaseUrl || `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
+    const cleanPath = pathOrUrl.replace(/^\//, '');
+    return `${base}/${encodeURI(cleanPath)}`;
+  }
+
+  /** 여러 개의 경로를 URL 배열로 변환 */
+  getFileUrls(pathsOrUrls: (string | null | undefined)[]): string[] {
+    if (!pathsOrUrls?.length) return [];
+    return pathsOrUrls.map(p => this.getFileUrl(p)).filter(Boolean);
+  }
+
   /** URL에서 S3 Key 추출 */
   extractKeyFromUrl(url: string): string | null {
     if (!url) return null;

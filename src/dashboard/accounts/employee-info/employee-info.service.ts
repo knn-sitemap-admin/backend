@@ -1080,13 +1080,13 @@ export class EmployeeInfoService {
             addressLine: acc.address_line ?? null,
             bankName: acc.salary_bank_name ?? null,
             bankAccountNo: acc.salary_account ?? null,
-            photoUrl: acc.profile_url ?? null,
+            photoUrl: this.uploadService.getFileUrl(acc.profile_url),
             positionRank: acc.position_rank, // enum 값 그대로
             docUrlResidentRegistration:
-              acc.doc_url_resident_registration ?? null, // 등본
-            docUrlResidentAbstract: acc.doc_url_resident_abstract ?? null, // 초본
-            docUrlIdCard: acc.doc_url_id_card ?? null, // 신분증
-            docUrlFamilyRelation: acc.doc_url_family_relation ?? null, // 가족관계증명서
+              this.uploadService.getFileUrls(acc.doc_url_resident_registration), // 등본
+            docUrlResidentAbstract: this.uploadService.getFileUrls(acc.doc_url_resident_abstract), // 초본
+            docUrlIdCard: this.uploadService.getFileUrls(acc.doc_url_id_card), // 신분증
+            docUrlFamilyRelation: this.uploadService.getFileUrls(acc.doc_url_family_relation), // 가족관계증명서
           }
         : null,
     };
@@ -1370,7 +1370,7 @@ export class EmployeeInfoService {
         accountId: id,
         credentialId: r.credentialId,
         role: r.role,
-        profileUrl: r.profileUrl ?? null,
+        profileUrl: this.uploadService.getFileUrl(r.profileUrl),
         name: r.name ?? null,
         positionRank: r.positionRank ?? null,
         teamName: r.teamName ?? '미소속',
