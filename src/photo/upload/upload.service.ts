@@ -89,13 +89,13 @@ export class UploadService {
       decoded = original;
     }
 
-    // 2. S3 Key 안전화: 영문, 숫자, 하이픈(-), 언더스코어(_), 점(.)만 허용
+    // 2. S3 Key 안전화: 영문, 숫자, 하이픈(-), 언더스코어(_), 점(.), 한글 허용
     const base = path.basename(decoded);
     const ext = path.extname(base);
     const nameOnly = path.basename(base, ext);
 
-    // 영문/숫자/하이픈/언더스코어 이외의 모든 문자(한글 포함) 제거
-    const safeName = nameOnly.replace(/[^a-zA-Z0-9\-_]/g, '');
+    // 영문/숫자/하이픈/언더스코어/한글 이외의 모든 문자 제거
+    const safeName = nameOnly.replace(/[^a-zA-Z0-9\-_\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g, '');
 
     // 파일명이 완전히 비어버리는 경우 방지
     const finalBase = safeName || 'file';
@@ -264,20 +264,35 @@ export class UploadService {
   getFileUrl(pathOrUrl: string | null | undefined): string {
     if (!pathOrUrl) return '';
 
+    const base = this.cdnBaseUrl || `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
+
     // 1. 이미 전체 HTTP 주소인 경우 (S3 혹은 기존 CDN 주소)
     if (pathOrUrl.startsWith('http')) {
-      // 혹시 S3 직접 주소라면 CDN 주소로 치환 시도 (선택 사항)
-      if (this.cdnBaseUrl && pathOrUrl.includes('.s3.') && pathOrUrl.includes('.amazonaws.com/')) {
+      const isS3 = pathOrUrl.includes('.s3.') && pathOrUrl.includes('.amazonaws.com/');
+      const isCdn = this.cdnBaseUrl && pathOrUrl.startsWith(this.cdnBaseUrl);
+
+      if (isS3 || isCdn) {
         const key = this.extractKeyFromUrl(pathOrUrl);
-        if (key) return `${this.cdnBaseUrl}/${encodeURI(key)}`;
+        if (key) {
+          try {
+            // double encoding 방지 및 CDN 주소로 통일
+            return `${base}/${encodeURI(decodeURI(key))}`;
+          } catch {
+            return `${base}/${encodeURI(key)}`;
+          }
+        }
       }
       return pathOrUrl;
     }
 
     // 2. 상대 경로(Key)인 경우 CDN 베이스 주소를 붙임
-    const base = this.cdnBaseUrl || `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
     const cleanPath = pathOrUrl.replace(/^\//, '');
-    return `${base}/${encodeURI(cleanPath)}`;
+    try {
+      // double encoding 방지: 이미 인코딩된 경우를 위해 decode 후 다시 encode
+      return `${base}/${encodeURI(decodeURI(cleanPath))}`;
+    } catch {
+      return `${base}/${encodeURI(cleanPath)}`;
+    }
   }
 
   /** 여러 개의 경로를 URL 배열로 변환 */
