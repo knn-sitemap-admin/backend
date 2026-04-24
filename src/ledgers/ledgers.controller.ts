@@ -21,7 +21,8 @@ export class LedgersController {
   @Get()
   async findAll(@Req() req: any) {
     const credentialId = String(req.session?.user?.credentialId ?? '');
-    const data = await this.ledgersService.findAll(credentialId);
+    const role = req.session?.user?.role ?? 'staff';
+    const data = await this.ledgersService.findAll(credentialId, role);
     return { message: '가계부 목록 조회 성공', data };
   }
 

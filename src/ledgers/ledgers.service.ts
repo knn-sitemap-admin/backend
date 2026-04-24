@@ -10,9 +10,10 @@ export class LedgersService {
     private readonly ledgerRepository: Repository<Ledger>,
   ) {}
 
-  async findAll(credentialId: string): Promise<Ledger[]> {
+  async findAll(credentialId: string, role?: string): Promise<Ledger[]> {
+    const where = role === 'admin' ? {} : { credentialId };
     return this.ledgerRepository.find({
-      where: { credentialId },
+      where,
       order: { entryDate: 'DESC', createdAt: 'DESC' },
     });
   }
