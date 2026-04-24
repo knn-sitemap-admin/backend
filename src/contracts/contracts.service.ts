@@ -396,6 +396,11 @@ export class ContractsService {
       qb.andWhere('c.contractDate >= :df', { df: dto.dateFrom });
     if (dto.dateTo) qb.andWhere('c.contractDate <= :dt', { dt: dto.dateTo });
 
+    if (dto.paymentDateFrom)
+      qb.andWhere('c.finalPaymentDate >= :pdf', { pdf: dto.paymentDateFrom });
+    if (dto.paymentDateTo)
+      qb.andWhere('c.finalPaymentDate <= :pdt', { pdt: dto.paymentDateTo });
+
     const dataQb = qb
       .clone()
       .orderBy(orderBy, orderDir)

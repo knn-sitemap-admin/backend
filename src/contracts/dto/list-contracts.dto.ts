@@ -25,6 +25,14 @@ export class ListContractsDto {
   dateTo?: string; //끝나는일
 
   @IsOptional()
+  @IsString()
+  paymentDateFrom?: string; // 잔금일 시작
+
+  @IsOptional()
+  @IsString()
+  paymentDateTo?: string; // 잔금일 종료
+
+  @IsOptional()
   @IsIn(['ongoing', 'done', 'canceled', 'rejected'])
   status?: 'ongoing' | 'done' | 'canceled' | 'rejected'; //상태
 
