@@ -39,6 +39,12 @@ export class ContractsController {
     return { message: '계약 생성됨', data };
   }
 
+  @Get('filter-options')
+  async getFilterOptions() {
+    const data = await this.service.getFilterOptions();
+    return { data };
+  }
+
   // 전체 리스트(관리자/매니저)
   @Get()
   async listAll(

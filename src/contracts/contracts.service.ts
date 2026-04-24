@@ -101,6 +101,34 @@ export class ContractsService {
     private readonly uploadService: UploadService,
   ) { }
 
+  /**
+   * 계약 데이터가 존재하는 연도 및 월 목록 조회
+   */
+  async getFilterOptions() {
+    const results = await this.contractRepo
+      .createQueryBuilder('c')
+      .select('EXTRACT(YEAR FROM c.contractDate)', 'year')
+      .addSelect('EXTRACT(MONTH FROM c.contractDate)', 'month')
+      .where('c.contractDate IS NOT NULL')
+      .groupBy('year')
+      .addGroupBy('month')
+      .orderBy('year', 'DESC')
+      .addOrderBy('month', 'ASC')
+      .getRawMany();
+
+    const yearMonthMap: Record<string, string[]> = {};
+    results.forEach((r) => {
+      const y = String(r.year);
+      const m = String(r.month);
+      if (!yearMonthMap[y]) {
+        yearMonthMap[y] = [];
+      }
+      yearMonthMap[y].push(m);
+    });
+
+    return yearMonthMap;
+  }
+
   private async resolveAccountByCredentialIdOrThrow(
     credentialId: string,
   ): Promise<Account> {
