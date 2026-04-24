@@ -243,4 +243,49 @@ export class SettlementsService {
       return settlementRepo.save(settlement);
     });
   }
+
+  async getSettlementDetail(accountId: string, year: number, month: number) {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const grandTotalExpr = this.sqlGrandTotalExpr();
+    const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
+
+    const detailRows = await this.contractRepo
+      .createQueryBuilder('c')
+      .innerJoin(ContractAssignee, 'a', 'a.contract_id = c.id')
+      .select([
+        'c.id as contractId',
+        'c.siteName as propertyName',
+        'c.contract_date as contractDate',
+        'c.brokerageFee as brokerageFee',
+        'c.rebateUnits as rebateUnits',
+        'c.supportAmount as supportAmount',
+        'c.supportCashAmount as supportCashAmount',
+        'c.vatEnabled as vatEnabled',
+        'c.isTaxed as isTaxed',
+        'a.sharePercent as sharePercent',
+      ])
+      .addSelect(myAmountExpr, 'myAmount')
+      .addSelect(grandTotalExpr, 'grandTotal')
+      .where('c.status = :done', { done: 'done' })
+      .andWhere('a.account_id = :aid', { aid: accountId })
+      .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
+        s: startDate,
+        e: endDate,
+      })
+      .orderBy('c.contract_date', 'ASC')
+      .getRawMany();
+
+    return detailRows.map(row => ({
+      ...row,
+      contractDate: row.contractDate instanceof Date 
+        ? row.contractDate.toISOString().split('T')[0] 
+        : String(row.contractDate).split('T')[0],
+      myAmount: Number(row.myAmount),
+      grandTotal: Number(row.grandTotal),
+      sharePercent: Number(row.sharePercent),
+    }));
+  }
 }

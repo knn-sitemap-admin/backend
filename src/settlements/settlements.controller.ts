@@ -47,4 +47,14 @@ export class SettlementsController {
     const credentialId = String(req.session?.user?.credentialId ?? '');
     return this.settlementsService.updateStatus(id, status, credentialId);
   }
+
+  @Roles(SystemRole.ADMIN)
+  @Get('detail')
+  async getDetail(
+    @Query('accountId') accountId: string,
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+  ) {
+    return this.settlementsService.getSettlementDetail(accountId, year, month);
+  }
 }
