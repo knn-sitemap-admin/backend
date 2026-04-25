@@ -41,15 +41,14 @@ export class SchedulesService {
       .orderBy('s.start_date', 'ASC');
 
     if (query?.from && query?.to) {
-      // 시작일이 종료일보다 작거나 같고, 종료일이 시작일보다 크거나 같은 경우 (겹치는 구간)
       qb.andWhere('s.start_date <= :to AND s.end_date >= :from', {
-        from: query.from,
-        to: query.to,
+        from: `${query.from} 00:00:00`,
+        to: `${query.to} 23:59:59`,
       });
     } else if (query?.from) {
-      qb.andWhere('s.end_date >= :from', { from: query.from });
+      qb.andWhere('s.end_date >= :from', { from: `${query.from} 00:00:00` });
     } else if (query?.to) {
-      qb.andWhere('s.start_date <= :to', { to: query.to });
+      qb.andWhere('s.start_date <= :to', { to: `${query.to} 23:59:59` });
     }
 
     if (query?.assignedStaffId) {
