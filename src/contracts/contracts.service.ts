@@ -430,7 +430,7 @@ export class ContractsService {
     if (dto.paymentDateFrom)
       qb.andWhere('c.finalPaymentDate >= :pdf', { pdf: dto.paymentDateFrom });
     if (dto.paymentDateTo)
-      qb.andWhere('c.finalPaymentDate <= :pdt', { pdt: dto.paymentDateTo });
+      qb.andWhere('c.finalPaymentDate <= :pdt', { pdt: `${dto.paymentDateTo} 23:59:59` });
 
     if (dto.assignedStaffId) {
       qb.leftJoin('contract_assignees', 'ca_filter', 'ca_filter.contract_id = c.id')
@@ -443,7 +443,7 @@ export class ContractsService {
     if (dto.paymentDateFrom)
       qb.andWhere('c.finalPaymentDate >= :pdf', { pdf: dto.paymentDateFrom });
     if (dto.paymentDateTo)
-      qb.andWhere('c.finalPaymentDate <= :pdt', { pdt: dto.paymentDateTo });
+      qb.andWhere('c.finalPaymentDate <= :pdt', { pdt: `${dto.paymentDateTo} 23:59:59` });
 
     if (dto.assignedStaffId) {
       qb.leftJoin('contract_assignees', 'ca_filter', 'ca_filter.contract_id = c.id')
