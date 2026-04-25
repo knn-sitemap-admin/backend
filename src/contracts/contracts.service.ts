@@ -349,6 +349,37 @@ export class ContractsService {
         await fRepo.save(rows);
       }
 
+      // [ 양방향 동기화 ] 계약 생성 시 연결된 일정 및 계약 소유자 정보 동기화
+      try {
+        if (dto.scheduleId || dto.assignees?.length || dto.customerPhone) {
+          const firstAssigneeId = (dto.assignees && dto.assignees.length > 0) ? String(dto.assignees[0].accountId) : null;
+          
+          if (firstAssigneeId) {
+            await cRepo.update({ id: saved.id }, { createdBy: { id: firstAssigneeId } as any });
+          }
+
+          if (dto.scheduleId) {
+            const linkedSchedule = await m.getRepository(Schedule).findOne({ where: { id: Number(dto.scheduleId) as any } });
+            if (linkedSchedule) {
+              let isScheduleUpdated = false;
+              if (firstAssigneeId && String(linkedSchedule.created_by_account_id) !== firstAssigneeId) {
+                linkedSchedule.created_by_account_id = firstAssigneeId;
+                isScheduleUpdated = true;
+              }
+              if (dto.customerPhone && linkedSchedule.customer_phone !== dto.customerPhone) {
+                linkedSchedule.customer_phone = dto.customerPhone;
+                isScheduleUpdated = true;
+              }
+              if (isScheduleUpdated) {
+                await m.getRepository(Schedule).save(linkedSchedule);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Sync Error during Create]', err);
+      }
+
       return Number(saved.id);
     });
 

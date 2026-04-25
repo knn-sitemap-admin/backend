@@ -41,12 +41,13 @@ export class SchedulesService {
       .orderBy('s.start_date', 'ASC');
 
     if (query?.from && query?.to) {
-      qb.andWhere('s.start_date BETWEEN :from AND :to', {
+      // 시작일이 종료일보다 작거나 같고, 종료일이 시작일보다 크거나 같은 경우 (겹치는 구간)
+      qb.andWhere('s.start_date <= :to AND s.end_date >= :from', {
         from: query.from,
         to: query.to,
       });
     } else if (query?.from) {
-      qb.andWhere('s.start_date >= :from', { from: query.from });
+      qb.andWhere('s.end_date >= :from', { from: query.from });
     } else if (query?.to) {
       qb.andWhere('s.start_date <= :to', { to: query.to });
     }
@@ -164,6 +165,7 @@ export class SchedulesService {
 
     const schedule = await this.scheduleRepo.findOne({
       where: { id: String(id), is_deleted: false },
+      relations: ['contract'],
     });
     if (!schedule) throw new NotFoundException('일정을 찾을 수 없습니다.');
 
@@ -172,6 +174,13 @@ export class SchedulesService {
 
     if (!isOwner && !isPowerful) {
       throw new ForbiddenException('수정 권한이 없습니다.');
+    }
+
+    // 데이터 정합성 체크: 계약이 작성된 일정은 휴무나 기타로 변경 불가
+    if (schedule.contract && dto.category && dto.category !== schedule.category) {
+      if (['휴무', '기타'].includes(dto.category)) {
+        throw new BadRequestException('계약 기록이 있는 일정은 휴무나 기타로 변경할 수 없습니다.');
+      }
     }
 
     if (dto.title !== undefined) schedule.title = dto.title;
@@ -204,8 +213,8 @@ export class SchedulesService {
         if (linkedContract) {
           console.log(`[Sync] 연동된 계약(ID: ${linkedContract.id}) 동기화 시작...`);
           
-          // 1. 고객 연락처 동기화
-          if (dto.customerPhone !== undefined) {
+          // 1. 고객 연락처 동기화 (값이 있을 때만)
+          if (dto.customerPhone !== undefined && dto.customerPhone.trim() !== '') {
             linkedContract.customerPhone = dto.customerPhone;
           }
           
@@ -313,8 +322,14 @@ export class SchedulesService {
 
     const schedule = await this.scheduleRepo.findOne({
       where: { id: String(id), is_deleted: false },
+      relations: ['contract'],
     });
     if (!schedule) throw new NotFoundException('일정을 찾을 수 없습니다.');
+
+    // 계약이 작성된 일정은 삭제 불가
+    if (schedule.contract) {
+      throw new BadRequestException('계약 기록이 있는 일정은 삭제할 수 없습니다.');
+    }
 
     const isOwner = String(schedule.created_by_account_id) === String(account.id);
     const isPowerful = role === 'admin' || role === 'manager';
