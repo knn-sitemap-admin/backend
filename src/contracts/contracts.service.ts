@@ -211,7 +211,7 @@ export class ContractsService {
       Number.isInteger(dto.size) && (dto.size as number) > 0
         ? (dto.size as number)
         : 20;
-    const size = Math.min(Math.max(sizeRaw, 1), 100);
+    const size = Math.min(Math.max(sizeRaw, 1), 5000);
 
     const orderBy =
       dto.orderBy === 'created_at' ? 'c.createdAt' : 'c.contractDate';
