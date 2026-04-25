@@ -44,6 +44,10 @@ export class ListContractsDto {
   @IsIn(['ASC', 'DESC'])
   orderDir?: 'ASC' | 'DESC';
 
+  @IsOptional()
+  @IsString()
+  assignedStaffId?: string;
+
   //팀
 
   //계정

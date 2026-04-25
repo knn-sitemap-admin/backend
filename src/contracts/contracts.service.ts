@@ -432,6 +432,27 @@ export class ContractsService {
     if (dto.paymentDateTo)
       qb.andWhere('c.finalPaymentDate <= :pdt', { pdt: dto.paymentDateTo });
 
+    if (dto.assignedStaffId) {
+      qb.leftJoin('contract_assignees', 'ca_filter', 'ca_filter.contract_id = c.id')
+        .andWhere('(c.created_by_account_id = :staffId OR ca_filter.account_id = :staffId)', {
+          staffId: dto.assignedStaffId,
+        });
+      qb.distinct(true);
+    }
+
+    if (dto.paymentDateFrom)
+      qb.andWhere('c.finalPaymentDate >= :pdf', { pdf: dto.paymentDateFrom });
+    if (dto.paymentDateTo)
+      qb.andWhere('c.finalPaymentDate <= :pdt', { pdt: dto.paymentDateTo });
+
+    if (dto.assignedStaffId) {
+      qb.leftJoin('contract_assignees', 'ca_filter', 'ca_filter.contract_id = c.id')
+        .andWhere('(c.created_by_account_id = :staffId OR ca_filter.account_id = :staffId)', {
+          staffId: dto.assignedStaffId,
+        });
+      qb.distinct(true);
+    }
+
     const dataQb = qb
       .clone()
       .orderBy(orderBy, orderDir)
