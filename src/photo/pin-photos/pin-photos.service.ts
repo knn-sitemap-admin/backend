@@ -33,7 +33,11 @@ export class PinPhotosService {
         sortOrder: dto.sortOrders?.[idx] ?? idx,
       }),
     );
-    return await this.repo.save(rows);
+    const saved = await this.repo.save(rows);
+    return saved.map((p) => ({
+      ...p,
+      url: this.uploadService.getFileUrl(p.url),
+    }));
   }
 
   async update(dto: UpdatePinPhotoDto) {
@@ -46,7 +50,11 @@ export class PinPhotosService {
         }),
       ),
     );
-    return await this.repo.findBy({ id: In(dto.photoIds) });
+    const photos = await this.repo.findBy({ id: In(dto.photoIds) });
+    return photos.map((p) => ({
+      ...p,
+      url: this.uploadService.getFileUrl(p.url),
+    }));
   }
 
   async batchUpdate(patches: any[]) {

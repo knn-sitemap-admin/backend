@@ -292,6 +292,7 @@ export class PerformanceService {
     const headcount = await this.credentialRepo
       .createQueryBuilder('cr')
       .where('cr.is_disabled = :d', { d: false })
+      .andWhere('cr.role != :admin', { admin: 'admin' })
       .getCount();
 
     // 3) 팀별 멤버 수
@@ -435,6 +436,7 @@ export class PerformanceService {
       .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
       // 팀원 리스트는 다 보여주되, 비활성 credential은 제외(너가 "비활성은 사실상 안 쓰지만"이라고 했으니 최소 안전장치)
       .where('(cr.is_disabled = 0 OR cr.is_disabled IS NULL)')
+      .andWhere('cr.role != :admin', { admin: 'admin' })
       .groupBy('acc.id')
       .addGroupBy('acc.name')
       .addGroupBy('acc.position_rank')
@@ -473,12 +475,17 @@ export class PerformanceService {
   async listEmployees() {
     return this.accountRepo
       .createQueryBuilder('acc')
-      .leftJoin('acc.credential', 'cr')
-      .select(['acc.id', 'acc.name', 'acc.position_rank'])
+      .innerJoin('acc.credential', 'cr')
+      .select([
+        'acc.id AS id',
+        'acc.name AS name',
+        'acc.position_rank AS positionRank',
+      ])
       .where('acc.is_deleted = false')
       .andWhere('(cr.is_disabled = false OR cr.is_disabled IS NULL)')
+      .andWhere('cr.role != :admin', { admin: 'admin' })
       .orderBy('acc.name', 'ASC')
-      .getMany();
+      .getRawMany();
   }
 
   /**

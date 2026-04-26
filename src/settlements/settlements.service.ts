@@ -58,11 +58,16 @@ export class SettlementsService {
     // 1. 모든 활성 직원 조회
     const employees = await this.accountRepo
       .createQueryBuilder('acc')
-      .leftJoin('acc.credential', 'cr')
-      .select(['acc.id', 'acc.name', 'acc.position_rank'])
+      .innerJoin('acc.credential', 'cr')
+      .select([
+        'acc.id AS id',
+        'acc.name AS name',
+        'acc.position_rank AS positionRank',
+      ])
       .where('acc.is_deleted = false')
       .andWhere('(cr.is_disabled = false OR cr.is_disabled IS NULL)')
-      .getMany();
+      .andWhere('cr.role != :admin', { admin: 'admin' })
+      .getRawMany();
 
     // 2. 이미 저장된 정산 기록 조회
     const savedSettlements = await this.settlementRepo.find({

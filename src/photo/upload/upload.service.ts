@@ -17,14 +17,11 @@ import {
   type StorageClass,
 } from '@aws-sdk/client-s3';
 
-export type AllowedDomain = 'map' | 'contracts' | 'board' | 'profile' | 'etc';
+import { ConfigService } from '@nestjs/config';
 
-type UploadResult = {
-  urls: string[];
-  keys: string[];
-  domain: AllowedDomain;
-  userId: number;
-};
+import sharp from 'sharp';
+
+export type AllowedDomain = 'map' | 'contracts' | 'board' | 'profile' | 'etc';
 
 @Injectable()
 export class UploadService {
@@ -40,27 +37,26 @@ export class UploadService {
     'etc',
   ] as const;
 
-  private readonly isPublic: boolean =
-    (process.env.S3_OBJECT_PUBLIC ?? 'false') === 'true';
-  private readonly usePathStyle: boolean =
-    (process.env.AWS_S3_FORCE_PATH_STYLE ?? 'false') === 'true';
-  private readonly cdnBaseUrl: string =
-    process.env.CDN_BASE_URL?.replace(/\/$/, '') || '';
+  private readonly cdnBaseUrl: string;
+  private readonly isPublic: boolean;
+  private readonly usePathStyle: boolean;
 
-  constructor() {
-    this.region = process.env.AWS_REGION || 'ap-northeast-2';
-    this.bucketName = process.env.AWS_S3_BUCKET_NAME || '';
+  constructor(private readonly configService: ConfigService) {
+    this.region = this.configService.get<string>('AWS_REGION') || 'ap-northeast-2';
+    this.bucketName = this.configService.get<string>('AWS_S3_BUCKET_NAME') || '';
+    this.cdnBaseUrl = (this.configService.get<string>('CDN_BASE_URL') || '').replace(/\/$/, '');
+    this.isPublic = this.configService.get<string>('S3_OBJECT_PUBLIC') === 'true';
+    this.usePathStyle = this.configService.get<string>('AWS_S3_FORCE_PATH_STYLE') === 'true';
 
     if (!this.bucketName) {
-      throw new Error('AWS_S3_BUCKET_NAME 이 설정되지 않았습니다.');
+      this.logger.error('AWS_S3_BUCKET_NAME 이 설정되지 않았습니다.');
     }
 
     this.s3 = new S3Client({
       region: this.region,
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-        // 세션 토큰 사용하는 경우: sessionToken: process.env.AWS_SESSION_TOKEN,
+        accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID') || '',
+        secretAccessKey: this.configService.get<string>('AWS_SECRET_ACCESS_KEY') || '',
       },
       forcePathStyle: this.usePathStyle,
     });
@@ -192,28 +188,45 @@ export class UploadService {
     for (const file of files) {
       const original = file.originalname || 'file';
       const safeName = this.sanitizeFilename(original);
-      const ext = path.extname(safeName).toLowerCase(); // ".jpg"
+      let ext = path.extname(safeName).toLowerCase(); // ".jpg"
       const nameOnly = safeName.slice(
         0,
         Math.max(1, safeName.length - ext.length),
       );
 
-      const key = `${domain}/${userId}/${timestamp}-${this.randomSuffix(6)}-${nameOnly}${ext}`;
-
-      // file.mimetype가 제대로 오는 경우 우선, 아니면 확장자로 추론
-      const baseMime =
+      // 1. WebP 변환 시도 (이미지인 경우)
+      let buffer = file.buffer;
+      let currentMime =
         file.mimetype && file.mimetype !== 'application/octet-stream'
           ? file.mimetype
           : this.resolveMimeType(ext, 'application/octet-stream');
 
-      const contentDisposition = this.contentDispositionFor(baseMime);
+      if (currentMime.startsWith('image/') && currentMime !== 'image/svg+xml') {
+        try {
+          // Sharp를 사용하여 WebP로 변환 (품질 80, effort 4: 속도/압축비 균형)
+          const converted = await sharp(file.buffer)
+            .webp({ quality: 80, effort: 4 })
+            .toBuffer();
+
+          // 변환 성공 시 정보 업데이트
+          buffer = converted;
+          currentMime = 'image/webp';
+          ext = '.webp';
+        } catch (e: any) {
+          this.logger.warn(`WebP 변환 실패 (${original}): ${e.message}`);
+          // 실패 시 원래 버퍼와 미디어타입 유지
+        }
+      }
+
+      const key = `${domain}/${userId}/${timestamp}-${this.randomSuffix(6)}-${nameOnly}${ext}`;
+      const contentDisposition = this.contentDispositionFor(currentMime);
 
       try {
         const cmd = new PutObjectCommand({
           Bucket: this.bucketName,
           Key: key,
-          Body: file.buffer,
-          ContentType: baseMime,
+          Body: buffer,
+          ContentType: currentMime,
           ServerSideEncryption: sse,
           StorageClass: storageClass,
           CacheControl: cacheControl,
@@ -305,28 +318,45 @@ export class UploadService {
   extractKeyFromUrl(url: string): string | null {
     if (!url) return null;
 
-    // s3://bucket/key 형태
+    // 1. s3://bucket/key 형태
     if (url.startsWith('s3://')) {
       const parts = url.split('/');
       if (parts.length < 4) return null;
       return parts.slice(3).join('/');
     }
 
-    // https://bucket.s3.region.amazonaws.com/key 형태
-    if (url.includes('.s3.') && url.includes('.amazonaws.com/')) {
-      const parts = url.split('.amazonaws.com/');
-      if (parts.length < 2) return null;
-      return decodeURI(parts[1]);
+    // 2. HTTP(S) 형태 처리
+    try {
+      const parsed = new URL(url);
+
+      // CDN_BASE_URL 도메인인 경우
+      if (this.cdnBaseUrl && url.startsWith(this.cdnBaseUrl)) {
+        return decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+      }
+
+      // S3 도메인인 경우 (bucket.s3.region.amazonaws.com 또는 s3.region.amazonaws.com/bucket)
+      if (parsed.hostname.includes('amazonaws.com')) {
+        // virtual-hosted style: bucket.s3.ap-northeast-2.amazonaws.com/key
+        if (parsed.hostname.includes('.s3.')) {
+          return decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+        }
+        // path-style: s3.ap-northeast-2.amazonaws.com/bucket/key
+        const parts = parsed.pathname.replace(/^\//, '').split('/');
+        if (parts.length >= 2) {
+          // 첫 번째 파트는 버킷명이므로 제외
+          return decodeURIComponent(parts.slice(1).join('/'));
+        }
+      }
+
+      // 기타 커스텀 도메인이나 이미 상대 경로인 경우 pathname만 반환
+      if (parsed.pathname && parsed.pathname !== '/') {
+        return decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+      }
+    } catch {
+      // URL 객체 생성 실패 시 (이미 상대 경로인 경우 등)
+      return decodeURIComponent(url.replace(/^\//, ''));
     }
 
-    // CDN_BASE_URL 형태 처리
-    if (this.cdnBaseUrl && url.startsWith(this.cdnBaseUrl)) {
-      const relativePath = url.substring(this.cdnBaseUrl.length).replace(/^\//, '');
-      return decodeURI(relativePath);
-    }
-
-    // 기타: 도메인이 포함된 경우 (CloudFront 등 커스텀 도메인 대응이 필요할 수 있음)
-    // 여기서는 기본 S3 URL만 처리
     return null;
   }
 
