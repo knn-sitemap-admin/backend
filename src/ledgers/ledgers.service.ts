@@ -43,4 +43,26 @@ export class LedgersService {
       throw new NotFoundException('가계부 내역을 찾을 수 없습니다.');
     }
   }
+
+  async getYearlyStats(year: number, credentialId: string, role?: string) {
+    const qb = this.ledgerRepository.createQueryBuilder('l')
+      .select("CAST(SUBSTRING(l.entry_date, 6, 2) AS UNSIGNED)", 'month')
+      .addSelect('SUM(l.amount)', 'totalAmount')
+      .where("l.entry_date LIKE :yearPattern", { yearPattern: `${year}-%` })
+      .groupBy('month')
+      .orderBy('month', 'ASC');
+
+    if (role !== 'admin') {
+      qb.andWhere('l.credentialId = :credentialId', { credentialId });
+    }
+
+    const rows = await qb.getRawMany();
+    return rows.map(r => {
+      const entries = Object.entries(r);
+      return {
+        month: Number(entries[0][1]),
+        totalAmount: Number(entries[1][1]),
+      };
+    });
+  }
 }

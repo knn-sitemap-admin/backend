@@ -7,6 +7,7 @@ import { Contract } from '../contracts/entities/contract.entity';
 import { ContractAssignee } from '../contracts/assignees/entities/assignee.entity';
 import { Ledger } from '../ledgers/entities/ledgers.entity';
 
+
 const TAX_FACTOR = 0.967;
 const VAT_RATE = 0.1;
 const REBATE_UNIT_AMOUNT = 1_000_000;
@@ -22,8 +23,6 @@ export class SettlementsService {
     private readonly contractRepo: Repository<Contract>,
     @InjectRepository(ContractAssignee)
     private readonly assigneeRepo: Repository<ContractAssignee>,
-    @InjectRepository(Ledger)
-    private readonly ledgerRepo: Repository<Ledger>,
     private readonly dataSource: DataSource,
   ) { }
 
@@ -119,45 +118,7 @@ export class SettlementsService {
     });
   }
 
-  private async syncToLedger(settlement: Settlement, credentialId: string, manager: any) {
-    const ledgerRepo = manager.getRepository(Ledger);
-    const accountRepo = manager.getRepository(Account);
 
-    if (settlement.status !== 'paid') {
-      if (settlement.ledgerId) {
-        try {
-          await ledgerRepo.delete(settlement.ledgerId);
-        } catch (e) {
-          // ignore or log
-        }
-        settlement.ledgerId = null;
-      }
-      return;
-    }
-
-    if (!credentialId) return;
-
-    let ledger = settlement.ledgerId
-      ? await ledgerRepo.findOne({ where: { id: settlement.ledgerId } })
-      : null;
-
-    if (!ledger) {
-      ledger = ledgerRepo.create();
-    }
-
-    const employee = await accountRepo.findOne({ where: { id: settlement.accountId } });
-
-    ledger.entryDate = settlement.paidAt
-      ? settlement.paidAt.toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
-    ledger.mainLabel = `인건비(영업정산): ${employee?.name || settlement.accountId}`;
-    ledger.amount = settlement.finalAmount;
-    ledger.memo = `${settlement.year}년 ${settlement.month}월분 정산금\n${settlement.memo || ''}`;
-    ledger.credentialId = credentialId;
-
-    const savedLedger = await ledgerRepo.save(ledger);
-    settlement.ledgerId = Number(savedLedger.id);
-  }
 
   async saveSettlement(
     data: {
@@ -226,7 +187,7 @@ export class SettlementsService {
         }
       }
 
-      await this.syncToLedger(settlement, credentialId, manager);
+
       return settlementRepo.save(settlement);
     });
   }
@@ -244,7 +205,7 @@ export class SettlementsService {
         settlement.paidAt = null;
       }
 
-      await this.syncToLedger(settlement, credentialId, manager);
+
       return settlementRepo.save(settlement);
     });
   }
@@ -292,5 +253,59 @@ export class SettlementsService {
       grandTotal: Number(row.grandTotal),
       sharePercent: Number(row.sharePercent),
     }));
+  }
+
+  async getYearlySettlements(year: number) {
+    const rows = await this.settlementRepo
+      .createQueryBuilder('s')
+      .select('s.month', 'month')
+      .addSelect('SUM(s.finalAmount)', 'totalAmount')
+      .addSelect("SUM(CASE WHEN s.status = 'paid' THEN s.finalAmount ELSE 0 END)", 'paidAmount')
+      .where('s.year = :year', { year })
+      .groupBy('s.month')
+      .orderBy('s.month', 'ASC')
+      .getRawMany();
+
+    return rows.map(r => ({
+      month: Number(r.month),
+      totalAmount: Number(r.totalAmount),
+      paidAmount: Number(r.paidAmount),
+    }));
+  }
+
+  async cleanupOldLedgerEntries() {
+    return this.dataSource.transaction(async (manager) => {
+      const settlementRepo = manager.getRepository(Settlement);
+      const ledgerRepo = manager.getRepository(Ledger);
+
+      // ledgerId가 있는 모든 정산 기록 조회
+      const settlementsWithLedger = await settlementRepo.find({
+        where: { ledgerId: this.dataSource.driver.constructor.name === 'MysqlDriver' ? (require('typeorm').Not(require('typeorm').IsNull())) : undefined },
+      });
+      // 위 방식은 복잡할 수 있으니 QueryBuilder 사용
+      const records = await settlementRepo
+        .createQueryBuilder('s')
+        .where('s.ledger_id IS NOT NULL')
+        .getMany();
+
+      if (records.length === 0) return { deletedCount: 0, updatedCount: 0 };
+
+      const ledgerIds = records.map(r => r.ledgerId).filter(id => id !== null);
+      
+      // 가계부 내역 삭제
+      let deletedCount = 0;
+      if (ledgerIds.length > 0) {
+        const result = await ledgerRepo.delete(ledgerIds);
+        deletedCount = result.affected ?? 0;
+      }
+
+      // 정산 기록에서 ledgerId 제거
+      for (const record of records) {
+        record.ledgerId = null;
+      }
+      await settlementRepo.save(records);
+
+      return { deletedCount, updatedCount: records.length };
+    });
   }
 }

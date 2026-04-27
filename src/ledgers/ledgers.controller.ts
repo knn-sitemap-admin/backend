@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,7 +17,7 @@ import { SessionAuthGuard } from '../dashboard/auth/guards/session-auth.guard';
 @Controller('ledgers')
 @UseGuards(SessionAuthGuard)
 export class LedgersController {
-  constructor(private readonly ledgersService: LedgersService) {}
+  constructor(private readonly ledgersService: LedgersService) { }
 
   @Get()
   async findAll(@Req() req: any) {
@@ -49,5 +50,12 @@ export class LedgersController {
     const credentialId = String(req.session?.user?.credentialId ?? '');
     await this.ledgersService.remove(id, credentialId);
     return { message: '가계부 내역 삭제 완료' };
+  }
+
+  @Get('yearly')
+  async getYearly(@Query('year', ParseIntPipe) year: number, @Req() req: any) {
+    const credentialId = String(req.session?.user?.credentialId ?? '');
+    const role = req.session?.user?.role ?? 'staff';
+    return this.ledgersService.getYearlyStats(year, credentialId, role);
   }
 }

@@ -57,4 +57,16 @@ export class SettlementsController {
   ) {
     return this.settlementsService.getSettlementDetail(accountId, year, month);
   }
+
+  @Roles(SystemRole.ADMIN)
+  @Get('yearly')
+  async getYearly(@Query('year', ParseIntPipe) year: number) {
+    return this.settlementsService.getYearlySettlements(year);
+  }
+
+  @Roles(SystemRole.ADMIN)
+  @Post('cleanup')
+  async cleanup() {
+    return this.settlementsService.cleanupOldLedgerEntries();
+  }
 }
