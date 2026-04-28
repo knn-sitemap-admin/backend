@@ -167,8 +167,12 @@ async function bootstrap() {
   const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
   const ttlMs = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
-  // 운영 환경 판별 강화
-  const isActualProd = process.env.NODE_ENV === 'production' || process.env.IS_DEV !== 'true';
+  // 운영 환경 판별 강화 (Railway/배포 환경 대응)
+  const isActualProd = 
+    process.env.NODE_ENV === 'production' || 
+    process.env.IS_DEV === 'false' || 
+    !!process.env.RAILWAY_ENVIRONMENT ||
+    (!!process.env.PORT && process.env.PORT !== '3050');
 
   const sessionMiddleware = session({
     store,
@@ -179,6 +183,7 @@ async function bootstrap() {
     proxy: true,
     cookie: {
       httpOnly: true,
+      // 🔒 [보안/Safari 대응] 배포 환경에서는 무조건 secure: true, sameSite: 'none' 필수 (크로스 도메인 쿠키 허용)
       secure: isActualProd, 
       sameSite: isActualProd ? 'none' : 'lax', 
       path: '/',
