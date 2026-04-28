@@ -314,8 +314,11 @@ export class PerformanceService {
 
     const teamPerfRows = await this.teamRepo
       .createQueryBuilder('t')
-      .leftJoin(TeamMember, 'tm', 'tm.team_id = t.id')
-      .leftJoin(ContractAssignee, 'a', 'a.account_id = tm.account_id')
+      .leftJoin(
+        ContractAssignee,
+        'a',
+        'a.team_id = t.id OR (a.team_id IS NULL AND EXISTS (SELECT 1 FROM team_members tm WHERE tm.account_id = a.account_id AND tm.team_id = t.id))'
+      )
       .leftJoin(
         Contract,
         'c',
@@ -411,7 +414,11 @@ export class PerformanceService {
         { tid: String(teamId) },
       )
       .leftJoin(AccountCredential, 'cr', 'cr.id = acc.credential_id')
-      .leftJoin(ContractAssignee, 'a', 'a.account_id = acc.id')
+      .leftJoin(
+        ContractAssignee, 
+        'a', 
+        'a.account_id = acc.id AND (a.team_id = :tid OR (a.team_id IS NULL AND EXISTS (SELECT 1 FROM team_members tm2 WHERE tm2.account_id = a.account_id AND tm2.team_id = :tid)))'
+      )
       .leftJoin(
         Contract,
         'c',

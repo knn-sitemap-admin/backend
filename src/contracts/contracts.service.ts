@@ -326,14 +326,22 @@ export class ContractsService {
 
       // 3) assignees 저장(원본만)
       if (dto.assignees?.length) {
-        const rows = dto.assignees.map((a, idx) =>
-          aRepo.create({
+        const accountIds = dto.assignees.map(a => String(a.accountId));
+        const teamMembers = await m.getRepository(TeamMember)
+          .createQueryBuilder('tm')
+          .where('tm.account_id IN (:...accountIds)', { accountIds })
+          .getMany();
+
+        const rows = dto.assignees.map((a, idx) => {
+          const tm = teamMembers.find(t => String(t.account_id) === String(a.accountId));
+          return aRepo.create({
             contract: { id: saved.id } as any,
             account: { id: String(a.accountId) } as any,
+            team: tm ? { id: tm.team_id } as any : null,
             sharePercent: a.sharePercent,
             sortOrder: a.sortOrder ?? idx,
-          }),
-        );
+          });
+        });
         await aRepo.save(rows);
       }
 
@@ -944,14 +952,22 @@ export class ContractsService {
         await aRepo.delete({ contract: { id: Number(id) } as any });
 
         if (dto.assignees.length > 0) {
-          const rows = dto.assignees.map((a, idx) =>
-            aRepo.create({
+          const accountIds = dto.assignees.map(a => String(a.accountId));
+          const teamMembers = await m.getRepository(TeamMember)
+            .createQueryBuilder('tm')
+            .where('tm.account_id IN (:...accountIds)', { accountIds })
+            .getMany();
+
+          const rows = dto.assignees.map((a, idx) => {
+            const tm = teamMembers.find(t => String(t.account_id) === String(a.accountId));
+            return aRepo.create({
               contract: { id: Number(id) } as any,
               account: { id: String(a.accountId) } as any,
+              team: tm ? { id: tm.team_id } as any : null,
               sharePercent: a.sharePercent,
               sortOrder: a.sortOrder ?? idx,
-            }),
-          );
+            });
+          });
           await aRepo.save(rows);
         }
       }

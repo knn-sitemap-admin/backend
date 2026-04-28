@@ -87,7 +87,7 @@ export class SettlementsService {
       .select('a.account_id', 'accountId')
       .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'calculatedAmount')
       .where('c.status = :done', { done: 'done' })
-      .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
+      .andWhere('c.final_payment_date >= :s AND c.final_payment_date <= :e', {
         s: startDate,
         e: endDate,
       })
@@ -157,7 +157,7 @@ export class SettlementsService {
         .select(`COALESCE(SUM(${myAmountExpr}), 0)`, 'amount')
         .where('c.status = :done', { done: 'done' })
         .andWhere('a.account_id = :aid', { aid: data.accountId })
-        .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
+        .andWhere('c.final_payment_date >= :s AND c.final_payment_date <= :e', {
           s: startDate,
           e: endDate,
         })
@@ -224,7 +224,7 @@ export class SettlementsService {
       .select([
         'c.id as contractId',
         'c.siteName as propertyName',
-        'c.contract_date as contractDate',
+        'c.final_payment_date as finalPaymentDate',
         'c.brokerageFee as brokerageFee',
         'c.rebateUnits as rebateUnits',
         'c.supportAmount as supportAmount',
@@ -237,18 +237,18 @@ export class SettlementsService {
       .addSelect(grandTotalExpr, 'grandTotal')
       .where('c.status = :done', { done: 'done' })
       .andWhere('a.account_id = :aid', { aid: accountId })
-      .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
+      .andWhere('c.final_payment_date >= :s AND c.final_payment_date <= :e', {
         s: startDate,
         e: endDate,
       })
-      .orderBy('c.contract_date', 'ASC')
+      .orderBy('c.final_payment_date', 'ASC')
       .getRawMany();
 
     return detailRows.map(row => ({
       ...row,
-      contractDate: row.contractDate instanceof Date 
-        ? row.contractDate.toISOString().split('T')[0] 
-        : String(row.contractDate).split('T')[0],
+      finalPaymentDate: row.finalPaymentDate instanceof Date 
+        ? row.finalPaymentDate.toISOString().split('T')[0] 
+        : String(row.finalPaymentDate).split('T')[0],
       myAmount: Number(row.myAmount),
       grandTotal: Number(row.grandTotal),
       sharePercent: Number(row.sharePercent),

@@ -11,6 +11,7 @@ import {
 import { Type } from 'class-transformer';
 import { Contract } from '../../entities/contract.entity';
 import { Account } from '../../../dashboard/accounts/entities/account.entity';
+import { Team } from '../../../dashboard/accounts/entities/team.entity';
 
 @Entity({ name: 'contract_assignees' })
 @Index('IDX_contract_assignees_contract', ['contract'])
@@ -34,6 +35,13 @@ export class ContractAssignee {
 
   @RelationId((a: ContractAssignee) => a.account)
   accountId!: string | null;
+
+  @ManyToOne(() => Team, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'team_id' })
+  team!: Team | null;
+
+  @RelationId((a: ContractAssignee) => a.team)
+  teamId!: string | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   @Type(() => Number)
