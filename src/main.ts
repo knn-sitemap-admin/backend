@@ -175,7 +175,7 @@ async function bootstrap() {
     secret: process.env.SESSION_SECRET ?? 'change_this_secret',
     resave: false,
     saveUninitialized: false,
-    rolling: true,
+    rolling: false, // 아이폰(Safari) 동시 Set-Cookie 버그 방지
     proxy: true,
     cookie: {
       httpOnly: true,
