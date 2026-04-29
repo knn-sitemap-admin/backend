@@ -487,6 +487,7 @@ export class PerformanceService {
         'acc.id AS id',
         'acc.name AS name',
         'acc.position_rank AS positionRank',
+        'cr.role AS role',
       ])
       .where('acc.is_deleted = false')
       .andWhere('(cr.is_disabled = false OR cr.is_disabled IS NULL)')

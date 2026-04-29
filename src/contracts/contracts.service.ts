@@ -259,6 +259,18 @@ export class ContractsService {
     }
   }
 
+  private assertDateLogic(contractDate: string, finalPaymentDate?: string) {
+    if (!contractDate || !finalPaymentDate) return;
+
+    // 날짜 문자열 비교 (YYYY-MM-DD 형식일 경우 문자열 비교 가능, 하지만 객체 변환이 더 안전)
+    const cDate = new Date(contractDate);
+    const fDate = new Date(finalPaymentDate);
+
+    if (fDate < cDate) {
+      throw new BadRequestException('잔금일자는 계약일자보다 과거일 수 없습니다.');
+    }
+  }
+
   private canAccessContractAsStaff(
     myAccountId: string,
     contract: Contract,
@@ -281,6 +293,7 @@ export class ContractsService {
     const me = await this.resolveAccountByCredentialIdOrThrow(credentialId);
 
     this.assertAssigneesRule(dto.companyPercent, dto.assignees);
+    this.assertDateLogic(dto.contractDate, dto.finalPaymentDate);
 
     const savedId = await this.dataSource.transaction(async (m) => {
       const cRepo = m.getRepository(Contract);
@@ -900,6 +913,11 @@ export class ContractsService {
           throw new ForbiddenException('수정 권한이 없습니다.');
         }
       }
+
+      // 날짜 논리 검증
+      const nextContractDate = dto.contractDate ?? contract.contractDate;
+      const nextFinalPaymentDate = dto.finalPaymentDate ?? contract.finalPaymentDate;
+      this.assertDateLogic(nextContractDate, nextFinalPaymentDate);
 
       const nextCompanyPercent = Number(
         dto.companyPercent ?? Number(contract.companyPercent),
