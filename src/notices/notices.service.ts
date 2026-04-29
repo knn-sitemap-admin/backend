@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { CreateNoticeDto } from './dto/create-notice.dto';
 import { UpdateNoticeDto } from './dto/update-notice.dto';
 import { Notice } from './entities/notice.entity';
@@ -86,9 +86,16 @@ export class NoticesService {
     const notice = await this.noticeRepo.findOne({ where: { id: Number(id) } });
     if (!notice) throw new NotFoundException('공지를 찾을 수 없습니다.');
 
-    // 1. 전체 직원 (관리자 제외? 일단 전체)
+    // 1. 전체 직원 (삭제되지 않고 정지되지 않았으며, 관리자가 아닌 계정만)
     const allEmployees = await this.accountRepo.find({
-      where: { is_deleted: false },
+      where: { 
+        is_deleted: false,
+        credential: { 
+          is_disabled: false,
+          role: Not('admin')
+        }
+      },
+      relations: ['credential']
     });
 
     // 2. 읽은 사람

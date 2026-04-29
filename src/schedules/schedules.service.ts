@@ -99,6 +99,10 @@ export class SchedulesService {
       ? dto.createdByAccountId
       : account.id;
 
+    if (new Date(dto.endDate) < new Date(dto.startDate)) {
+      throw new BadRequestException('종료 일시는 시작 일시보다 빠를 수 없습니다.');
+    }
+
     const schedule = this.scheduleRepo.create({
       title: dto.title,
       content: dto.content,
@@ -180,6 +184,13 @@ export class SchedulesService {
       if (['휴무', '기타'].includes(dto.category)) {
         throw new BadRequestException('계약 기록이 있는 일정은 휴무나 기타로 변경할 수 없습니다.');
       }
+    }
+
+    const newStartDate = dto.startDate !== undefined ? new Date(dto.startDate) : schedule.start_date;
+    const newEndDate = dto.endDate !== undefined ? new Date(dto.endDate) : schedule.end_date;
+
+    if (new Date(newEndDate) < new Date(newStartDate)) {
+      throw new BadRequestException('종료 일시는 시작 일시보다 빠를 수 없습니다.');
     }
 
     if (dto.title !== undefined) schedule.title = dto.title;
