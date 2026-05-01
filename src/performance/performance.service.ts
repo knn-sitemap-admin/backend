@@ -116,25 +116,36 @@ export class PerformanceService {
           ELSE NULL END
         )`, 'ongoing_count')
 
-      // 부결/해약 (연결된 계약이 rejected 또는 canceled이고, 동일인/현장으로 성사된 건이 없는 경우)
+      // 부결/해약 (직접 연결된 계약이 부결/해약이거나, ID 연결은 없지만 동일 고객/현장으로 부결된 계약이 존재하는 경우)
       .addSelect(`
         COUNT(DISTINCT CASE 
           WHEN (c.status = 'rejected' OR c.status = 'canceled') AND NOT EXISTS (
-            SELECT 1 FROM contracts c3 
-            WHERE c3.customerPhone = s.customer_phone 
-            AND c3.siteName = s.location 
-            AND c3.status = 'done'
+            SELECT 1 FROM contracts c_done 
+            WHERE c_done.customerPhone = s.customer_phone 
+            AND c_done.siteName = s.location 
+            AND c_done.status IN ('done', 'ongoing')
           ) THEN s.id 
+          WHEN c.id IS NULL AND EXISTS (
+            SELECT 1 FROM contracts c_rej 
+            WHERE c_rej.customerPhone = s.customer_phone 
+            AND c_rej.siteName = s.location 
+            AND (c_rej.status = 'rejected' OR c_rej.status = 'canceled')
+          ) AND NOT EXISTS (
+            SELECT 1 FROM contracts c_done2 
+            WHERE c_done2.customerPhone = s.customer_phone 
+            AND c_done2.siteName = s.location 
+            AND c_done2.status IN ('done', 'ongoing')
+          ) THEN s.id
           ELSE NULL END
         )`, 'rejected')
-      // 미팅 취소 (일정 상태가 canceled이고, 동일인/현장으로 성사된 건이 없는 경우)
+      // 미팅 취소 (일정 상태가 canceled이고, 계약 단계(부결 포함)까지 간 기록이 전혀 없는 경우)
       .addSelect(`
         COUNT(DISTINCT CASE 
-          WHEN s.status = 'canceled' AND NOT EXISTS (
-            SELECT 1 FROM contracts c4 
-            WHERE c4.customerPhone = s.customer_phone 
-            AND c4.siteName = s.location 
-            AND c4.status = 'done'
+          WHEN s.status = 'canceled' 
+          AND NOT EXISTS (
+            SELECT 1 FROM contracts c_any 
+            WHERE c_any.customerPhone = s.customer_phone 
+            AND c_any.siteName = s.location
           ) THEN s.id 
           ELSE NULL END
         )`, 'canceled')
@@ -304,7 +315,7 @@ export class PerformanceService {
       .select(`COALESCE(SUM(${grandTotalExpr}), 0)`, 'grossSales')
       .addSelect(`COALESCE(SUM(${companyAmountExpr}), 0)`, 'netProfit')
       .addSelect(`COUNT(c.id)`, 'contractCount')
-      .where('c.status = :done', { done: 'done' })
+      .where('c.status IN (:...statuses)', { statuses: ['ongoing', 'done'] })
       .andWhere('c.contractDate >= :s AND c.contractDate <= :e', {
         s: range.startDate,
         e: range.endDate,
@@ -351,12 +362,12 @@ export class PerformanceService {
         'c',
         `
       c.id = a.contract_id
-      AND c.status = :done
+      AND c.status IN (:...statuses)
       AND c.contract_date >= :s
       AND c.contract_date <= :e
     `,
         {
-          done: 'done',
+          statuses: ['ongoing', 'done'],
           s: range.startDate,
           e: range.endDate,
         },
