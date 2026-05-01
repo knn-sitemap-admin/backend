@@ -374,7 +374,7 @@ export class ContractsService {
       try {
         if (dto.scheduleId || dto.assignees?.length || dto.customerPhone) {
           const firstAssigneeId = (dto.assignees && dto.assignees.length > 0) ? String(dto.assignees[0].accountId) : null;
-          
+
           if (firstAssigneeId) {
             await cRepo.update({ id: saved.id }, { createdBy: { id: firstAssigneeId } as any });
           }
@@ -1034,16 +1034,16 @@ export class ContractsService {
           if (contract.scheduleId) {
             console.log(`[Reverse-Sync] 연결된 일정(ID: ${contract.scheduleId})을 찾아 동기화 시도...`);
             const linkedSchedule = await this.scheduleRepo.findOne({ where: { id: Number(contract.scheduleId) as any } });
-            
+
             if (linkedSchedule) {
               let isScheduleUpdated = false;
-              
+
               if (firstAssigneeId && String(linkedSchedule.created_by_account_id) !== firstAssigneeId) {
                 console.log(`[Reverse-Sync] 일정 담당자 변경: ${linkedSchedule.created_by_account_id} -> ${firstAssigneeId}`);
                 linkedSchedule.created_by_account_id = firstAssigneeId;
                 isScheduleUpdated = true;
               }
-              
+
               if (dto.customerPhone !== undefined && linkedSchedule.customer_phone !== dto.customerPhone) {
                 console.log(`[Reverse-Sync] 일정 고객 연락처 동기화: ${dto.customerPhone}`);
                 linkedSchedule.customer_phone = dto.customerPhone;
@@ -1117,36 +1117,38 @@ export class ContractsService {
       totalFiles: files.length,
       repairedCount: results.filter(r => r.success).length,
       details: results,
-  /**
-   * DB 전체를 스캔하여 모든 깨진 이미지 파일명을 S3에서 복구하고 DB 주소를 갱신합니다.
-   */
-  async repairAllContractImages() {
-    // 1. URL에 %가 포함된 모든 파일 조회 (깨짐 가능성 높은 대상)
-    const files = await this.fileRepo
-      .createQueryBuilder('f')
-      .where('f.url LIKE :kw', { kw: '%%' })
-      .getMany();
+      /**
+       * DB 전체를 스캔하여 모든 깨진 이미지 파일명을 S3에서 복구하고 DB 주소를 갱신합니다.
+       */
+      async repairAllContractImages() {
+        // 1. URL에 %가 포함된 모든 파일 조회 (깨짐 가능성 높은 대상)
+        const files = await this.fileRepo
+          .createQueryBuilder('f')
+          .where('f.url LIKE :kw', { kw: '%%' })
+          .getMany();
 
-    this.logger.log(`[Batch Repair] Found ${files.length} potential targets.`);
+        this.logger.log(`[Batch Repair] Found ${files.length} potential targets.`);
 
-    const results = [];
-    for (const file of files) {
-      try {
-        // S3 파일명 변경 및 새 URL 획득
-        const repairedUrl = await this.uploadService.repairS3Filename(file.url);
-        if (repairedUrl) {
-          // DB 업데이트
-          await this.fileRepo.update({ id: file.id }, { url: repairedUrl });
-          results.push({ id: file.id, success: true });
+        const results: any[] = [];
+        for (const file of files) {
+          try {
+            // S3 파일명 변경 및 새 URL 획득
+            const repairedUrl = await this.uploadService.repairS3Filename(file.url);
+            if (repairedUrl) {
+              // DB 업데이트
+              await this.fileRepo.update({ id: file.id }, { url: repairedUrl });
+              results.push({ id: file.id, success: true });
+            }
+          } catch (e: any) {
+            this.logger.error(`[Batch Repair Failed] fileId: ${file.id}, error: ${e.message}`);
+          }
         }
-      } catch (e: any) {
-        this.logger.error(`[Batch Repair Failed] fileId: ${file.id}, error: ${e.message}`);
+
+        return {
+          totalFound: files.length,
+          repairedCount: results.length,
+        };
       }
     }
-
-    return {
-      totalFound: files.length,
-      repairedCount: results.length,
-    };
   }
 }
