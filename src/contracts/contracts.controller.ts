@@ -135,16 +135,4 @@ export class ContractsController {
     await this.service.remove(role, id);
     return { message: '계약 삭제됨', data: null };
   }
-
-  @Post(':id/repair-images')
-  async repairImages(@Param('id', ParseIntPipe) id: number) {
-    const data = await this.service.repairContractImages(id);
-    return { message: '이미지 복구 시도 완료', data };
-  }
-
-  @Post('repair/all-images')
-  async repairAll() {
-    const data = await this.service.repairAllContractImages();
-    return { message: '전체 이미지 복구 시도 완료', data };
-  }
 }
