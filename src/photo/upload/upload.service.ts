@@ -257,7 +257,7 @@ export class UploadService {
   }
 
   /**
-   * S3 상의 깨진 파일명을 정상 한글명으로 수정합니다. (마이그레이션용)
+   * S3 상의 파일명을 무조건 깨끗한 이름으로 수정합니다. (인코딩 복구 포기, 강제 수정)
    */
   async repairS3Filename(url: string): Promise<string | null> {
     if (!url) return null;
@@ -270,40 +270,28 @@ export class UploadService {
       const lastIdx = segments.length - 1;
       const oldFileNameEncoded = segments[lastIdx];
 
-      // 1. 중첩된 인코딩을 완전히 해제 (깨진 글자 ì... 확보)
-      let brokenFileName = oldFileNameEncoded;
-      while (brokenFileName.includes('%')) {
-        try {
-          const decoded = decodeURIComponent(brokenFileName);
-          if (decoded === brokenFileName) break;
-          brokenFileName = decoded;
-        } catch { break; }
-      }
-      
-      // 2. 한글 복구 시도
-      const cleanFileName = this.repairEncoding(brokenFileName);
-
-      // 변화가 없다면 (이미 정상이거나 복구 불가)
-      if (brokenFileName === cleanFileName) {
-        this.logger.debug(`[Repair Skip] No change needed for: ${brokenFileName}`);
-        return null;
+      // 1. 이미 정상적인(영문/숫자 중심) 이름인지 확인 (중복 작업 방지)
+      // 파일명에 %가 없고 한글도 없다면 이미 수동으로 고쳤거나 정상인 상태
+      if (!oldFileNameEncoded.includes('%') && !/[\uAC00-\uD7AF]/.test(oldFileNameEncoded)) {
+        return null; 
       }
 
-      const newKey = [...segments.slice(0, lastIdx), cleanFileName].join('/');
+      // 2. 새 이름 생성 (원본 이름 무시하고 안전한 이름으로 생성)
+      const ext = oldFileNameEncoded.includes('.') 
+        ? '.' + oldFileNameEncoded.split('.').pop()?.split(/[?#]/)[0]
+        : '.jpg';
+      const newFileName = `fixed-${Date.now()}-${Math.floor(Math.random() * 1000)}${ext}`;
+      const newKey = [...segments.slice(0, lastIdx), newFileName].join('/');
 
-      // 3. S3 복사 (소스 경로는 실제 S3에 저장된 '생 바이트' 형태여야 함)
+      // 3. S3 소스 경로용 인코딩 (커스텀 바이트 디코더)
+      // %XX 형태를 무조건 바이트로 해석하여 S3가 인식하게 함
       const rawEncodedOldKey = oldKey.split('/').map(seg => {
-        let d = seg;
-        while (d.includes('%')) {
-          try {
-            const next = decodeURIComponent(d);
-            if (next === d) break;
-            d = next;
-          } catch { break; }
-        }
-        return Array.from(Buffer.from(d, 'latin1'))
-          .map(b => '%' + b.toString(16).padStart(2, '0').toUpperCase())
-          .join('');
+        return seg.replace(/%([0-9A-F]{2})/gi, (match, p1) => {
+          return String.fromCharCode(parseInt(p1, 16));
+        }).split('').map(c => {
+          const b = c.charCodeAt(0);
+          return '%' + b.toString(16).padStart(2, '0').toUpperCase();
+        }).join('');
       }).join('/');
 
       const copyCmd = new CopyObjectCommand({
@@ -322,10 +310,10 @@ export class UploadService {
         Key: oldKey
       }));
 
-      this.logger.log(`[Migration Success] ${oldKey} -> ${newKey}`);
+      this.logger.log(`[Force Repair Success] ${oldKey} -> ${newKey}`);
       return this.getFileUrl(newKey);
     } catch (e: any) {
-      this.logger.error(`[Migration Failed] ${url}: ${e.message}`);
+      this.logger.error(`[Force Repair Failed] ${url}: ${e.message}`);
       return null;
     }
   }
