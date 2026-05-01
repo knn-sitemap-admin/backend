@@ -1087,4 +1087,36 @@ export class ContractsService {
 
     await this.contractRepo.delete({ id: Number(id) } as any);
   }
+
+  /**
+   * 특정 계약의 모든 깨진 이미지 파일명을 S3에서 복구하고 DB 주소를 갱신합니다.
+   */
+  async repairContractImages(id: number) {
+    const files = await this.fileRepo.find({
+      where: { contract: { id: Number(id) } as any },
+    });
+
+    const results = [];
+    for (const file of files) {
+      try {
+        const repairedUrl = await this.uploadService.repairS3Filename(file.url);
+        if (repairedUrl) {
+          // DB 업데이트
+          await this.fileRepo.update({ id: file.id }, { url: repairedUrl });
+          results.push({ original: file.url, repaired: repairedUrl, success: true });
+        } else {
+          results.push({ original: file.url, success: false, reason: '이미 정상이거나 복구 대상 아님' });
+        }
+      } catch (e: any) {
+        results.push({ original: file.url, success: false, reason: e.message });
+      }
+    }
+
+    return {
+      contractId: id,
+      totalFiles: files.length,
+      repairedCount: results.filter(r => r.success).length,
+      details: results,
+    };
+  }
 }

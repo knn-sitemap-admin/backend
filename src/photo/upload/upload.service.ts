@@ -258,47 +258,60 @@ export class UploadService {
 
   /**
    * S3 상의 깨진 파일명을 정상 한글명으로 수정합니다. (마이그레이션용)
-   * @param url 깨진 파일의 현재 URL 또는 경로
-   * @returns 수정된 새로운 URL (수정이 필요 없거나 실패 시 null)
    */
   async repairS3Filename(url: string): Promise<string | null> {
     if (!url) return null;
 
+    // 1. URL에서 키 추출 (인코딩된 상태 그대로 가져옴)
     const oldKey = this.extractKeyFromUrl(url);
     if (!oldKey) return null;
 
-    // 1. 파일명 복구 시도 (마지막 세그먼트인 파일명만 추출)
-    const segments = oldKey.split('/');
-    const lastIdx = segments.length - 1;
-    const oldFileName = segments[lastIdx];
-    const newFileName = this.repairEncoding(oldFileName);
-
-    // 복구된 결과가 원본과 같다면 수정할 필요 없음
-    if (oldFileName === newFileName) return null;
-
-    const newKey = [...segments.slice(0, lastIdx), newFileName].join('/');
-
     try {
-      // 2. S3에서 새로운 이름으로 복사
+      // 2. 파일명 부분만 추출
+      const segments = oldKey.split('/');
+      const lastIdx = segments.length - 1;
+      const oldFileNameEncoded = segments[lastIdx];
+
+      // 3. 이중 인코딩 해결: 먼저 URL 디코딩하여 깨진 글자(ì...) 확보
+      const brokenFileName = decodeURIComponent(oldFileNameEncoded);
+      
+      // 4. 깨진 글자의 바이트를 UTF-8로 재해석하여 한글 복구
+      const cleanFileName = this.repairEncoding(brokenFileName);
+
+      // 변화가 없다면 중단
+      if (brokenFileName === cleanFileName) return null;
+
+      const newKey = [...segments.slice(0, lastIdx), cleanFileName].join('/');
+
+      // 5. S3에서 복사 (이때 소스 경로는 '깨진 바이트' 그대로 지정)
+      const rawEncodedOldKey = oldKey.split('/').map(seg => {
+        // DB에 저장된 인코딩 형태가 아닌, 실제 S3가 들고 있는 '생 바이트'로 인코딩
+        const decoded = decodeURIComponent(seg);
+        return Array.from(Buffer.from(decoded, 'latin1'))
+          .map(b => '%' + b.toString(16).padStart(2, '0').toUpperCase())
+          .join('');
+      }).join('/');
+
       const copyCmd = new CopyObjectCommand({
         Bucket: this.bucketName,
-        // CopySource는 "버킷명/인코딩된키" 형식이어야 함
-        CopySource: `${this.bucketName}/${encodeURIComponent(oldKey)}`,
+        CopySource: `${this.bucketName}/${rawEncodedOldKey}`,
         Key: newKey,
         ACL: this.resolveACL(),
-        MetadataDirective: 'COPY', // 기존 메타데이터 유지
+        MetadataDirective: 'COPY',
       });
 
       await this.s3.send(copyCmd);
-      this.logger.log(`[S3 Repair Success] Copied: ${oldKey} -> ${newKey}`);
-
-      // 3. 복사 성공 후 기존 깨진 파일 삭제
-      await this.deleteFile(url);
       
-      // 4. 새로운 정상 URL 반환
+      // 6. 기존 파일 삭제
+      await this.s3.send(new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: oldKey
+      }));
+
+      this.logger.log(`[Migration Success] ${oldKey} -> ${newKey}`);
       return this.getFileUrl(newKey);
     } catch (e: any) {
-      this.logger.error(`[S3 Repair Failed] key: ${oldKey}, error: ${e.message}`);
+      this.logger.error(`[Migration Failed] ${url}: ${e.message}`);
       return null;
     }
   }
@@ -306,20 +319,17 @@ export class UploadService {
   private repairEncoding(str: string): string {
     if (!str) return '';
     try {
-      // 1. 이미 정상적인 한글이 포함되어 있다면 복구할 필요 없음
+      // 1. 이미 정상 한글이면 통과
       if (/[\uAC00-\uD7AF]/.test(str)) return str;
 
-      // 2. Latin1 바이트를 UTF-8로 해석 시도
+      // 2. Latin1(깨진 글자) -> UTF-8 바이트 변환
       const buf = Buffer.from(str, 'latin1');
       const repaired = buf.toString('utf8');
 
-      // 3. 복구된 결과에 한글이 있고, 유효한 UTF-8이면(대체 문자 없음) 복구 성공
-      if (!repaired.includes('\uFFFD') && /[\uAC00-\uD7AF]/.test(repaired)) {
+      if (/[\uAC00-\uD7AF]/.test(repaired)) {
         return repaired;
       }
-    } catch {
-      // 실패 시 원본 반환
-    }
+    } catch { }
     return str;
   }
 
