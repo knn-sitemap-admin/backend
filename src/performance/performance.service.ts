@@ -79,7 +79,7 @@ export class PerformanceService {
       .createQueryBuilder('s')
       .leftJoin('contracts', 'c', 'c.scheduleId = s.id')
       .select("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END", 'platform')
-      // 계약 완료 건수 (한 명의 고객/현장에 대해 성사된 계약이 있다면 1건으로 집계)
+      // 계약 완료 (완료된 계약 건수)
       .addSelect(`
         COUNT(DISTINCT CASE 
           WHEN c.status = 'done' THEN c.id
@@ -96,7 +96,25 @@ export class PerformanceService {
             LIMIT 1
           )
           ELSE NULL END
-        )`, 'contracted_count')
+        )`, 'completed_count')
+      // 계약 진행중 (계약중 상태의 건수)
+      .addSelect(`
+        COUNT(DISTINCT CASE 
+          WHEN c.status = 'ongoing' THEN c.id
+          WHEN c.id IS NULL AND EXISTS (
+            SELECT 1 FROM contracts c2 
+            WHERE c2.customerPhone = s.customer_phone 
+            AND c2.siteName = s.location 
+            AND c2.status = 'ongoing'
+          ) THEN (
+            SELECT c3.id FROM contracts c3 
+            WHERE c3.customerPhone = s.customer_phone 
+            AND c3.siteName = s.location 
+            AND c3.status = 'ongoing'
+            LIMIT 1
+          )
+          ELSE NULL END
+        )`, 'ongoing_count')
 
       // 부결/해약 (연결된 계약이 rejected 또는 canceled이고, 동일인/현장으로 성사된 건이 없는 경우)
       .addSelect(`
@@ -155,7 +173,7 @@ export class PerformanceService {
 
     const rows = await query
       .groupBy("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END")
-      .orderBy('contracted_count', 'DESC')
+      .orderBy('completed_count', 'DESC')
       .getRawMany();
 
     return {
@@ -165,9 +183,10 @@ export class PerformanceService {
         newCount: Number(r.new_meeting || 0),
         reCount: Number(r.re_meeting || 0),
         canceledCount: Number(r.canceled || 0),
-        contractedCount: Number(r.contracted_count || 0),
+        completedCount: Number(r.completed_count || 0),
+        ongoingCount: Number(r.ongoing_count || 0),
         rejectedCount: Number(r.rejected || 0),
-        totalCount: Number(r.new_meeting || 0) + Number(r.re_meeting || 0) + Number(r.canceled || 0) + Number(r.contracted_count || 0) + Number(r.rejected || 0)
+        totalCount: Number(r.new_meeting || 0) + Number(r.re_meeting || 0) + Number(r.canceled || 0) + Number(r.completed_count || 0) + Number(r.ongoing_count || 0) + Number(r.rejected || 0)
       }))
     };
   }
