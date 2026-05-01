@@ -294,30 +294,31 @@ export class UploadService {
 
   /**
    * S3 키 세그먼트를 안전하게 인코딩합니다.
-   * 깨진 라틴 문자열(ì ´ë¯¸ì§€)은 Latin1 바이트 그대로 %XX 인코딩합니다.
+   * 한글, 깨진 라틴 문자, ASCII가 섞여 있어도 각각 최적의 바이트로 변환합니다.
    */
-  private smartEncode(key: string): string {
-    if (!key) return '';
-    return key
-      .split('/')
-      .map((segment) => {
-        // 한글이 포함되어 있으면 표준 UTF-8 인코딩 (encodeURIComponent)
-        if (/[\uAC00-\uD7AF]/.test(segment)) {
-          return encodeURIComponent(segment);
-        }
+  private smartEncode(segment: string): string {
+    if (!segment) return '';
 
-        // 한글은 없지만 0x80 이상의 문자가 있다면 '깨진' 라틴 문자열로 간주
-        // 해당 바이트 그대로(Latin1) %XX 인코딩 시도
-        if (/[\u0080-\u00FF]/.test(segment)) {
-          return Array.from(Buffer.from(segment, 'latin1'))
-            .map((b) => '%' + b.toString(16).padStart(2, '0').toUpperCase())
-            .join('');
-        }
+    let result = '';
+    for (let i = 0; i < segment.length; i++) {
+      const char = segment[i];
+      const code = char.charCodeAt(0);
 
-        // 그 외 영문/숫자 및 일반 기호는 표준 인코딩
-        return encodeURIComponent(segment);
-      })
-      .join('/');
+      if (code >= 0xac00 && code <= 0xd7af) {
+        // 1. 한글: 표준 UTF-8 인코딩
+        result += encodeURIComponent(char);
+      } else if (code >= 0x80 && code <= 0xff) {
+        // 2. 깨진 라틴 문자: 해당 코드값 그대로 바이트(%XX)로 변환
+        result += '%' + code.toString(16).padStart(2, '0').toUpperCase();
+      } else {
+        // 3. ASCII 및 기타: encodeURIComponent (단, S3에서 안전한 일부 특수문자 보존 여부는 표준 따름)
+        // encodeURIComponent는 ' ( ) * ! 등을 인코딩하므로 S3와 호환성이 좋습니다.
+        result += encodeURIComponent(char);
+      }
+    }
+
+    // encodeURIComponent가 중복 인코딩한 '/' 등을 복구할 필요는 없음 (세그먼트 단위이므로)
+    return result;
   }
 
   /**
@@ -344,10 +345,8 @@ export class UploadService {
         this.cdnBaseUrl && pathOrUrl.startsWith(this.cdnBaseUrl);
 
       if (isInternalS3 || isInternalCdn) {
-        // 내부 주소인 경우 현재 설정(CDN 등)에 맞춰 재구성하기 위해 Key 추출
         key = this.extractKeyFromUrl(pathOrUrl) || pathOrUrl;
       } else {
-        // 외부 주소인 경우 베이스 주소 보존
         try {
           const parsed = new URL(pathOrUrl);
           targetBase = parsed.origin;
@@ -359,31 +358,37 @@ export class UploadService {
     }
 
     if (!key) return pathOrUrl || '';
-
-    // 앞쪽 슬래시 제거 및 정제
     key = key.replace(/^\//, '').trim();
 
     try {
-      // 2. 더블 인코딩 방지 및 디코딩
+      // 2. 더블 인코딩 방지를 위한 디코딩
       let decodedKey = key;
-      let prev;
-      do {
-        prev = decodedKey;
-        try {
-          decodedKey = decodeURIComponent(decodedKey);
-        } catch {
-          break;
+      try {
+        decodedKey = decodeURIComponent(key);
+      } catch {
+        // 인코딩이 깨진 경우 무시
+      }
+
+      // 3. 복구 시도 및 인코딩
+      const segments = decodedKey.split('/');
+      const encodedSegments = segments.map(seg => {
+        const repaired = this.repairEncoding(seg);
+        
+        // 복구된 결과에 한글이 있다면 복구된 것을 사용
+        if (/[\uAC00-\uD7AF]/.test(repaired)) {
+          return this.smartEncode(repaired);
         }
-      } while (decodedKey !== prev && decodedKey.includes('%'));
+        
+        // 복구가 안 되었다면 원본 세그먼트를 사용하되, 
+        // S3에 실제로 '깨진 글자'로 저장되어 있을 경우를 대비해 표준 인코딩 시도
+        // 만약 여기서도 깨진 문자가 있다면 smartEncode가 바이트 인코딩을 수행함
+        return this.smartEncode(seg);
+      });
 
-      // 3. 깨진 인코딩 복구 시도 및 유니코드 정규화 (NFC)
-      const repairedKey = this.repairEncoding(decodedKey).normalize('NFC');
-
-      // 4. 스마트 인코딩 적용 (깨진 문자열은 바이트 그대로 인코딩)
-      const encodedPath = this.smartEncode(repairedKey);
-
-      return `${targetBase}/${encodedPath}`;
+      const finalPath = encodedSegments.join('/');
+      return `${targetBase}/${finalPath}`;
     } catch (e) {
+      this.logger.warn(`getFileUrl Fail: ${key} -> ${e.message}`);
       return `${targetBase}/${encodeURI(key)}`;
     }
   }
