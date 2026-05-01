@@ -37,10 +37,13 @@ export class ReportsService {
   constructor(private readonly ds: DataSource) {}
 
   async getSalesOverview() {
-    const [{ totalContracts = 0 } = {}] = await this.ds.query(`
-      SELECT COUNT(*) AS totalContracts
+    const [{ totalContracts = 0, completedCount = 0, rejectedCount = 0 } = {}] = await this.ds.query(`
+      SELECT 
+        COUNT(*) AS totalContracts,
+        COUNT(CASE WHEN status = 'done' THEN 1 END) AS completedCount,
+        COUNT(CASE WHEN status = 'rejected' THEN 1 END) AS rejectedCount
       FROM contracts c
-      WHERE c.status IN ('ongoing','done') 
+      WHERE c.status IN ('ongoing','done','canceled','rejected') 
     `);
     const [{ totalSupportAmount = 0 } = {}] = await this.ds.query(`
       SELECT COALESCE(SUM(c.supportAmount),0) AS totalSupportAmount
@@ -65,6 +68,8 @@ export class ReportsService {
     `);
     const summary = {
       totalContracts: Number(totalContracts),
+      completedCount: Number(completedCount),
+      rejectedCount: Number(rejectedCount),
       totalFinalAmount: Number(totalFinalAmount),
       totalSupportAmount: Number(totalSupportAmount),
       totalSupportCashAmount: Number(totalSupportCashAmount),
@@ -75,8 +80,10 @@ export class ReportsService {
         t.id AS teamId,
         t.name AS teamName,
         COUNT(DISTINCT tm.account_id) AS memberCount,
-        COUNT(DISTINCT CASE WHEN c.status IN ('ongoing','done') THEN c.id END) AS contractCount,
-        COUNT(DISTINCT CASE WHEN c.status='canceled' THEN c.id END) AS canceledCount,
+        COUNT(DISTINCT CASE WHEN c.status IN ('ongoing','done','canceled','rejected') THEN c.id END) AS totalContractCount,
+        COUNT(DISTINCT CASE WHEN c.status = 'done' THEN c.id END) AS completedCount,
+        COUNT(DISTINCT CASE WHEN c.status = 'rejected' THEN c.id END) AS rejectedCount,
+        COUNT(DISTINCT CASE WHEN c.status = 'canceled' THEN c.id END) AS canceledCount,
         COALESCE(SUM(CASE WHEN c.status IN ('ongoing','done') THEN c.supportAmount END),0) AS supportAmount,
         COALESCE(SUM(CASE WHEN c.status IN ('ongoing','done') THEN c.supportCashAmount END),0) AS supportCashAmount,
         COALESCE(SUM(CASE WHEN c.status IN ('ongoing','done') AND a.role='staff' THEN a.finalAmount END),0) AS finalAmount

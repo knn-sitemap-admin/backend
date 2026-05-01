@@ -273,40 +273,82 @@ export class UploadService {
   }
 
   /**
+   * 깨진 파일 이름(Latin1 -> UTF-8)을 복구합니다.
+   * "ì´ë¯¸ì§€" -> "이미지"
+   */
+  private repairEncoding(str: string): string {
+    if (!str) return '';
+    try {
+      // 1. 이미 정상적인 한글이 포함되어 있다면 변환하지 않음
+      if (/[\uAC00-\uD7AF]/.test(str)) return str;
+
+      // 2. UTF-8 바이트가 Latin1으로 잘못 해석된 전형적인 패턴인지 확인
+      // (ì, ë, í 등으로 시작하는 3바이트 한글 패턴)
+      if (/[ìëí][\u0080-\u00BF]{2}/.test(str)) {
+        const repaired = Buffer.from(str, 'latin1').toString('utf8');
+        // 복구 결과에 한글이 포함되면 복구 성공으로 간주
+        if (/[\uAC00-\uD7AF]/.test(repaired)) {
+          return repaired;
+        }
+      }
+    } catch {
+      // 무시하고 원본 반환
+    }
+    return str;
+  }
+
+  /**
    * 저장된 경로(Key) 혹은 기존 URL을 접근 가능한 CDN URL로 변환합니다.
    * DB에서 데이터를 불러와 클라이언트에 전달할 때 사용합니다.
    */
   getFileUrl(pathOrUrl: string | null | undefined): string {
     if (!pathOrUrl) return '';
 
-    const base = this.cdnBaseUrl || `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
+    const base =
+      this.cdnBaseUrl ||
+      `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
 
-    // 1. 이미 전체 HTTP 주소인 경우 (S3 혹은 기존 CDN 주소)
-    if (pathOrUrl.startsWith('http')) {
-      const isS3 = pathOrUrl.includes('.s3.') && pathOrUrl.includes('.amazonaws.com/');
-      const isCdn = this.cdnBaseUrl && pathOrUrl.startsWith(this.cdnBaseUrl);
+    // 1. S3 Key만 추출 (이미 전체 URL인 경우 처리)
+    let key = pathOrUrl.startsWith('http')
+      ? this.extractKeyFromUrl(pathOrUrl)
+      : pathOrUrl;
 
-      if (isS3 || isCdn) {
-        const key = this.extractKeyFromUrl(pathOrUrl);
-        if (key) {
-          try {
-            // double encoding 방지 및 CDN 주소로 통일
-            return `${base}/${encodeURI(decodeURI(key))}`;
-          } catch {
-            return `${base}/${encodeURI(key)}`;
-          }
-        }
-      }
-      return pathOrUrl;
-    }
+    if (!key) return pathOrUrl || '';
 
-    // 2. 상대 경로(Key)인 경우 CDN 베이스 주소를 붙임
-    const cleanPath = pathOrUrl.replace(/^\//, '');
+    // 앞쪽 슬래시 제거 및 공백 정제
+    key = key.replace(/^\//, '').trim();
+
     try {
-      // double encoding 방지: 이미 인코딩된 경우를 위해 decode 후 다시 encode
-      return `${base}/${encodeURI(decodeURI(cleanPath))}`;
-    } catch {
-      return `${base}/${encodeURI(cleanPath)}`;
+      // 2. 더블 인코딩 방지: 이미 인코딩된 경우를 위해 반복적으로 decode
+      let decodedKey = key;
+      let prev;
+      do {
+        prev = decodedKey;
+        // decodeURIComponent는 실패할 수 있으므로 안전하게 처리
+        try {
+          decodedKey = decodeURIComponent(decodedKey);
+        } catch {
+          break;
+        }
+      } while (decodedKey !== prev && decodedKey.includes('%'));
+
+      // 3. 깨진 인코딩 복구 시도 (ì´ë¯¸ì§€ -> 이미지)
+      // AWS와 DB 둘 다 깨져있더라도, 실제 브라우저가 요청할 때는 
+      // 표준 UTF-8로 인코딩된 경로를 더 잘 처리할 수 있습니다.
+      // (단, S3 오브젝트명이 실제 깨진 문자열 그대로라면 복구하지 않는 것이 맞으나,
+      // 많은 경우 S3는 UTF-8 바이트를 보관하므로 복구가 효과적일 수 있습니다.)
+      const repairedKey = this.repairEncoding(decodedKey);
+
+      // 4. 세그먼트별 안전 인코딩 (슬래시는 유지하고 #, +, ? 등은 인코딩)
+      const encodedKey = repairedKey
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+
+      return `${base}/${encodedKey}`;
+    } catch (e) {
+      // 실패 시 최소한의 안전 장치로 encodeURI 적용
+      return `${base}/${encodeURI(key)}`;
     }
   }
 

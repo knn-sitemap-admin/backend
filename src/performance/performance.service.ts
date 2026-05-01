@@ -119,23 +119,19 @@ export class PerformanceService {
       // 부결/해약 (직접 연결된 계약이 부결/해약이거나, ID 연결은 없지만 동일 고객/현장으로 부결된 계약이 존재하는 경우)
       .addSelect(`
         COUNT(DISTINCT CASE 
-          WHEN (c.status = 'rejected' OR c.status = 'canceled') AND NOT EXISTS (
-            SELECT 1 FROM contracts c_done 
-            WHERE c_done.customerPhone = s.customer_phone 
-            AND c_done.siteName = s.location 
-            AND c_done.status IN ('done', 'ongoing')
-          ) THEN s.id 
+          WHEN (c.status = 'rejected' OR c.status = 'canceled') THEN c.id 
           WHEN c.id IS NULL AND EXISTS (
             SELECT 1 FROM contracts c_rej 
             WHERE c_rej.customerPhone = s.customer_phone 
             AND c_rej.siteName = s.location 
             AND (c_rej.status = 'rejected' OR c_rej.status = 'canceled')
-          ) AND NOT EXISTS (
-            SELECT 1 FROM contracts c_done2 
-            WHERE c_done2.customerPhone = s.customer_phone 
-            AND c_done2.siteName = s.location 
-            AND c_done2.status IN ('done', 'ongoing')
-          ) THEN s.id
+          ) THEN (
+            SELECT c_rej2.id FROM contracts c_rej2 
+            WHERE c_rej2.customerPhone = s.customer_phone 
+            AND c_rej2.siteName = s.location 
+            AND (c_rej2.status = 'rejected' OR c_rej2.status = 'canceled')
+            LIMIT 1
+          )
           ELSE NULL END
         )`, 'rejected')
       // 미팅 취소 (일정 상태가 canceled이고, 계약 단계(부결 포함)까지 간 기록이 전혀 없는 경우)
@@ -312,10 +308,12 @@ export class PerformanceService {
     // 1) 회사 KPI
     const companyRaw = await this.contractRepo
       .createQueryBuilder('c')
-      .select(`COALESCE(SUM(${grandTotalExpr}), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(${companyAmountExpr}), 0)`, 'netProfit')
-      .addSelect(`COUNT(c.id)`, 'contractCount')
-      .where('c.status IN (:...statuses)', { statuses: ['ongoing', 'done'] })
+      .select(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${grandTotalExpr} ELSE 0 END), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${companyAmountExpr} ELSE 0 END), 0)`, 'netProfit')
+      .addSelect(`COUNT(c.id)`, 'totalContractCount')
+      .addSelect(`COUNT(CASE WHEN c.status = 'done' THEN c.id END)`, 'completedContractCount')
+      .addSelect(`COUNT(CASE WHEN c.status = 'rejected' THEN c.id END)`, 'rejectedContractCount')
+      .where('c.status IN (:...statuses)', { statuses: ['ongoing', 'done', 'canceled', 'rejected'] })
       .andWhere('c.contractDate >= :s AND c.contractDate <= :e', {
         s: range.startDate,
         e: range.endDate,
@@ -323,7 +321,9 @@ export class PerformanceService {
       .getRawOne<{
         grossSales: string;
         netProfit: string;
-        contractCount: string;
+        totalContractCount: string;
+        completedContractCount: string;
+        rejectedContractCount: string;
       }>();
 
     // 2) 총 인원수
@@ -374,10 +374,12 @@ export class PerformanceService {
       )
       .select('t.id', 'teamId')
       .addSelect('t.name', 'teamName')
-      .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
-      .addSelect(`COALESCE(SUM(${gSalesContribExpr}), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(${nProfitContribExpr}), 0)`, 'netProfit')
-      .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0)`, 'finalPayout')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0)`, 'netProfit')
+      .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
       .where('t.is_active = :act', { act: true })
       .groupBy('t.id')
       .addGroupBy('t.name')
@@ -388,7 +390,9 @@ export class PerformanceService {
         finalPayout: string;
         grossSales: string;
         netProfit: string;
-        contractCount: string;
+        totalContractCount: string;
+        completedContractCount: string;
+        rejectedContractCount: string;
       }>();
 
     const teams: TeamSummary[] = teamPerfRows.map((r) => ({
@@ -397,7 +401,9 @@ export class PerformanceService {
       finalPayout: Number(r.finalPayout),
       grossSales: Number(r.grossSales),
       netProfit: Number(r.netProfit),
-      contractCount: Number(r.contractCount),
+      totalContractCount: Number(r.totalContractCount),
+      completedContractCount: Number(r.completedContractCount),
+      rejectedContractCount: Number(r.rejectedContractCount),
       memberCount: memberCountMap.get(String(r.teamId)) ?? 0,
     }));
 
@@ -407,7 +413,9 @@ export class PerformanceService {
       finalPayout: t.finalPayout,
       grossSales: t.grossSales,
       netProfit: t.netProfit,
-      contractCount: t.contractCount,
+      totalContractCount: t.totalContractCount,
+      completedContractCount: t.completedContractCount,
+      rejectedContractCount: t.rejectedContractCount,
       rank: (idx + 1) as 1 | 2 | 3,
     }));
 
@@ -416,7 +424,9 @@ export class PerformanceService {
       company: {
         grossSales: Number(companyRaw?.grossSales ?? 0),
         netProfit: Number(companyRaw?.netProfit ?? 0),
-        contractCount: Number(companyRaw?.contractCount ?? 0),
+        totalContractCount: Number(companyRaw?.totalContractCount ?? 0),
+        completedContractCount: Number(companyRaw?.completedContractCount ?? 0),
+        rejectedContractCount: Number(companyRaw?.rejectedContractCount ?? 0),
         headcount,
       },
       teams,
@@ -462,12 +472,12 @@ export class PerformanceService {
         'c',
         `
         c.id = a.contract_id
-        AND c.status = :done
+        AND c.status IN (:...statuses)
         AND c.contract_date >= :s
         AND c.contract_date <= :e
       `,
         {
-          done: 'done',
+          statuses: ['ongoing', 'done', 'canceled', 'rejected'],
           s: range.startDate,
           e: range.endDate,
         },
@@ -475,10 +485,12 @@ export class PerformanceService {
       .select('acc.id', 'accountId')
       .addSelect('acc.name', 'name')
       .addSelect('acc.position_rank', 'positionRank')
-      .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
-      .addSelect(`COALESCE(SUM(${gSalesContribExpr}), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(${nProfitContribExpr}), 0)`, 'netProfit')
-      .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0)`, 'finalPayout')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0)`, 'netProfit')
+      .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
       // 팀원 리스트는 다 보여주되, 비활성 credential은 제외(너가 "비활성은 사실상 안 쓰지만"이라고 했으니 최소 안전장치)
       .where('(cr.is_disabled = 0 OR cr.is_disabled IS NULL)')
       .andWhere('cr.role != :admin', { admin: 'admin' })
@@ -496,7 +508,9 @@ export class PerformanceService {
         finalPayout: string;
         grossSales: string;
         netProfit: string;
-        contractCount: string;
+        totalContractCount: string;
+        completedContractCount: string;
+        rejectedContractCount: string;
       }>();
 
     return {
@@ -509,7 +523,9 @@ export class PerformanceService {
         finalPayout: Number(r.finalPayout),
         grossSales: Number(r.grossSales),
         netProfit: Number(r.netProfit),
-        contractCount: Number(r.contractCount),
+        totalContractCount: Number(r.totalContractCount),
+        completedContractCount: Number(r.completedContractCount),
+        rejectedContractCount: Number(r.rejectedContractCount),
       })),
     };
   }
@@ -562,12 +578,14 @@ export class PerformanceService {
       .createQueryBuilder('c')
       .innerJoin(ContractAssignee, 'a', 'a.contract_id = c.id')
       .select('MONTH(c.contract_date)', 'month')
-      .addSelect(`COALESCE(SUM(${myAmountExpr}), 0)`, 'finalPayout')
-      .addSelect(`COALESCE(SUM(${gSalesFullExpr}), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(${nProfitContribExpr}), 0)`, 'netProfit')
-      .addSelect('COUNT(DISTINCT c.id)', 'contractCount')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0)`, 'finalPayout')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesFullExpr} ELSE 0 END), 0)`, 'grossSales')
+      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0)`, 'netProfit')
+      .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
       .where('a.account_id = :aid', { aid: String(accountId) })
-      .andWhere('c.status = :done', { done: 'done' })
+      .andWhere('c.status IN (:...statuses)', { statuses: ['ongoing', 'done', 'canceled', 'rejected'] })
       .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
         s: startDate,
         e: endDate,
@@ -579,7 +597,9 @@ export class PerformanceService {
         finalPayout: string;
         grossSales: string;
         netProfit: string;
-        contractCount: string;
+        totalContractCount: string;
+        completedContractCount: string;
+        rejectedContractCount: string;
       }>();
 
     // 1~12월 데이터 보장
@@ -592,7 +612,9 @@ export class PerformanceService {
         grossSales: Number(found?.grossSales ?? 0),
         netProfit: Number(found?.netProfit ?? 0),
         finalPayout: Number(found?.finalPayout ?? 0),
-        contractCount: Number(found?.contractCount ?? 0),
+        totalContractCount: Number(found?.totalContractCount ?? 0),
+        completedContractCount: Number(found?.completedContractCount ?? 0),
+        rejectedContractCount: Number(found?.rejectedContractCount ?? 0),
       };
     });
 
