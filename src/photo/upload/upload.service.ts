@@ -272,29 +272,52 @@ export class UploadService {
     return { urls, keys, domain, userId };
   }
 
-  /**
-   * 깨진 파일 이름(Latin1 -> UTF-8)을 복구합니다.
-   * "ì´ë¯¸ì§€" -> "이미지"
-   */
   private repairEncoding(str: string): string {
     if (!str) return '';
     try {
-      // 1. 이미 정상적인 한글이 포함되어 있다면 변환하지 않음
+      // 1. 이미 정상적인 한글이 포함되어 있다면 복구할 필요 없음
       if (/[\uAC00-\uD7AF]/.test(str)) return str;
 
-      // 2. UTF-8 바이트가 Latin1으로 잘못 해석된 전형적인 패턴인지 확인
-      // (ì, ë, í 등으로 시작하는 3바이트 한글 패턴)
-      if (/[ìëí][\u0080-\u00BF]{2}/.test(str)) {
-        const repaired = Buffer.from(str, 'latin1').toString('utf8');
-        // 복구 결과에 한글이 포함되면 복구 성공으로 간주
-        if (/[\uAC00-\uD7AF]/.test(repaired)) {
-          return repaired;
-        }
+      // 2. Latin1 바이트를 UTF-8로 해석 시도
+      const buf = Buffer.from(str, 'latin1');
+      const repaired = buf.toString('utf8');
+
+      // 3. 복구된 결과에 한글이 있고, 유효한 UTF-8이면(대체 문자 없음) 복구 성공
+      if (!repaired.includes('\uFFFD') && /[\uAC00-\uD7AF]/.test(repaired)) {
+        return repaired;
       }
     } catch {
-      // 무시하고 원본 반환
+      // 실패 시 원본 반환
     }
     return str;
+  }
+
+  /**
+   * S3 키 세그먼트를 안전하게 인코딩합니다.
+   * 깨진 라틴 문자열(ì ´ë¯¸ì§€)은 Latin1 바이트 그대로 %XX 인코딩합니다.
+   */
+  private smartEncode(key: string): string {
+    if (!key) return '';
+    return key
+      .split('/')
+      .map((segment) => {
+        // 한글이 포함되어 있으면 표준 UTF-8 인코딩 (encodeURIComponent)
+        if (/[\uAC00-\uD7AF]/.test(segment)) {
+          return encodeURIComponent(segment);
+        }
+
+        // 한글은 없지만 0x80 이상의 문자가 있다면 '깨진' 라틴 문자열로 간주
+        // 해당 바이트 그대로(Latin1) %XX 인코딩 시도
+        if (/[\u0080-\u00FF]/.test(segment)) {
+          return Array.from(Buffer.from(segment, 'latin1'))
+            .map((b) => '%' + b.toString(16).padStart(2, '0').toUpperCase())
+            .join('');
+        }
+
+        // 그 외 영문/숫자 및 일반 기호는 표준 인코딩
+        return encodeURIComponent(segment);
+      })
+      .join('/');
   }
 
   /**
@@ -304,27 +327,48 @@ export class UploadService {
   getFileUrl(pathOrUrl: string | null | undefined): string {
     if (!pathOrUrl) return '';
 
-    const base =
+    const currentBase =
       this.cdnBaseUrl ||
       `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
 
-    // 1. S3 Key만 추출 (이미 전체 URL인 경우 처리)
-    let key = pathOrUrl.startsWith('http')
-      ? this.extractKeyFromUrl(pathOrUrl)
-      : pathOrUrl;
+    let targetBase = currentBase;
+    let key = pathOrUrl;
+
+    // 1. 절대 URL인 경우 처리
+    if (pathOrUrl.startsWith('http')) {
+      const isInternalS3 =
+        pathOrUrl.includes('.amazonaws.com/') &&
+        (pathOrUrl.includes(`/${this.bucketName}/`) ||
+          pathOrUrl.includes(`${this.bucketName}.s3`));
+      const isInternalCdn =
+        this.cdnBaseUrl && pathOrUrl.startsWith(this.cdnBaseUrl);
+
+      if (isInternalS3 || isInternalCdn) {
+        // 내부 주소인 경우 현재 설정(CDN 등)에 맞춰 재구성하기 위해 Key 추출
+        key = this.extractKeyFromUrl(pathOrUrl) || pathOrUrl;
+      } else {
+        // 외부 주소인 경우 베이스 주소 보존
+        try {
+          const parsed = new URL(pathOrUrl);
+          targetBase = parsed.origin;
+          key = parsed.pathname;
+        } catch {
+          return pathOrUrl;
+        }
+      }
+    }
 
     if (!key) return pathOrUrl || '';
 
-    // 앞쪽 슬래시 제거 및 공백 정제
+    // 앞쪽 슬래시 제거 및 정제
     key = key.replace(/^\//, '').trim();
 
     try {
-      // 2. 더블 인코딩 방지: 이미 인코딩된 경우를 위해 반복적으로 decode
+      // 2. 더블 인코딩 방지 및 디코딩
       let decodedKey = key;
       let prev;
       do {
         prev = decodedKey;
-        // decodeURIComponent는 실패할 수 있으므로 안전하게 처리
         try {
           decodedKey = decodeURIComponent(decodedKey);
         } catch {
@@ -332,23 +376,15 @@ export class UploadService {
         }
       } while (decodedKey !== prev && decodedKey.includes('%'));
 
-      // 3. 깨진 인코딩 복구 시도 (ì´ë¯¸ì§€ -> 이미지)
-      // AWS와 DB 둘 다 깨져있더라도, 실제 브라우저가 요청할 때는 
-      // 표준 UTF-8로 인코딩된 경로를 더 잘 처리할 수 있습니다.
-      // (단, S3 오브젝트명이 실제 깨진 문자열 그대로라면 복구하지 않는 것이 맞으나,
-      // 많은 경우 S3는 UTF-8 바이트를 보관하므로 복구가 효과적일 수 있습니다.)
-      const repairedKey = this.repairEncoding(decodedKey);
+      // 3. 깨진 인코딩 복구 시도 및 유니코드 정규화 (NFC)
+      const repairedKey = this.repairEncoding(decodedKey).normalize('NFC');
 
-      // 4. 세그먼트별 안전 인코딩 (슬래시는 유지하고 #, +, ? 등은 인코딩)
-      const encodedKey = repairedKey
-        .split('/')
-        .map((segment) => encodeURIComponent(segment))
-        .join('/');
+      // 4. 스마트 인코딩 적용 (깨진 문자열은 바이트 그대로 인코딩)
+      const encodedPath = this.smartEncode(repairedKey);
 
-      return `${base}/${encodedKey}`;
+      return `${targetBase}/${encodedPath}`;
     } catch (e) {
-      // 실패 시 최소한의 안전 장치로 encodeURI 적용
-      return `${base}/${encodeURI(key)}`;
+      return `${targetBase}/${encodeURI(key)}`;
     }
   }
 
@@ -362,46 +398,43 @@ export class UploadService {
   extractKeyFromUrl(url: string): string | null {
     if (!url) return null;
 
-    // 1. s3://bucket/key 형태
     if (url.startsWith('s3://')) {
       const parts = url.split('/');
       if (parts.length < 4) return null;
       return parts.slice(3).join('/');
     }
 
-    // 2. HTTP(S) 형태 처리
     try {
       const parsed = new URL(url);
+      let pathname = parsed.pathname.replace(/^\//, '');
 
-      // CDN_BASE_URL 도메인인 경우
-      if (this.cdnBaseUrl && url.startsWith(this.cdnBaseUrl)) {
-        return decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+      // 인코딩된 경로라면 디코딩하여 순수 Key 획득 시도
+      try {
+        pathname = decodeURIComponent(pathname);
+      } catch {
+        // 무시
       }
 
-      // S3 도메인인 경우 (bucket.s3.region.amazonaws.com 또는 s3.region.amazonaws.com/bucket)
       if (parsed.hostname.includes('amazonaws.com')) {
-        // virtual-hosted style: bucket.s3.ap-northeast-2.amazonaws.com/key
+        // virtual-hosted style
         if (parsed.hostname.includes('.s3.')) {
-          return decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+          return pathname;
         }
-        // path-style: s3.ap-northeast-2.amazonaws.com/bucket/key
-        const parts = parsed.pathname.replace(/^\//, '').split('/');
+        // path-style
+        const parts = pathname.split('/');
         if (parts.length >= 2) {
-          // 첫 번째 파트는 버킷명이므로 제외
-          return decodeURIComponent(parts.slice(1).join('/'));
+          return parts.slice(1).join('/');
         }
       }
 
-      // 기타 커스텀 도메인이나 이미 상대 경로인 경우 pathname만 반환
-      if (parsed.pathname && parsed.pathname !== '/') {
-        return decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+      if (this.cdnBaseUrl && url.startsWith(this.cdnBaseUrl)) {
+        return pathname;
       }
-    } catch {
-      // URL 객체 생성 실패 시 (이미 상대 경로인 경우 등)
-      return decodeURIComponent(url.replace(/^\//, ''));
-    }
 
-    return null;
+      return pathname;
+    } catch {
+      return url.replace(/^\//, '');
+    }
   }
 
   /** S3 오브젝트 삭제 */
@@ -417,7 +450,6 @@ export class UploadService {
       await this.s3.send(cmd);
     } catch (e: any) {
       this.logger.error(`[S3 Delete Error] key: ${key}, error: ${e.message}`);
-      // 굳이 예외를 던지지 않고 로그만 남김 (삭제 실패가 비즈니스 로직을 중단시키면 안 됨)
     }
   }
 
