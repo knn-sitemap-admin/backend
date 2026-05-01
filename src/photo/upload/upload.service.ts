@@ -85,17 +85,19 @@ export class UploadService {
       decoded = original;
     }
 
-    // 2. S3 Key 안전화: 영문, 숫자, 하이픈(-), 언더스코어(_), 점(.), 한글 허용
+    // 2. S3 Key 안전화: 영문, 숫자, 하이픈(-), 언더스코어(_), 점(.), 괄호(), 한글 허용
     const base = path.basename(decoded);
     const ext = path.extname(base);
     const nameOnly = path.basename(base, ext);
 
-    // 영문/숫자/하이픈/언더스코어/한글 이외의 모든 문자 제거
-    const safeName = nameOnly.replace(/[^a-zA-Z0-9\-_\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/g, '');
+    // 영문/숫자/하이픈/언더스코어/괄호/점/한글 이외의 모든 문자 제거 및 공백은 언더스코어로 변경
+    const safeName = nameOnly
+      .replace(/[^a-zA-Z0-9\-_\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F()[\].]/g, '')
+      .replace(/\s+/g, '_');
 
     // 파일명이 완전히 비어버리는 경우 방지
     const finalBase = safeName || 'file';
-    return (finalBase.slice(0, 100) + ext.toLowerCase()).replace(/\s+/g, '_');
+    return (finalBase.slice(0, 100) + ext.toLowerCase());
   }
 
   private randomSuffix(bytes = 6): string {
