@@ -1117,38 +1117,39 @@ export class ContractsService {
       totalFiles: files.length,
       repairedCount: results.filter(r => r.success).length,
       details: results,
-      /**
-       * DB 전체를 스캔하여 모든 깨진 이미지 파일명을 S3에서 복구하고 DB 주소를 갱신합니다.
-       */
-      async repairAllContractImages() {
-        // 1. URL에 %가 포함된 모든 파일 조회 (깨짐 가능성 높은 대상)
-        const files = await this.fileRepo
-          .createQueryBuilder('f')
-          .where('f.url LIKE :kw', { kw: '%%' })
-          .getMany();
+    };
+  }
 
-        this.logger.log(`[Batch Repair] Found ${files.length} potential targets.`);
+  /**
+   * DB 전체를 스캔하여 모든 깨진 이미지 파일명을 S3에서 복구하고 DB 주소를 갱신합니다.
+   */
+  async repairAllContractImages() {
+    // 1. URL에 %가 포함된 모든 파일 조회 (깨짐 가능성 높은 대상)
+    const files = await this.fileRepo
+      .createQueryBuilder('f')
+      .where('f.url LIKE :kw', { kw: '%%' })
+      .getMany();
 
-        const results: any[] = [];
-        for (const file of files) {
-          try {
-            // S3 파일명 변경 및 새 URL 획득
-            const repairedUrl = await this.uploadService.repairS3Filename(file.url);
-            if (repairedUrl) {
-              // DB 업데이트
-              await this.fileRepo.update({ id: file.id }, { url: repairedUrl });
-              results.push({ id: file.id, success: true });
-            }
-          } catch (e: any) {
-            this.logger.error(`[Batch Repair Failed] fileId: ${file.id}, error: ${e.message}`);
-          }
+    console.log(`[Batch Repair] Found ${files.length} potential targets.`);
+
+    const results: any[] = [];
+    for (const file of files) {
+      try {
+        // S3 파일명 변경 및 새 URL 획득
+        const repairedUrl = await this.uploadService.repairS3Filename(file.url);
+        if (repairedUrl) {
+          // DB 업데이트
+          await this.fileRepo.update({ id: file.id }, { url: repairedUrl });
+          results.push({ id: file.id, success: true });
         }
-
-        return {
-          totalFound: files.length,
-          repairedCount: results.length,
-        };
+      } catch (e: any) {
+        console.error(`[Batch Repair Failed] fileId: ${file.id}, error: ${e.message}`);
       }
     }
+
+    return {
+      totalFound: files.length,
+      repairedCount: results.length,
+    };
   }
 }
