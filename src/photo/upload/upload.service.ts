@@ -262,32 +262,46 @@ export class UploadService {
   async repairS3Filename(url: string): Promise<string | null> {
     if (!url) return null;
 
-    // 1. URL에서 키 추출 (인코딩된 상태 그대로 가져옴)
     const oldKey = this.extractKeyFromUrl(url);
     if (!oldKey) return null;
 
     try {
-      // 2. 파일명 부분만 추출
       const segments = oldKey.split('/');
       const lastIdx = segments.length - 1;
       const oldFileNameEncoded = segments[lastIdx];
 
-      // 3. 이중 인코딩 해결: 먼저 URL 디코딩하여 깨진 글자(ì...) 확보
-      const brokenFileName = decodeURIComponent(oldFileNameEncoded);
+      // 1. 중첩된 인코딩을 완전히 해제 (깨진 글자 ì... 확보)
+      let brokenFileName = oldFileNameEncoded;
+      while (brokenFileName.includes('%')) {
+        try {
+          const decoded = decodeURIComponent(brokenFileName);
+          if (decoded === brokenFileName) break;
+          brokenFileName = decoded;
+        } catch { break; }
+      }
       
-      // 4. 깨진 글자의 바이트를 UTF-8로 재해석하여 한글 복구
+      // 2. 한글 복구 시도
       const cleanFileName = this.repairEncoding(brokenFileName);
 
-      // 변화가 없다면 중단
-      if (brokenFileName === cleanFileName) return null;
+      // 변화가 없다면 (이미 정상이거나 복구 불가)
+      if (brokenFileName === cleanFileName) {
+        this.logger.debug(`[Repair Skip] No change needed for: ${brokenFileName}`);
+        return null;
+      }
 
       const newKey = [...segments.slice(0, lastIdx), cleanFileName].join('/');
 
-      // 5. S3에서 복사 (이때 소스 경로는 '깨진 바이트' 그대로 지정)
+      // 3. S3 복사 (소스 경로는 실제 S3에 저장된 '생 바이트' 형태여야 함)
       const rawEncodedOldKey = oldKey.split('/').map(seg => {
-        // DB에 저장된 인코딩 형태가 아닌, 실제 S3가 들고 있는 '생 바이트'로 인코딩
-        const decoded = decodeURIComponent(seg);
-        return Array.from(Buffer.from(decoded, 'latin1'))
+        let d = seg;
+        while (d.includes('%')) {
+          try {
+            const next = decodeURIComponent(d);
+            if (next === d) break;
+            d = next;
+          } catch { break; }
+        }
+        return Array.from(Buffer.from(d, 'latin1'))
           .map(b => '%' + b.toString(16).padStart(2, '0').toUpperCase())
           .join('');
       }).join('/');
@@ -302,7 +316,7 @@ export class UploadService {
 
       await this.s3.send(copyCmd);
       
-      // 6. 기존 파일 삭제
+      // 4. 기존 파일 삭제
       await this.s3.send(new DeleteObjectCommand({
         Bucket: this.bucketName,
         Key: oldKey
@@ -319,13 +333,16 @@ export class UploadService {
   private repairEncoding(str: string): string {
     if (!str) return '';
     try {
-      // 1. 이미 정상 한글이면 통과
+      // 이미 정상 한글이면 통과 (단, 혼합된 경우를 위해 regex 강화 가능)
       if (/[\uAC00-\uD7AF]/.test(str)) return str;
 
-      // 2. Latin1(깨진 글자) -> UTF-8 바이트 변환
+      // 1. Latin1 바이트 추출
       const buf = Buffer.from(str, 'latin1');
+      
+      // 2. UTF-8로 변환
       const repaired = buf.toString('utf8');
 
+      // 3. 변환된 결과에 한글이 한 글자라도 포함되어 있다면 성공으로 간주
       if (/[\uAC00-\uD7AF]/.test(repaired)) {
         return repaired;
       }
