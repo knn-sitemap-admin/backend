@@ -328,69 +328,23 @@ export class UploadService {
   getFileUrl(pathOrUrl: string | null | undefined): string {
     if (!pathOrUrl) return '';
 
+    // 1. 이미 절대 URL인 경우 가공하지 않고 그대로 반환
+    if (pathOrUrl.startsWith('http')) {
+      return pathOrUrl;
+    }
+
     const currentBase =
       this.cdnBaseUrl ||
       `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
 
-    let targetBase = currentBase;
-    let key = pathOrUrl;
+    // 2. 경로 정리 및 세그먼트별 인코딩
+    const key = pathOrUrl.replace(/^\//, '').trim();
+    const encodedPath = key
+      .split('/')
+      .map((seg) => encodeURIComponent(seg))
+      .join('/');
 
-    // 1. 절대 URL인 경우 처리
-    if (pathOrUrl.startsWith('http')) {
-      const isInternalS3 =
-        pathOrUrl.includes('.amazonaws.com/') &&
-        (pathOrUrl.includes(`/${this.bucketName}/`) ||
-          pathOrUrl.includes(`${this.bucketName}.s3`));
-      const isInternalCdn =
-        this.cdnBaseUrl && pathOrUrl.startsWith(this.cdnBaseUrl);
-
-      if (isInternalS3 || isInternalCdn) {
-        key = this.extractKeyFromUrl(pathOrUrl) || pathOrUrl;
-      } else {
-        try {
-          const parsed = new URL(pathOrUrl);
-          targetBase = parsed.origin;
-          key = parsed.pathname;
-        } catch {
-          return pathOrUrl;
-        }
-      }
-    }
-
-    if (!key) return pathOrUrl || '';
-    key = key.replace(/^\//, '').trim();
-
-    try {
-      // 2. 더블 인코딩 방지를 위한 디코딩
-      let decodedKey = key;
-      try {
-        decodedKey = decodeURIComponent(key);
-      } catch {
-        // 인코딩이 깨진 경우 무시
-      }
-
-      // 3. 복구 시도 및 인코딩
-      const segments = decodedKey.split('/');
-      const encodedSegments = segments.map(seg => {
-        const repaired = this.repairEncoding(seg);
-        
-        // 복구된 결과에 한글이 있다면 복구된 것을 사용
-        if (/[\uAC00-\uD7AF]/.test(repaired)) {
-          return this.smartEncode(repaired);
-        }
-        
-        // 복구가 안 되었다면 원본 세그먼트를 사용하되, 
-        // S3에 실제로 '깨진 글자'로 저장되어 있을 경우를 대비해 표준 인코딩 시도
-        // 만약 여기서도 깨진 문자가 있다면 smartEncode가 바이트 인코딩을 수행함
-        return this.smartEncode(seg);
-      });
-
-      const finalPath = encodedSegments.join('/');
-      return `${targetBase}/${finalPath}`;
-    } catch (e) {
-      this.logger.warn(`getFileUrl Fail: ${key} -> ${e.message}`);
-      return `${targetBase}/${encodeURI(key)}`;
-    }
+    return `${currentBase}/${encodedPath}`;
   }
 
   /** 여러 개의 경로를 URL 배열로 변환 */
