@@ -141,4 +141,10 @@ export class ContractsController {
     const data = await this.service.repairContractImages(id);
     return { message: '이미지 복구 시도 완료', data };
   }
+
+  @Post('repair/all-images')
+  async repairAll() {
+    const data = await this.service.repairAllContractImages();
+    return { message: '전체 이미지 복구 시도 완료', data };
+  }
 }

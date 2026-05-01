@@ -270,11 +270,7 @@ export class UploadService {
       const lastIdx = segments.length - 1;
       const oldFileNameEncoded = segments[lastIdx];
 
-      // 1. 이미 정상적인(영문/숫자 중심) 이름인지 확인 (중복 작업 방지)
-      // 파일명에 %가 없고 한글도 없다면 이미 수동으로 고쳤거나 정상인 상태
-      if (!oldFileNameEncoded.includes('%') && !/[\uAC00-\uD7AF]/.test(oldFileNameEncoded)) {
-        return null; 
-      }
+      // 1. 조건 없이 강제 수정 진행 (사용자 요청에 따라 모든 파일을 새 이름으로 변경)
 
       // 2. 새 이름 생성 (원본 이름 무시하고 안전한 이름으로 생성)
       const ext = oldFileNameEncoded.includes('.') 
