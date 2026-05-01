@@ -11,6 +11,7 @@ import * as mime from 'mime-types';
 import {
   DeleteObjectCommand,
   PutObjectCommand,
+  CopyObjectCommand,
   S3Client,
   type ObjectCannedACL,
   type ServerSideEncryption,
@@ -196,29 +197,12 @@ export class UploadService {
         Math.max(1, safeName.length - ext.length),
       );
 
-      // 1. WebP 변환 시도 (이미지인 경우)
+      // 1. 이미지 처리 (필요한 경우 Sharp로 리사이징 등은 가능하나 일단 원본 유지)
       let buffer = file.buffer;
       let currentMime =
         file.mimetype && file.mimetype !== 'application/octet-stream'
           ? file.mimetype
           : this.resolveMimeType(ext, 'application/octet-stream');
-
-      if (currentMime.startsWith('image/') && currentMime !== 'image/svg+xml') {
-        try {
-          // Sharp를 사용하여 WebP로 변환 (품질 80, effort 4: 속도/압축비 균형)
-          const converted = await sharp(file.buffer)
-            .webp({ quality: 80, effort: 4 })
-            .toBuffer();
-
-          // 변환 성공 시 정보 업데이트
-          buffer = converted;
-          currentMime = 'image/webp';
-          ext = '.webp';
-        } catch (e: any) {
-          this.logger.warn(`WebP 변환 실패 (${original}): ${e.message}`);
-          // 실패 시 원래 버퍼와 미디어타입 유지
-        }
-      }
 
       const key = `${domain}/${userId}/${timestamp}-${this.randomSuffix(6)}-${nameOnly}${ext}`;
       const contentDisposition = this.contentDispositionFor(currentMime);
@@ -270,6 +254,53 @@ export class UploadService {
     }
 
     return { urls, keys, domain, userId };
+  }
+
+  /**
+   * S3 상의 깨진 파일명을 정상 한글명으로 수정합니다. (마이그레이션용)
+   * @param url 깨진 파일의 현재 URL 또는 경로
+   * @returns 수정된 새로운 URL (수정이 필요 없거나 실패 시 null)
+   */
+  async repairS3Filename(url: string): Promise<string | null> {
+    if (!url) return null;
+
+    const oldKey = this.extractKeyFromUrl(url);
+    if (!oldKey) return null;
+
+    // 1. 파일명 복구 시도 (마지막 세그먼트인 파일명만 추출)
+    const segments = oldKey.split('/');
+    const lastIdx = segments.length - 1;
+    const oldFileName = segments[lastIdx];
+    const newFileName = this.repairEncoding(oldFileName);
+
+    // 복구된 결과가 원본과 같다면 수정할 필요 없음
+    if (oldFileName === newFileName) return null;
+
+    const newKey = [...segments.slice(0, lastIdx), newFileName].join('/');
+
+    try {
+      // 2. S3에서 새로운 이름으로 복사
+      const copyCmd = new CopyObjectCommand({
+        Bucket: this.bucketName,
+        // CopySource는 "버킷명/인코딩된키" 형식이어야 함
+        CopySource: `${this.bucketName}/${encodeURIComponent(oldKey)}`,
+        Key: newKey,
+        ACL: this.resolveACL(),
+        MetadataDirective: 'COPY', // 기존 메타데이터 유지
+      });
+
+      await this.s3.send(copyCmd);
+      this.logger.log(`[S3 Repair Success] Copied: ${oldKey} -> ${newKey}`);
+
+      // 3. 복사 성공 후 기존 깨진 파일 삭제
+      await this.deleteFile(url);
+      
+      // 4. 새로운 정상 URL 반환
+      return this.getFileUrl(newKey);
+    } catch (e: any) {
+      this.logger.error(`[S3 Repair Failed] key: ${oldKey}, error: ${e.message}`);
+      return null;
+    }
   }
 
   private repairEncoding(str: string): string {
@@ -337,14 +368,26 @@ export class UploadService {
       this.cdnBaseUrl ||
       `https://${this.bucketName}.s3.${this.region}.amazonaws.com`;
 
-    // 2. 경로 정리 및 세그먼트별 인코딩
+    // 2. 경로 정리
     const key = pathOrUrl.replace(/^\//, '').trim();
-    const encodedPath = key
-      .split('/')
-      .map((seg) => encodeURIComponent(seg))
-      .join('/');
 
-    return `${currentBase}/${encodedPath}`;
+    try {
+      // 3. 중복 인코딩 방지를 위해 먼저 디코딩 후 다시 인코딩
+      const decodedKey = decodeURIComponent(key);
+      const finalPath = decodedKey
+        .split('/')
+        .map((seg) => encodeURIComponent(seg))
+        .join('/');
+
+      return `${currentBase}/${finalPath}`;
+    } catch (e) {
+      // 디코딩 실패 시 (이미 생자인 경우 등) 그냥 인코딩 진행
+      const finalPath = key
+        .split('/')
+        .map((seg) => encodeURIComponent(seg))
+        .join('/');
+      return `${currentBase}/${finalPath}`;
+    }
   }
 
   /** 여러 개의 경로를 URL 배열로 변환 */
