@@ -79,21 +79,29 @@ export class PerformanceService {
       .createQueryBuilder('s')
       .leftJoin('contracts', 'c', 'c.scheduleId = s.id')
       .select("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END", 'platform')
-      // 계약 완료 (해당 일정에 연결된 계약이 done이거나, 동일인/현장으로 성사된 건이 있는 경우)
+      // 계약 완료 건수 (한 명의 고객/현장에 대해 성사된 계약이 있다면 1건으로 집계)
       .addSelect(`
         COUNT(DISTINCT CASE 
-          WHEN c.status = 'done' OR EXISTS (
+          WHEN c.status = 'done' THEN c.id
+          WHEN c.id IS NULL AND EXISTS (
             SELECT 1 FROM contracts c2 
             WHERE c2.customerPhone = s.customer_phone 
             AND c2.siteName = s.location 
             AND c2.status = 'done'
-          ) THEN s.id 
+          ) THEN (
+            SELECT c3.id FROM contracts c3 
+            WHERE c3.customerPhone = s.customer_phone 
+            AND c3.siteName = s.location 
+            AND c3.status = 'done'
+            LIMIT 1
+          )
           ELSE NULL END
-        )`, 'contracted')
-      // 부결 (연결된 계약이 rejected이고, 동일인/현장으로 성사된 건이 없는 경우)
+        )`, 'contracted_count')
+
+      // 부결/해약 (연결된 계약이 rejected 또는 canceled이고, 동일인/현장으로 성사된 건이 없는 경우)
       .addSelect(`
         COUNT(DISTINCT CASE 
-          WHEN c.status = 'rejected' AND NOT EXISTS (
+          WHEN (c.status = 'rejected' OR c.status = 'canceled') AND NOT EXISTS (
             SELECT 1 FROM contracts c3 
             WHERE c3.customerPhone = s.customer_phone 
             AND c3.siteName = s.location 
@@ -101,10 +109,10 @@ export class PerformanceService {
           ) THEN s.id 
           ELSE NULL END
         )`, 'rejected')
-      // 취소 (일정/계약이 canceled이고, 동일인/현장으로 성사된 건이 없는 경우)
+      // 미팅 취소 (일정 상태가 canceled이고, 동일인/현장으로 성사된 건이 없는 경우)
       .addSelect(`
         COUNT(DISTINCT CASE 
-          WHEN (s.status = 'canceled' OR c.status = 'canceled') AND NOT EXISTS (
+          WHEN s.status = 'canceled' AND NOT EXISTS (
             SELECT 1 FROM contracts c4 
             WHERE c4.customerPhone = s.customer_phone 
             AND c4.siteName = s.location 
@@ -147,7 +155,7 @@ export class PerformanceService {
 
     const rows = await query
       .groupBy("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END")
-      .orderBy('contracted', 'DESC')
+      .orderBy('contracted_count', 'DESC')
       .getRawMany();
 
     return {
@@ -157,9 +165,9 @@ export class PerformanceService {
         newCount: Number(r.new_meeting || 0),
         reCount: Number(r.re_meeting || 0),
         canceledCount: Number(r.canceled || 0),
-        contractedCount: Number(r.contracted || 0),
+        contractedCount: Number(r.contracted_count || 0),
         rejectedCount: Number(r.rejected || 0),
-        totalCount: Number(r.new_meeting || 0) + Number(r.re_meeting || 0) + Number(r.canceled || 0) + Number(r.contracted || 0) + Number(r.rejected || 0)
+        totalCount: Number(r.new_meeting || 0) + Number(r.re_meeting || 0) + Number(r.canceled || 0) + Number(r.contracted_count || 0) + Number(r.rejected || 0)
       }))
     };
   }
