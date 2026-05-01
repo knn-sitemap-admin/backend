@@ -1096,7 +1096,7 @@ export class ContractsService {
       where: { contract: { id: Number(id) } as any },
     });
 
-    const results = [];
+    const results: any[] = [];
     for (const file of files) {
       try {
         const repairedUrl = await this.uploadService.repairS3Filename(file.url);
