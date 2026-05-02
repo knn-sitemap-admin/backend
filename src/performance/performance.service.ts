@@ -75,98 +75,18 @@ export class PerformanceService {
     const range = this.resolveRange(dto);
     const { accountId } = dto;
 
-    const query = this.scheduleRepo
+    // 1. 일정 기반 통계 (신규, 재미팅, 일정취소) - s.start_date 기준
+    // 해당 월에 발생한 일정 중, 해당 월에 계약으로 이어지지 않은 건들만 미팅 건수로 집계 (중복 방지)
+    const scheduleQuery = this.scheduleRepo
       .createQueryBuilder('s')
-      .leftJoin('contracts', 'c', 'c.scheduleId = s.id')
+      .leftJoin('contracts', 'c', 'c.scheduleId = s.id AND c.contractDate >= :s AND c.contractDate <= :e', {
+        s: range.startDate,
+        e: range.endDate,
+      })
       .select("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END", 'platform')
-      // 계약 완료 (완료된 계약 건수)
-      .addSelect(`
-        COUNT(DISTINCT CASE 
-          WHEN c.status = 'done' THEN c.id
-          WHEN c.id IS NULL AND EXISTS (
-            SELECT 1 FROM contracts c2 
-            WHERE c2.customerPhone = s.customer_phone 
-            AND c2.siteName = s.location 
-            AND c2.status = 'done'
-          ) THEN (
-            SELECT c3.id FROM contracts c3 
-            WHERE c3.customerPhone = s.customer_phone 
-            AND c3.siteName = s.location 
-            AND c3.status = 'done'
-            LIMIT 1
-          )
-          ELSE NULL END
-        )`, 'completed_count')
-      // 계약 진행중 (계약중 상태의 건수)
-      .addSelect(`
-        COUNT(DISTINCT CASE 
-          WHEN c.status = 'ongoing' THEN c.id
-          WHEN c.id IS NULL AND EXISTS (
-            SELECT 1 FROM contracts c2 
-            WHERE c2.customerPhone = s.customer_phone 
-            AND c2.siteName = s.location 
-            AND c2.status = 'ongoing'
-          ) THEN (
-            SELECT c3.id FROM contracts c3 
-            WHERE c3.customerPhone = s.customer_phone 
-            AND c3.siteName = s.location 
-            AND c3.status = 'ongoing'
-            LIMIT 1
-          )
-          ELSE NULL END
-        )`, 'ongoing_count')
-
-      // 부결/해약 (직접 연결된 계약이 부결/해약이거나, ID 연결은 없지만 동일 고객/현장으로 부결된 계약이 존재하는 경우)
-      .addSelect(`
-        COUNT(DISTINCT CASE 
-          WHEN (c.status = 'rejected' OR c.status = 'canceled') THEN c.id 
-          WHEN c.id IS NULL AND EXISTS (
-            SELECT 1 FROM contracts c_rej 
-            WHERE c_rej.customerPhone = s.customer_phone 
-            AND c_rej.siteName = s.location 
-            AND (c_rej.status = 'rejected' OR c_rej.status = 'canceled')
-          ) THEN (
-            SELECT c_rej2.id FROM contracts c_rej2 
-            WHERE c_rej2.customerPhone = s.customer_phone 
-            AND c_rej2.siteName = s.location 
-            AND (c_rej2.status = 'rejected' OR c_rej2.status = 'canceled')
-            LIMIT 1
-          )
-          ELSE NULL END
-        )`, 'rejected')
-      // 미팅 취소 (일정 상태가 canceled이고, 계약 단계(부결 포함)까지 간 기록이 전혀 없는 경우)
-      .addSelect(`
-        COUNT(DISTINCT CASE 
-          WHEN s.status = 'canceled' 
-          AND NOT EXISTS (
-            SELECT 1 FROM contracts c_any 
-            WHERE c_any.customerPhone = s.customer_phone 
-            AND c_any.siteName = s.location
-          ) THEN s.id 
-          ELSE NULL END
-        )`, 'canceled')
-      // 신규 (정상 상태, 미팅타입 '신규', 계약 없음, 동일인/현장 성공 건 없음)
-      .addSelect(`
-        COUNT(DISTINCT CASE 
-          WHEN s.status = 'normal' AND s.meeting_type = '신규' AND c.id IS NULL AND NOT EXISTS (
-            SELECT 1 FROM contracts c5 
-            WHERE c5.customerPhone = s.customer_phone 
-            AND c5.siteName = s.location 
-            AND c5.status = 'done'
-          ) THEN s.id 
-          ELSE NULL END
-        )`, 'new_meeting')
-      // 재미팅 (정상 상태, 미팅타입 '재미팅', 계약 없음, 동일인/현장 성공 건 없음)
-      .addSelect(`
-        COUNT(DISTINCT CASE 
-          WHEN s.status = 'normal' AND s.meeting_type = '재미팅' AND c.id IS NULL AND NOT EXISTS (
-            SELECT 1 FROM contracts c6 
-            WHERE c6.customerPhone = s.customer_phone 
-            AND c6.siteName = s.location 
-            AND c6.status = 'done'
-          ) THEN s.id 
-          ELSE NULL END
-        )`, 're_meeting')
+      .addSelect("COUNT(CASE WHEN s.status = 'normal' AND s.meeting_type = '신규' AND c.id IS NULL THEN 1 END)", 'new_count')
+      .addSelect("COUNT(CASE WHEN s.status = 'normal' AND s.meeting_type = '재미팅' AND c.id IS NULL THEN 1 END)", 're_count')
+      .addSelect("COUNT(CASE WHEN s.status = 'canceled' AND c.id IS NULL THEN 1 END)", 'canceled_count')
       .where('s.is_deleted = :isDeleted', { isDeleted: false })
       .andWhere("s.meeting_type != '휴무'")
       .andWhere('s.start_date >= :s AND s.start_date <= :e', {
@@ -175,26 +95,78 @@ export class PerformanceService {
       });
 
     if (accountId) {
-      query.andWhere('s.created_by_account_id = :aid', { aid: accountId });
+      scheduleQuery.andWhere('s.created_by_account_id = :aid', { aid: accountId });
     }
 
-    const rows = await query
-      .groupBy("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END")
-      .orderBy('completed_count', 'DESC')
-      .getRawMany();
+    const scheduleRows = await scheduleQuery.groupBy('platform').getRawMany();
+
+    // 2. 계약 기반 통계 (계약건 - 상태별) - c.contractDate 기준
+    // 해당 월에 작성된 모든 계약 기록을 집계
+    const contractQuery = this.contractRepo
+      .createQueryBuilder('c')
+      .leftJoin('schedules', 's', 's.id = c.scheduleId')
+      .select("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END", 'platform')
+      .addSelect("COUNT(CASE WHEN c.status = 'done' THEN 1 END)", 'completed_count')
+      .addSelect("COUNT(CASE WHEN c.status = 'ongoing' THEN 1 END)", 'ongoing_count')
+      .addSelect("COUNT(CASE WHEN c.status = 'rejected' OR c.status = 'canceled' THEN 1 END)", 'rejected_count')
+      .where('c.contractDate >= :s AND c.contractDate <= :e', {
+        s: range.startDate,
+        e: range.endDate,
+      });
+
+    if (accountId) {
+      contractQuery.andWhere('c.created_by_account_id = :aid', { aid: accountId });
+    }
+
+    const contractRows = await contractQuery.groupBy('platform').getRawMany();
+
+    // 3. 데이터 병합
+    const statsMap = new Map<string, any>();
+
+    const getOrInit = (p: string) => {
+      const platformName = p || '미지정';
+      if (!statsMap.has(platformName)) {
+        statsMap.set(platformName, {
+          platform: platformName,
+          newCount: 0,
+          reCount: 0,
+          canceledCount: 0,
+          completedCount: 0,
+          ongoingCount: 0,
+          rejectedCount: 0,
+          contractCount: 0,
+          totalCount: 0
+        });
+      }
+      return statsMap.get(platformName);
+    };
+
+    for (const r of scheduleRows) {
+      const item = getOrInit(r.platform);
+      item.newCount = Number(r.new_count || 0);
+      item.reCount = Number(r.re_count || 0);
+      item.canceledCount = Number(r.canceled_count || 0);
+    }
+
+    for (const r of contractRows) {
+      const item = getOrInit(r.platform);
+      item.completedCount = Number(r.completed_count || 0);
+      item.ongoingCount = Number(r.ongoing_count || 0);
+      item.rejectedCount = Number(r.rejected_count || 0);
+      item.contractCount = item.completedCount + item.ongoingCount + item.rejectedCount;
+    }
+
+    // totalCount 계산: 해당 월의 모든 액션(미팅 + 계약) 합계
+    for (const item of statsMap.values()) {
+      item.totalCount = item.newCount + item.reCount + item.canceledCount + item.contractCount;
+    }
+
+    const statistics = Array.from(statsMap.values())
+      .sort((a, b) => b.contractCount - a.contractCount || b.totalCount - a.totalCount);
 
     return {
       resolvedRange: range,
-      statistics: rows.map(r => ({
-        platform: r.platform || '기타',
-        newCount: Number(r.new_meeting || 0),
-        reCount: Number(r.re_meeting || 0),
-        canceledCount: Number(r.canceled || 0),
-        completedCount: Number(r.completed_count || 0),
-        ongoingCount: Number(r.ongoing_count || 0),
-        rejectedCount: Number(r.rejected || 0),
-        totalCount: Number(r.new_meeting || 0) + Number(r.re_meeting || 0) + Number(r.canceled || 0) + Number(r.completed_count || 0) + Number(r.ongoing_count || 0) + Number(r.rejected || 0)
-      }))
+      statistics
     };
   }
 
@@ -280,23 +252,23 @@ export class PerformanceService {
   }
 
   private sqlCompanyAmountExpr(grandTotalExpr: string): string {
-    return `ROUND( (${grandTotalExpr}) * (c.companyPercent / 100) )`;
+    return `( (${grandTotalExpr}) * (c.companyPercent / 100.0) )`;
   }
 
   private sqlMyAmountExpr(grandTotalExpr: string): string {
     // sharePercent는 전체 매출 대비 절대 비율이므로 grandTotal에 직접 곱함
-    return `ROUND( (${grandTotalExpr}) * (COALESCE(a.sharePercent, 0) / 100) )`;
+    return `( (${grandTotalExpr}) * (COALESCE(a.sharePercent, 0) / 100.0) )`;
   }
 
   private sqlGrossSalesContribExpr(grandTotalExpr: string): string {
     // 개별 기여 매출 = 전체 매출 * (내 지분 / 전체 직원 지분 합계)
     // 전체 직원 지분 합계 = 100 - 회사비율
-    return `ROUND( (${grandTotalExpr}) * (COALESCE(a.sharePercent, 0) / NULLIF(100 - c.companyPercent, 0)) )`;
+    return `( (${grandTotalExpr}) * (COALESCE(a.sharePercent, 0) / NULLIF(100.0 - c.companyPercent, 0)) )`;
   }
 
   private sqlNetProfitContribExpr(companyAmountExpr: string): string {
     // 개별 기여 순수익(회사의 수익) = 회사 수익 * (내 지분 / 전체 직원 지분 합계)
-    return `ROUND( (${companyAmountExpr}) * (COALESCE(a.sharePercent, 0) / NULLIF(100 - c.companyPercent, 0)) )`;
+    return `( (${companyAmountExpr}) * (COALESCE(a.sharePercent, 0) / NULLIF(100.0 - c.companyPercent, 0)) )`;
   }
 
   async getSummary(dto: PerformanceFilterDto): Promise<PerformanceSummaryResponse> {
@@ -308,8 +280,8 @@ export class PerformanceService {
     // 1) 회사 KPI
     const companyRaw = await this.contractRepo
       .createQueryBuilder('c')
-      .select(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${grandTotalExpr} ELSE 0 END), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${companyAmountExpr} ELSE 0 END), 0)`, 'netProfit')
+      .select(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${grandTotalExpr} ELSE 0 END), 0), 0)`, 'grossSales')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${companyAmountExpr} ELSE 0 END), 0), 0)`, 'netProfit')
       .addSelect(`COUNT(c.id)`, 'totalContractCount')
       .addSelect(`COUNT(CASE WHEN c.status = 'done' THEN c.id END)`, 'completedContractCount')
       .addSelect(`COUNT(CASE WHEN c.status = 'rejected' THEN c.id END)`, 'rejectedContractCount')
@@ -374,9 +346,9 @@ export class PerformanceService {
       )
       .select('t.id', 'teamId')
       .addSelect('t.name', 'teamName')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0)`, 'finalPayout')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0)`, 'netProfit')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0), 0)`, 'finalPayout')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0), 0)`, 'grossSales')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
       .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
       .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
@@ -485,9 +457,9 @@ export class PerformanceService {
       .select('acc.id', 'accountId')
       .addSelect('acc.name', 'name')
       .addSelect('acc.position_rank', 'positionRank')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0)`, 'finalPayout')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0)`, 'netProfit')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0), 0)`, 'finalPayout')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0), 0)`, 'grossSales')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
       .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
       .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
@@ -566,8 +538,7 @@ export class PerformanceService {
     const companyAmountExpr = this.sqlCompanyAmountExpr(grandTotalExpr);
     const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
     
-    // 영업자 개인 뷰에서는 '기여 매출'을 쪼개지 않고 해당 계약의 전체 금액(grandTotal)으로 보여줌
-    const gSalesFullExpr = grandTotalExpr; 
+    const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
     const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
     const startDate = `${year}-01-01`;
@@ -578,9 +549,9 @@ export class PerformanceService {
       .createQueryBuilder('c')
       .innerJoin(ContractAssignee, 'a', 'a.contract_id = c.id')
       .select('MONTH(c.contract_date)', 'month')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0)`, 'finalPayout')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesFullExpr} ELSE 0 END), 0)`, 'grossSales')
-      .addSelect(`COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0)`, 'netProfit')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${myAmountExpr} ELSE 0 END), 0), 0)`, 'finalPayout')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0), 0)`, 'grossSales')
+      .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
       .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
       .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
