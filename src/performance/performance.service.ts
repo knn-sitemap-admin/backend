@@ -91,7 +91,8 @@ export class PerformanceService {
       .andWhere("s.meeting_type != '휴무'")
       .andWhere('s.start_date >= :s AND s.start_date <= :e', {
         s: range.startDate,
-        e: range.endDate,
+        // 시분초가 포함된 경우를 대비해 해당 날짜의 끝까지 포함하도록 처리
+        e: `${range.endDate} 23:59:59`,
       });
 
     if (accountId) {
@@ -109,15 +110,16 @@ export class PerformanceService {
       .addSelect("COUNT(CASE WHEN c.status = 'done' THEN 1 END)", 'completed_count')
       .addSelect("COUNT(CASE WHEN c.status = 'ongoing' THEN 1 END)", 'ongoing_count')
       .addSelect("COUNT(CASE WHEN c.status = 'rejected' OR c.status = 'canceled' THEN 1 END)", 'rejected_count')
-      .where('c.contract_date >= :s AND c.contract_date <= :e', {
+      .where('c.contractDate >= :s AND c.contractDate <= :e', {
         s: range.startDate,
         e: range.endDate,
       });
 
     if (accountId) {
-      // 작성자(creator)이거나 담당자(assignee)인 건 모두 포함
+      // 작성자이거나 담당자인 건 모두 포함
+      // ca.account_id는 컬럼명, c.createdByAccountId는 RelationId 프로퍼티
       contractQuery.leftJoin('contract_assignees', 'ca', 'ca.contract_id = c.id')
-        .andWhere('(c.created_by_account_id = :aid OR ca.account_id = :aid)', { aid: accountId });
+        .andWhere('(c.createdByAccountId = :aid OR ca.account_id = :aid)', { aid: accountId });
     }
 
     const contractRows = await contractQuery.groupBy('platform').getRawMany();
@@ -288,7 +290,7 @@ export class PerformanceService {
       .addSelect(`COUNT(CASE WHEN c.status = 'done' THEN c.id END)`, 'completedContractCount')
       .addSelect(`COUNT(CASE WHEN c.status = 'rejected' THEN c.id END)`, 'rejectedContractCount')
       .where('c.status IN (:...statuses)', { statuses: ['ongoing', 'done', 'canceled', 'rejected'] })
-      .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
+      .andWhere('c.contractDate >= :s AND c.contractDate <= :e', {
         s: range.startDate,
         e: range.endDate,
       })
@@ -463,8 +465,8 @@ export class PerformanceService {
       .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0), 0)`, 'grossSales')
       .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
-      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
-      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = \'done\' THEN c.id END)', 'completedContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = \'rejected\' OR c.status = \'canceled\' THEN c.id END)', 'rejectedContractCount')
       // 팀원 리스트는 다 보여주되, 비활성 credential은 제외(너가 "비활성은 사실상 안 쓰지만"이라고 했으니 최소 안전장치)
       .where('(cr.is_disabled = 0 OR cr.is_disabled IS NULL)')
       .andWhere('cr.role != :admin', { admin: 'admin' })
@@ -555,11 +557,11 @@ export class PerformanceService {
       .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${gSalesContribExpr} ELSE 0 END), 0), 0)`, 'grossSales')
       .addSelect(`ROUND(COALESCE(SUM(CASE WHEN c.status IN ('ongoing', 'done') THEN ${nProfitContribExpr} ELSE 0 END), 0), 0)`, 'netProfit')
       .addSelect('COUNT(DISTINCT c.id)', 'totalContractCount')
-      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "done" THEN c.id END)', 'completedContractCount')
-      .addSelect('COUNT(DISTINCT CASE WHEN c.status = "rejected" THEN c.id END)', 'rejectedContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = \'done\' THEN c.id END)', 'completedContractCount')
+      .addSelect('COUNT(DISTINCT CASE WHEN c.status = \'rejected\' OR c.status = \'canceled\' THEN c.id END)', 'rejectedContractCount')
       .where('a.account_id = :aid', { aid: String(accountId) })
       .andWhere('c.status IN (:...statuses)', { statuses: ['ongoing', 'done', 'canceled', 'rejected'] })
-      .andWhere('c.contract_date >= :s AND c.contract_date <= :e', {
+      .andWhere('c.contractDate >= :s AND c.contractDate <= :e', {
         s: startDate,
         e: endDate,
       })
