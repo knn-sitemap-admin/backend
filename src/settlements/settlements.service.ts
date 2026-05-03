@@ -101,19 +101,26 @@ export class SettlementsService {
     // 4. 결과 조립
     return employees.map((emp) => {
       const saved = savedSettlements.find((s) => s.accountId === emp.id);
-      const calculated = performanceMap.get(emp.id) ?? 0;
+      const realTimeAmount = performanceMap.get(emp.id) ?? 0;
+      
+      // 이미 저장된 금액과 실시간 실적 금액 비교
+      const hasDiscrepancy = saved && saved.calculatedAmount !== realTimeAmount;
 
       return {
+        id: saved ? Number(saved.id) : null,
         accountId: emp.id,
         name: emp.name,
-        positionRank: emp.position_rank,
-        calculatedAmount: saved ? saved.calculatedAmount : calculated,
-        adjustmentAmount: saved ? saved.adjustmentAmount : 0,
-        finalAmount: saved ? saved.finalAmount : calculated,
+        positionRank: emp.positionRank,
+        // UI에서는 기본적으로 저장된 값을 보여주되, 실시간 값도 함께 전달
+        calculatedAmount: saved ? Number(saved.calculatedAmount) : realTimeAmount,
+        realTimeAmount: realTimeAmount,
+        adjustmentAmount: saved ? Number(saved.adjustmentAmount) : 0,
+        finalAmount: saved ? Number(saved.finalAmount) : realTimeAmount,
         status: saved ? saved.status : 'pending',
         paidAt: saved ? saved.paidAt : null,
         memo: saved ? saved.memo : null,
         isSaved: !!saved,
+        hasDiscrepancy,
       };
     });
   }
