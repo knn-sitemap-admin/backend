@@ -15,6 +15,7 @@ export class SessionAuthGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
+    const url = req.originalUrl;
 
     // 1. JWT 기반 인증 시도 (쿠키 차단 환경 대응)
     const authHeader = req.headers.authorization;
@@ -28,11 +29,27 @@ export class SessionAuthGuard implements CanActivate {
           deviceType: 'mobile',
         };
         req.user = user;
-        // 세션이 있으면 넣어주고, 없어도(Stateless) JWT가 유효하면 통과시킵니다.
+
+        // 세션이 있으면 넣어주고, 세션 쿠키 복구를 위해 저장 시도
         if (req.session) {
+          const isNewSession = !req.session.user;
           req.session.user = user;
+          
+          if (isNewSession) {
+            this.logger.debug(`[JWT Auth] New session initialized for ${user.credentialId} (${url})`);
+            // 세션 저장 강제 (Set-Cookie 유도)
+            try {
+              await new Promise<void>((resolve, reject) => {
+                req.session.save((err: any) => (err ? reject(err) : resolve()));
+              });
+            } catch (e) {
+              this.logger.warn(`[JWT Auth] Failed to save session: ${e.message}`);
+            }
+          }
         }
         return true;
+      } else {
+        this.logger.warn(`[JWT Auth] Token verification failed for ${url}`);
       }
     }
 
@@ -41,6 +58,7 @@ export class SessionAuthGuard implements CanActivate {
     const sid = String(req.sessionID ?? '');
 
     if (!sUser || !sid) {
+      this.logger.debug(`[Session Auth] No user/sid found for ${url} (Headers: ${!!authHeader})`);
       throw new UnauthorizedException('로그인이 필요합니다');
     }
 
@@ -54,7 +72,7 @@ export class SessionAuthGuard implements CanActivate {
       });
     } catch (e: any) {
       this.logger.error('[SessionAuthGuard] validateActiveSession threw', {
-        path: req.originalUrl,
+        path: url,
         sid: sid ? `${sid.slice(0, 6)}…` : '',
         credentialId: String(sUser?.credentialId ?? ''),
         errMessage: String(e?.message ?? e),
@@ -77,6 +95,7 @@ export class SessionAuthGuard implements CanActivate {
       return true;
     }
 
+    this.logger.warn(`[Session Auth] Session validation failed for ${sid.slice(0, 6)}… (${url})`);
     throw new UnauthorizedException('세션이 만료되었거나 유효하지 않습니다');
   }
 }
