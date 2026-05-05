@@ -17,6 +17,7 @@ type SigninResult = {
   credentialId: string;
   role: 'admin' | 'manager' | 'staff';
   accessToken: string;
+  canDownloadImage: boolean;
 };
 
 type DeviceType = 'pc' | 'mobile';
@@ -42,7 +43,7 @@ type ValidateSessionInput = {
 };
 
 type ValidateSessionResult =
-  | { ok: true; role: 'admin' | 'manager' | 'staff' }
+  | { ok: true; role: 'admin' | 'manager' | 'staff'; canDownloadImage: boolean }
   | {
     ok: false;
     reason:
@@ -99,7 +100,7 @@ export class AuthService {
     // 1) credential 존재/비활성 체크
     const cred = await this.accountCredentialRepository.findOne({
       where: { id: input.credentialId },
-      select: ['id', 'role', 'is_disabled'],
+      select: ['id', 'role', 'is_disabled', 'can_download_image'],
     });
 
     if (cred && cred.is_disabled) {
@@ -129,7 +130,18 @@ export class AuthService {
       String(input.credentialId),
     );
 
-    return { ok: true, role: effectiveRole };
+    return { ok: true, role: effectiveRole, canDownloadImage: !!cred?.can_download_image };
+  }
+
+  async deactivateAllSessionsByCredentialId(credentialId: string): Promise<void> {
+    const now = new Date();
+    await this.accountSessionRepository
+      .createQueryBuilder()
+      .update(AccountSession)
+      .set({ is_active: false, deactivated_at: now })
+      .where('credential_id = :cid', { cid: credentialId })
+      .andWhere('is_active = 1')
+      .execute();
   }
 
   async deactivateSessionBySessionId(sessionId: string): Promise<void> {
@@ -299,6 +311,7 @@ export class AuthService {
       credentialId: credential.id,
       role: effectiveRole,
       accessToken,
+      canDownloadImage: credential.can_download_image,
     };
   }
 

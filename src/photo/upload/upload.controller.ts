@@ -1,17 +1,23 @@
 import {
   BadRequestException,
   Controller,
+  ForbiddenException,
+  Get,
   Post,
   Query,
   Req,
+  Res,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import * as uploadService_1 from './upload.service';
 import { IsIn, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SessionAuthGuard } from '../../dashboard/auth/guards/session-auth.guard';
 
 const memoryStorage = multer.memoryStorage();
 
@@ -54,6 +60,7 @@ export class UploadController {
   constructor(private readonly uploadService: uploadService_1.UploadService) {}
 
   @Post()
+  @UseGuards(SessionAuthGuard)
   @UseInterceptors(
     FilesInterceptor('files', 10, {
       storage: memoryStorage,
@@ -91,5 +98,21 @@ export class UploadController {
       message: `파일 업로드 완료 (최대 ${maxSizeMB}MB)`,
       data,
     };
+  }
+
+  @Get('proxy')
+  @UseGuards(SessionAuthGuard)
+  async downloadProxy(
+    @Query('url') url: string,
+    @Res() res: Response,
+    @Req() req: any,
+  ) {
+    const user = req.user || req.session?.user;
+    if (!user?.canDownloadImage) {
+      throw new ForbiddenException('이미지 다운로드 권한이 없습니다.');
+    }
+
+    if (!url) throw new BadRequestException('URL이 필요합니다.');
+    return await this.uploadService.proxyDownload(url, res);
   }
 }

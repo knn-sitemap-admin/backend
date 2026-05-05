@@ -6,6 +6,7 @@ declare module 'express-session' {
       credentialId: string;
       role: 'admin' | 'manager' | 'staff';
       deviceType: 'pc' | 'mobile';
+      canDownloadImage: boolean;
     };
   }
 }

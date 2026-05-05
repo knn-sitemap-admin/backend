@@ -15,6 +15,7 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 import { SystemRole } from '../types/roles';
 import { PatchCredentialDisableDto } from '../dto/patch-credential-disable.dto';
 import { PatchCredentialRoleDto } from '../dto/patch-credential-role.dto';
+import { PatchCredentialCanDownloadImageDto } from '../dto/patch-credential-can-download-image.dto';
 import { CredentialsService } from './credentials.service';
 import { CreateEmployeeDto } from '../dto/create-employee.dto';
 import { PatchAccountPasswordDto } from '../dto/patch-account-password.dto';
@@ -60,6 +61,19 @@ export class CredentialsController {
   ) {
     const result = await this.service.setCredentialDisabled(id, dto.disabled);
     return { message: '계정 활성/비활성 변경', data: result };
+  }
+
+  @Roles(SystemRole.ADMIN)
+  @Patch(':id/can-download-image')
+  async patchCredentialCanDownloadImage(
+    @Param('id') id: string,
+    @Body() dto: PatchCredentialCanDownloadImageDto,
+  ) {
+    const result = await this.service.setCredentialCanDownloadImage(
+      id,
+      dto.canDownloadImage,
+    );
+    return { message: '이미지 다운로드 권한 변경', data: result };
   }
 
   @Roles(SystemRole.ADMIN)

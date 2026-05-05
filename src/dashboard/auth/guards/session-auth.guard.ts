@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from '../auth.service';
+import { detectDeviceType } from '../../../common/utils/device-type.util';
 
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
@@ -16,6 +17,12 @@ export class SessionAuthGuard implements CanActivate {
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
     const url = req.originalUrl;
+    const method = req.method;
+
+    // 0. CORS Preflight 요청은 가드 통과
+    if (method === 'OPTIONS') {
+      return true;
+    }
 
     // 1. JWT 기반 인증 시도 (쿠키 차단 환경 대응)
     const authHeader = req.headers.authorization;
@@ -23,28 +30,33 @@ export class SessionAuthGuard implements CanActivate {
       const token = authHeader.substring(7);
       const decoded = await this.authService.verifyToken(token);
       if (decoded) {
+        const ua = String(req.headers['user-agent'] ?? '');
+        const deviceType = detectDeviceType(ua);
+        
+        // JWT 인증 시에도 DB의 최신 정보를 가져와서 세션에 동기화
+        const sid = String(req.sessionID ?? 'jwt-session');
+        const res = await this.authService.validateActiveSession({
+          sessionId: sid,
+          credentialId: String(decoded.sub),
+          deviceType,
+        });
+
         const user = {
-          credentialId: decoded.sub,
-          role: decoded.role,
-          deviceType: 'mobile',
+          credentialId: String(decoded.sub),
+          role: res.ok ? res.role : decoded.role,
+          canDownloadImage: res.ok ? (res as any).canDownloadImage : false,
+          deviceType,
         };
         req.user = user;
 
-        // 세션이 있으면 넣어주고, 세션 쿠키 복구를 위해 저장 시도
         if (req.session) {
-          const isNewSession = !req.session.user;
           req.session.user = user;
-          
-          if (isNewSession) {
-            this.logger.debug(`[JWT Auth] New session initialized for ${user.credentialId} (${url})`);
-            // 세션 저장 강제 (Set-Cookie 유도)
-            try {
-              await new Promise<void>((resolve, reject) => {
-                req.session.save((err: any) => (err ? reject(err) : resolve()));
-              });
-            } catch (e) {
-              this.logger.warn(`[JWT Auth] Failed to save session: ${e.message}`);
-            }
+          try {
+            await new Promise<void>((resolve, reject) => {
+              req.session.save((err: any) => (err ? reject(err) : resolve()));
+            });
+          } catch (e) {
+            this.logger.warn(`[JWT Auth] Failed to save session: ${e.message}`);
           }
         }
         return true;
@@ -81,15 +93,21 @@ export class SessionAuthGuard implements CanActivate {
     }
 
     if (res.ok) {
-      // 핵심: DB의 최신 role로 세션 role 동기화
-      if (req.session?.user && req.session.user.role !== res.role) {
-        req.session.user.role = res.role;
+      // 핵심: DB의 최신 role 및 권한으로 세션 동기화
+      const sessionUser = req.session?.user;
+      if (
+        sessionUser &&
+        (sessionUser.role !== res.role ||
+          sessionUser.canDownloadImage !== res.canDownloadImage)
+      ) {
+        sessionUser.role = res.role;
+        sessionUser.canDownloadImage = res.canDownloadImage;
         try {
           await new Promise<void>((resolve, reject) => {
             req.session.save((err: any) => (err ? reject(err) : resolve()));
           });
-        } catch {
-          // 저장 실패해도 이번 요청은 통과
+        } catch (e) {
+          this.logger.warn(`[SessionAuthGuard] Sync Save Failed: ${e.message}`);
         }
       }
       return true;

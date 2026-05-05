@@ -19,4 +19,7 @@ export class AccountCredential {
 
   @Column({ type: 'boolean', default: false })
   is_disabled!: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  can_download_image!: boolean;
 }

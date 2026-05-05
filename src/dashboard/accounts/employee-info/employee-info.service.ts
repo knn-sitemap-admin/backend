@@ -397,6 +397,7 @@ export class EmployeeInfoService {
       email: cred.email,
       role: cred.role,
       disabled: cred.is_disabled,
+      canDownloadImage: cred.can_download_image,
       profileCompleted: !!(
         acc?.name &&
         acc?.phone &&
@@ -518,6 +519,7 @@ export class EmployeeInfoService {
         't.name AS teamName',
         'tm.team_role AS teamRole',
         'cred.is_disabled AS isDisabled',
+        'cred.can_download_image AS canDownloadImage',
       ])
       .where('a.is_deleted = :deleted', { deleted: false });
 
@@ -563,6 +565,7 @@ export class EmployeeInfoService {
       teamName: string | null;
       teamRole: string | null;
       isDisabled: number | boolean;
+      canDownloadImage: number | boolean;
     }>();
 
     const accountIds = baseRows.map((r) => String(r.accountId));
@@ -715,6 +718,7 @@ export class EmployeeInfoService {
         favoritePins: favoriteMap.get(id) ?? [],
         ongoingContracts: contractMap.get(id) ?? [],
         isDisabled: !!r.isDisabled,
+        canDownloadImage: !!r.canDownloadImage,
       };
     });
   }

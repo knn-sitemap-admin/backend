@@ -4,9 +4,10 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import type { Express } from 'express';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
+import * as https from 'node:https';
+import { Readable } from 'node:stream';
 import * as mime from 'mime-types';
 import {
   DeleteObjectCommand,
@@ -19,9 +20,6 @@ import {
 } from '@aws-sdk/client-s3';
 
 import { ConfigService } from '@nestjs/config';
-
-import sharp from 'sharp';
-
 export type AllowedDomain = 'map' | 'contracts' | 'board' | 'profile' | 'etc';
 
 @Injectable()
@@ -365,5 +363,62 @@ export class UploadService {
   async deleteFiles(urls: string[]): Promise<void> {
     if (!urls?.length) return;
     await Promise.all(urls.map(url => this.deleteFile(url)));
+  }
+
+  /**
+   * CORS 문제를 해결하기 위해 백엔드에서 이미지를 대신 받아 브라우저로 전달합니다.
+   */
+  async proxyDownload(targetUrl: string, res: any): Promise<void> {
+    try {
+      const parsed = new URL(targetUrl);
+
+      // 보안을 위해 우리 도메인만 허용 (필요 시 확장)
+      const allowedHosts = [
+        'cloudfront.net',
+        'amazonaws.com',
+        this.cdnBaseUrl ? new URL(this.cdnBaseUrl).hostname : '',
+      ].filter(Boolean);
+
+      const isAllowed = allowedHosts.some(host => parsed.hostname.endsWith(host));
+      
+      if (!isAllowed) {
+        throw new BadRequestException('허용되지 않은 도메인의 다운로드 요청입니다.');
+      }
+
+      const options = {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Referer': 'http://localhost:3000/',
+        }
+      };
+
+      https.get(targetUrl, options, (incoming) => {
+        if (incoming.statusCode !== 200) {
+          res.status(incoming.statusCode || 500).send(`Download failed: Remote server returned ${incoming.statusCode}`);
+          return;
+        }
+
+        // 응답 헤더 복사 (Content-Type 등)
+        const contentType = incoming.headers['content-type'];
+        const contentLength = incoming.headers['content-length'];
+
+        if (contentType) res.setHeader('Content-Type', contentType);
+        if (contentLength) res.setHeader('Content-Length', contentLength);
+
+        // 파일명 추출 및 설정 (Content-Disposition)
+        const originalName = path.basename(parsed.pathname);
+        const encodedName = encodeURIComponent(originalName);
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+
+        // 스트림 연결
+        incoming.pipe(res);
+      }).on('error', (err) => {
+        this.logger.error(`[ProxyDownload Error] ${err.message}`);
+        res.status(500).send('Proxy download error');
+      });
+    } catch (e: any) {
+      this.logger.error(`[ProxyDownload Exception] ${e.message}`);
+      res.status(e.status || 500).send(e.message || 'Error');
+    }
   }
 }

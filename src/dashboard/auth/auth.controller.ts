@@ -71,6 +71,7 @@ export class AuthController {
       credentialId: String(base.credentialId),
       role: base.role,
       deviceType,
+      canDownloadImage: base.canDownloadImage,
     };
 
     // 5 저장 보장
@@ -156,6 +157,7 @@ export class AuthController {
         role: base.role,
         deviceType,
         accessToken: base.accessToken,
+        canDownloadImage: base.canDownloadImage,
         expiresAt: reg.expiresAt.toISOString(),
       },
     };
@@ -192,6 +194,10 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   async me(@Req() req: any) {
     const sUser = req.session.user;
+    
+    if (process.env.IS_DEV === 'true') {
+      console.log('[AuthController] me sUser:', sUser);
+    }
 
     return {
       message: 'me',
@@ -199,6 +205,7 @@ export class AuthController {
         credentialId: String(sUser.credentialId),
         role: sUser.role,
         deviceType: sUser.deviceType,
+        canDownloadImage: sUser.canDownloadImage,
       },
     };
   }

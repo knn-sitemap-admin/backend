@@ -314,6 +314,22 @@ export class CredentialsService {
     });
   }
 
+  async setCredentialCanDownloadImage(id: string, canDownload: boolean) {
+    const cred = await this.accountCredentialRepository.findOne({
+      where: { id: String(id) },
+    });
+    if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+    cred.can_download_image = canDownload;
+    await this.accountCredentialRepository.save(cred);
+
+    // 권한 변경 시 세션 정보 갱신을 유도하기 위해 기존 세션 종료 (선택 사항)
+    // 여기서는 권한이 즉시 반영되어야 하므로 세션을 끊는 것이 안전합니다.
+    await this.deactivateAllSessionsByCredentialId(String(cred.id));
+
+    return { id: cred.id, canDownloadImage: cred.can_download_image };
+  }
+
   async setCredentialRole(id: string, role: 'admin' | 'manager' | 'staff') {
     const cred = await this.accountCredentialRepository.findOne({
       where: { id },
