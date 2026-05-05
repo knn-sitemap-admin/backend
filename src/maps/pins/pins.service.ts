@@ -855,17 +855,13 @@ export class PinsService {
       );
     }
     
-    // 5.5) 키워드 검색 (매물명/이름)
+    // 5.5) 키워드 검색 (매물명/이름) — 부분 일치 (%keyword%)
     if (dto.q && dto.q.trim()) {
       const keywords = dto.q.trim().split(/\s+/);
       keywords.forEach((keyword, index) => {
-        qb.andWhere(
-          `(p.name LIKE :qStart${index} OR p.name LIKE :qSpace${index})`,
-          {
-            [`qStart${index}`]: `${keyword}%`,
-            [`qSpace${index}`]: `% ${keyword}%`,
-          },
-        );
+        qb.andWhere(`p.name LIKE :qInclusion${index}`, {
+          [`qInclusion${index}`]: `%${keyword}%`,
+        });
       });
     }
 
@@ -946,13 +942,9 @@ export class PinsService {
       if (dto.q && dto.q.trim()) {
         const keywords = dto.q.trim().split(/\s+/);
         keywords.forEach((keyword, index) => {
-          draftQb.andWhere(
-            `(d.name LIKE :dqStart${index} OR d.name LIKE :dqSpace${index})`,
-            {
-              [`dqStart${index}`]: `${keyword}%`,
-              [`dqSpace${index}`]: `% ${keyword}%`,
-            },
-          );
+          draftQb.andWhere(`d.name LIKE :dqInclusion${index}`, {
+            [`dqInclusion${index}`]: `%${keyword}%`,
+          });
         });
       }
 

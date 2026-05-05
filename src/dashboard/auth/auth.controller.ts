@@ -1,14 +1,15 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import * as crypto from 'crypto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { AuthService } from './auth.service';
+import { Account } from '../accounts/entities/account.entity';
 import { SigninDto } from './dto/signin.dto';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { AdminResetDto } from './dto/admin-reset.dto';
@@ -27,7 +28,11 @@ function destroySessionById(store: any, sid: string): Promise<void> {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly service: AuthService) { }
+  constructor(
+    private readonly service: AuthService,
+    @InjectRepository(Account)
+    private readonly accountRepository: Repository<Account>,
+  ) { }
 
   /**
    * @remarks
@@ -194,10 +199,16 @@ export class AuthController {
   @UseGuards(SessionAuthGuard)
   async me(@Req() req: any) {
     const sUser = req.session.user;
-    
-    if (process.env.IS_DEV === 'true') {
-      console.log('[AuthController] me sUser:', sUser);
-    }
+
+    // Account 테이블에서 실제 이름 조회 (워터마크 등에 사용)
+    let name: string | null = null;
+    try {
+      const account = await this.accountRepository.findOne({
+        where: { credential_id: String(sUser.credentialId) },
+        select: ['name'],
+      });
+      name = account?.name ?? null;
+    } catch { /* 조회 실패 시 null 유지 */ }
 
     return {
       message: 'me',
@@ -206,6 +217,7 @@ export class AuthController {
         role: sUser.role,
         deviceType: sUser.deviceType,
         canDownloadImage: sUser.canDownloadImage,
+        name,
       },
     };
   }
