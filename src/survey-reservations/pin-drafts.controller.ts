@@ -7,10 +7,13 @@ import {
   Logger,
   Post,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { CreatePinDraftDto } from './dto/create-pin-draft.dto';
 import { PinDraftsService } from './pin-drafts.service';
+import { SessionAuthGuard } from 'src/dashboard/auth/guards/session-auth.guard';
 
+@UseGuards(SessionAuthGuard)
 @Controller('pin-drafts')
 export class PinDraftsController {
   private readonly logger = new Logger(PinDraftsController.name);
@@ -24,7 +27,7 @@ export class PinDraftsController {
    */
   @Post()
   async create(@Body() dto: CreatePinDraftDto, @Req() req: any) {
-    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+    const me = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
 
     try {
       const data = await this.service.create(dto, me || null);

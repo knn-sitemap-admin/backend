@@ -9,32 +9,25 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
 import { CreateContractDto } from './dto/create-contract.dto';
 import { UpdateContractDto } from './dto/update-contract.dto';
 import { ListContractsDto } from './dto/list-contracts.dto';
-
-type SessionUser = {
-  credentialId: string;
-  role: 'admin' | 'manager' | 'staff';
-  deviceType: 'pc' | 'mobile';
-};
-
-type SessionData = {
-  user?: SessionUser;
-};
+import { SessionAuthGuard } from '../dashboard/auth/guards/session-auth.guard';
 
 @Controller('contracts')
+@UseGuards(SessionAuthGuard)
 export class ContractsController {
   constructor(private readonly service: ContractsService) {}
 
   @Post()
   async create(
-    @Req() req: { session: SessionData },
+    @Req() req: any,
     @Body() dto: CreateContractDto,
   ) {
-    const credentialId = String(req.session?.user?.credentialId ?? '');
+    const credentialId = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
     const data = await this.service.create(credentialId, dto);
     return { message: '계약 생성됨', data };
   }
@@ -48,10 +41,10 @@ export class ContractsController {
   // 전체 리스트(관리자/매니저)
   @Get()
   async listAll(
-    @Req() req: { session: SessionData },
+    @Req() req: any,
     @Query() dto: ListContractsDto,
   ) {
-    const role = (req.session?.user?.role ?? 'staff') as
+    const role = (req.user?.role ?? req.session?.user?.role ?? 'staff') as
       | 'admin'
       | 'manager'
       | 'staff';
@@ -62,11 +55,11 @@ export class ContractsController {
   // 내 리스트(내가 생성 or 참여)
   @Get('me')
   async listMe(
-    @Req() req: { session: SessionData },
+    @Req() req: any,
     @Query() dto: ListContractsDto,
   ) {
-    const credentialId = String(req.session?.user?.credentialId ?? '');
-    const role = (req.session?.user?.role ?? 'staff') as
+    const credentialId = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
+    const role = (req.user?.role ?? req.session?.user?.role ?? 'staff') as
       | 'admin'
       | 'manager'
       | 'staff';
@@ -77,11 +70,11 @@ export class ContractsController {
   // 상세(id)
   @Get(':id')
   async detailById(
-    @Req() req: { session: SessionData },
+    @Req() req: any,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    const credentialId = String(req.session?.user?.credentialId ?? '');
-    const role = (req.session?.user?.role ?? 'staff') as
+    const credentialId = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
+    const role = (req.user?.role ?? req.session?.user?.role ?? 'staff') as
       | 'admin'
       | 'manager'
       | 'staff';
@@ -92,11 +85,11 @@ export class ContractsController {
   // 상세(contractNo)
   @Get('no/:contractNo')
   async detailByNo(
-    @Req() req: { session: SessionData },
+    @Req() req: any,
     @Param('contractNo') contractNo: string,
   ) {
-    const credentialId = String(req.session?.user?.credentialId ?? '');
-    const role = (req.session?.user?.role ?? 'staff') as
+    const credentialId = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
+    const role = (req.user?.role ?? req.session?.user?.role ?? 'staff') as
       | 'admin'
       | 'manager'
       | 'staff';
@@ -110,12 +103,12 @@ export class ContractsController {
 
   @Patch(':id')
   async update(
-    @Req() req: { session: SessionData },
+    @Req() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateContractDto,
   ) {
-    const credentialId = String(req.session?.user?.credentialId ?? '');
-    const role = (req.session?.user?.role ?? 'staff') as
+    const credentialId = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
+    const role = (req.user?.role ?? req.session?.user?.role ?? 'staff') as
       | 'admin'
       | 'manager'
       | 'staff';
@@ -125,10 +118,10 @@ export class ContractsController {
 
   @Delete(':id')
   async remove(
-    @Req() req: { session: SessionData },
+    @Req() req: any,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    const role = (req.session?.user?.role ?? 'staff') as
+    const role = (req.user?.role ?? req.session?.user?.role ?? 'staff') as
       | 'admin'
       | 'manager'
       | 'staff';

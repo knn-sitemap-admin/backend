@@ -11,14 +11,17 @@ import {
   Req,
   Header,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { PinsService } from './pins.service';
 import { CreatePinDto } from './dto/create-pin.dto';
 import { UpdatePinDto } from './dto/update-pin.dto';
 import { MapPinsDto } from './dto/map-pins.dto';
 import { SearchPinsDto } from './dto/search-pins.dto';
+import { SessionAuthGuard } from '../../dashboard/auth/guards/session-auth.guard';
 
 @Controller('pins')
+@UseGuards(SessionAuthGuard)
 export class PinsController {
   private readonly logger = new Logger(PinsController.name);
 
@@ -31,7 +34,7 @@ export class PinsController {
    */
   @Post()
   async create(@Body() dto: CreatePinDto, @Req() req: any) {
-    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+    const me = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
 
     const data = await this.pinsService.create(dto, me || null);
     return { message: '핀 생성됨', data };
@@ -45,7 +48,7 @@ export class PinsController {
   @Get('search')
   @Header('Cache-Control', 'public, max-age=60')
   async search(@Query() dto: SearchPinsDto, @Req() req: any) {
-    const id = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+    const id = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
     const isAuthed = !!id;
     const data = await this.pinsService.searchPins(dto, id, isAuthed);
     return { data };
@@ -94,7 +97,7 @@ export class PinsController {
     @Body() dto: UpdatePinDto,
     @Req() req: any,
   ) {
-    const me = String(req.user?.id ?? req.session?.user?.credentialId ?? '');
+    const me = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
 
     const data = await this.pinsService.update(id, dto, me || null);
     return { message: '핀 수정됨', data };

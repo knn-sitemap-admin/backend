@@ -20,7 +20,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const isViewRequest = req.url?.startsWith('/owner');
     const path = req?.originalUrl ?? req?.url ?? '';
     const method = req?.method;
-    const user = req.session?.user;
+    const user = req.user ?? req.session?.user;
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let messages: string[] = ['internal server error'];

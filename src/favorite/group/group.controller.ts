@@ -24,8 +24,10 @@ export class GroupController {
 
   constructor(private readonly service: GroupService) {}
 
-  private getCredentialId(req: { session: SessionData }): string {
-    const credentialId = String((req.session as any)?.user?.credentialId ?? '');
+  private getCredentialId(req: any): string {
+    const credentialId = String(
+      req.user?.credentialId ?? (req.session as any)?.user?.credentialId ?? '',
+    );
     if (!credentialId) {
       throw new UnauthorizedException('로그인이 필요합니다.');
     }
