@@ -14,6 +14,6 @@ export const ProdDataSource = new DataSource({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
   entities: ['src/**/entities/*.entity.ts'],
-  migrations: ['src/common/migrations/*.ts'],
+  migrations: ['src/migrations/*.ts'],
   synchronize: false, // 운영 환경에서는 절대 동기화 사용 금지
 });
