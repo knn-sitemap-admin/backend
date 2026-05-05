@@ -57,7 +57,7 @@ class UploadQueryDto {
 
 @Controller('photo/upload')
 export class UploadController {
-  constructor(private readonly uploadService: uploadService_1.UploadService) {}
+  constructor(private readonly uploadService: uploadService_1.UploadService) { }
 
   @Post()
   @UseGuards(SessionAuthGuard)
@@ -108,7 +108,9 @@ export class UploadController {
     @Req() req: any,
   ) {
     const user = req.user || req.session?.user;
-    if (!user?.canDownloadImage) {
+    const isPrivileged = ['admin'].includes(user?.role);
+
+    if (!isPrivileged && !user?.canDownloadImage) {
       throw new ForbiddenException('이미지 다운로드 권한이 없습니다.');
     }
 
