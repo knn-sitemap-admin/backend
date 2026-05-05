@@ -385,10 +385,11 @@ export class UploadService {
         throw new BadRequestException('허용되지 않은 도메인의 다운로드 요청입니다.');
       }
 
+      const serviceUrl = process.env.PAGE_URL?.split(',')[0] || 'http://localhost:3000/';
       const options = {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          'Referer': 'http://localhost:3000/',
+          'Referer': serviceUrl.endsWith('/') ? serviceUrl : `${serviceUrl}/`,
         }
       };
 
