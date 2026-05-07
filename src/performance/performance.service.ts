@@ -84,11 +84,11 @@ export class PerformanceService {
         e: range.endDate,
       })
       .select("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END", 'platform')
-      .addSelect("COUNT(CASE WHEN s.status = 'normal' AND s.meeting_type = '신규' AND c.id IS NULL THEN 1 END)", 'new_count')
-      .addSelect("COUNT(CASE WHEN s.status = 'normal' AND s.meeting_type = '재미팅' AND c.id IS NULL THEN 1 END)", 're_count')
+      .addSelect("COUNT(CASE WHEN s.status = 'normal' AND s.category = '신규' AND c.id IS NULL THEN 1 END)", 'new_count')
+      .addSelect("COUNT(CASE WHEN s.status = 'normal' AND s.category = '재미팅' AND c.id IS NULL THEN 1 END)", 're_count')
       .addSelect("COUNT(CASE WHEN s.status = 'canceled' AND c.id IS NULL THEN 1 END)", 'canceled_count')
       .where('s.is_deleted = :isDeleted', { isDeleted: false })
-      .andWhere("s.meeting_type != '휴무'")
+      .andWhere("s.category IN ('신규', '재미팅')")
       .andWhere('s.start_date >= :s AND s.start_date <= :e', {
         s: range.startDate,
         // 시분초가 포함된 경우를 대비해 해당 날짜의 끝까지 포함하도록 처리
@@ -611,7 +611,7 @@ export class PerformanceService {
       .select('YEAR(s.start_date)', 'year')
       .addSelect('MONTH(s.start_date)', 'month')
       .where('s.is_deleted = :isDeleted', { isDeleted: false })
-      .andWhere("s.meeting_type != '휴무'")
+      .andWhere("s.category IN ('신규', '재미팅')")
       .groupBy('year')
       .addGroupBy('month')
       .getRawMany<{ year: number; month: number }>();

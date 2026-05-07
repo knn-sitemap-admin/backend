@@ -155,8 +155,8 @@ export class AuthService {
   }
 
   private getSessionExpiresAt(): Date {
-    const hours = Number(process.env.SESSION_TTL_HOURS ?? 6); // 기본 6시간
-    const ms = 1000 * 60 * 60 * (Number.isFinite(hours) ? hours : 6);
+    const hours = Number(process.env.SESSION_TTL_HOURS ?? 720); // 기본 30일 (720시간)으로 기본 유지 기간 대폭 확대
+    const ms = 1000 * 60 * 60 * (Number.isFinite(hours) ? hours : 720);
     return new Date(Date.now() + ms);
   }
 
@@ -295,7 +295,7 @@ export class AuthService {
     // JWT 토큰 생성 (앱용)
     const secretStr = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'change_this_secret';
     const primarySecret = secretStr.split(',')[0].trim();
-    const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 6);
+    const ttlHours = Number(process.env.SESSION_TTL_HOURS ?? 720); // 기본 30일 (720시간)
 
     const accessToken = jwt.sign(
       {

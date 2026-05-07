@@ -110,7 +110,7 @@ export class SchedulesService {
       location: dto.location,
       customer_phone: dto.customerPhone,
       platform: dto.platform,
-      meeting_type: dto.meetingType || '신규',
+      meeting_type: dto.meetingType || (dto.category === '신규' || dto.category === '재미팅' ? '신규' : null),
       start_date: new Date(dto.startDate),
       end_date: new Date(dto.endDate),
       is_all_day: dto.isAllDay || false,
@@ -199,7 +199,13 @@ export class SchedulesService {
     if (dto.location !== undefined) schedule.location = dto.location;
     if (dto.customerPhone !== undefined) schedule.customer_phone = dto.customerPhone;
     if (dto.platform !== undefined) schedule.platform = dto.platform;
-    if (dto.meetingType !== undefined) schedule.meeting_type = dto.meetingType;
+    if (dto.meetingType !== undefined) {
+      schedule.meeting_type = dto.meetingType;
+    } else if (dto.category !== undefined) {
+      if (dto.category !== '신규' && dto.category !== '재미팅') {
+        schedule.meeting_type = null;
+      }
+    }
     if (dto.startDate !== undefined) schedule.start_date = new Date(dto.startDate);
     if (dto.endDate !== undefined) schedule.end_date = new Date(dto.endDate);
     if (dto.isAllDay !== undefined) schedule.is_all_day = dto.isAllDay;
