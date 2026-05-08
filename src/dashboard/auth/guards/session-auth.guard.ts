@@ -12,7 +12,7 @@ import { detectDeviceType } from '../../../common/utils/device-type.util';
 export class SessionAuthGuard implements CanActivate {
   private readonly logger = new Logger(SessionAuthGuard.name);
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest();
@@ -32,7 +32,7 @@ export class SessionAuthGuard implements CanActivate {
       if (decoded) {
         const ua = String(req.headers['user-agent'] ?? '');
         const deviceType = detectDeviceType(ua);
-        
+
         // JWT 인증 시에도 DB의 최신 정보를 가져와서 세션에 동기화
         const sid = String(req.sessionID ?? 'jwt-session');
         const res = await this.authService.validateActiveSession({
@@ -40,6 +40,11 @@ export class SessionAuthGuard implements CanActivate {
           credentialId: String(decoded.sub),
           deviceType,
         });
+
+        if (!res.ok && (res.reason === 'DISABLED' || res.reason === 'NO_CREDENTIAL')) {
+          this.logger.warn(`[JWT Auth] Blocked deactivated or deleted account: ${decoded.sub}`);
+          throw new UnauthorizedException('비활성화되거나 존재하지 않는 계정입니다. 관리자에게 문의하세요.');
+        }
 
         const user = {
           credentialId: String(decoded.sub),
