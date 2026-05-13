@@ -76,30 +76,95 @@ export class PerformanceService {
     const { accountId } = dto;
 
     // 1. 일정 기반 통계 (신규, 재미팅, 일정취소) - s.start_date 기준
-    // 해당 월에 발생한 일정 중, 해당 월에 계약으로 이어지지 않은 건들만 미팅 건수로 집계 (중복 방지)
-    const scheduleQuery = this.scheduleRepo
+    // 재미팅 일정이 전월/익월로 넘어갈 수 있으므로, 조회 시작일 2개월 전부터의 히스토리를 포함하여 선행 일정을 대조합니다.
+    const dt = new Date(range.startDate);
+    dt.setMonth(dt.getMonth() - 2);
+    const historyStartDate = `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-01`;
+
+    const rawScheduleQuery = this.scheduleRepo
       .createQueryBuilder('s')
-      .leftJoin('contracts', 'c', 'c.scheduleId = s.id AND c.contract_date >= :s AND c.contract_date <= :e', {
-        s: range.startDate,
-        e: range.endDate,
-      })
-      .select("CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END", 'platform')
-      .addSelect("COUNT(CASE WHEN s.category = '신규' AND c.id IS NULL THEN 1 END)", 'new_count')
-      .addSelect("COUNT(CASE WHEN s.category = '재미팅' AND c.id IS NULL THEN 1 END)", 're_count')
-      .addSelect("COUNT(CASE WHEN s.status = 'canceled' AND c.id IS NULL THEN 1 END)", 'canceled_count')
+      .select([
+        "CASE WHEN TRIM(s.platform) = '' OR s.platform IS NULL THEN '미지정' ELSE TRIM(s.platform) END as platform",
+        's.location as location',
+        's.customer_phone as customerPhone',
+        's.status as status',
+        's.category as category',
+        's.created_by_account_id as createdByAccountId',
+        's.start_date as startDate',
+      ])
       .where('s.is_deleted = :isDeleted', { isDeleted: false })
       .andWhere("s.category IN ('신규', '재미팅')")
-      .andWhere('s.start_date >= :s AND s.start_date <= :e', {
-        s: range.startDate,
-        // 시분초가 포함된 경우를 대비해 해당 날짜의 끝까지 포함하도록 처리
+      .andWhere('s.start_date >= :historyStart AND s.start_date <= :e', {
+        historyStart: historyStartDate,
         e: `${range.endDate} 23:59:59`,
       });
 
-    if (accountId) {
-      scheduleQuery.andWhere('s.created_by_account_id = :aid', { aid: accountId });
+    const rawSchedules = await rawScheduleQuery.orderBy('s.start_date', 'ASC').getRawMany();
+
+    // KST 포맷 및 글로벌 집계 진행
+    const kstFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' });
+    const targetMonthStartStr = range.startDate; // YYYY-MM-DD
+
+    const schedulePlatformStats = new Map<string, { new_count: number; re_count: number; canceled_count: number }>();
+    const visitedMap = new Set<string>();
+
+    for (const s of rawSchedules) {
+      const p = s.platform || '미지정';
+      const loc = (s.location || '').trim();
+      const phone = (s.customerPhone || '').trim();
+      const isCanceled = s.status === 'canceled';
+      const creatorId = Number(s.createdByAccountId);
+
+      // 1. 중복 여부 식별 (2개월 전 포함 전체 데이터 기준)
+      let isRevisit = false;
+      if (loc && phone) {
+        const key = `${p}_${loc}_${phone}`;
+        if (visitedMap.has(key)) {
+          isRevisit = true;
+        } else {
+          visitedMap.add(key);
+        }
+      }
+
+      // 2. 조회 기간 시작일 이전에 시작된 선행 히스토리 일정은 중복 카운트 판단(visitedMap)용으로만 쓰고 통계 집계에서는 스킵합니다.
+      const sDateStr = kstFmt.format(s.startDate);
+      if (sDateStr < targetMonthStartStr) {
+        continue;
+      }
+
+      // 분류 결정: 
+      // DB에 직접 저장된 카테고리가 '재미팅'이거나, 전체 히스토리상 동일 고객의 선행 일정이 이미 존재하는 경우 '재미팅'으로 판별합니다.
+      const isReMeeting = s.category === '재미팅' || isRevisit;
+
+      // 3. 담당자 필터 적용 (만약 accountId가 있다면, 본인의 것만 집계에 포함)
+      if (accountId && creatorId !== Number(accountId)) {
+        continue;
+      }
+
+      // 통계 객체 초기화
+      if (!schedulePlatformStats.has(p)) {
+        schedulePlatformStats.set(p, { new_count: 0, re_count: 0, canceled_count: 0 });
+      }
+      const stats = schedulePlatformStats.get(p)!;
+
+      if (isReMeeting) {
+        stats.re_count++;
+      } else {
+        stats.new_count++;
+      }
+
+      if (isCanceled) {
+        stats.canceled_count++;
+      }
     }
 
-    const scheduleRows = await scheduleQuery.groupBy('platform').getRawMany();
+    // 기존 가공 포맷(배열)으로 매핑 변환
+    const scheduleRows = Array.from(schedulePlatformStats.entries()).map(([p, counts]) => ({
+      platform: p,
+      new_count: counts.new_count,
+      re_count: counts.re_count,
+      canceled_count: counts.canceled_count,
+    }));
 
     // 2. 계약 기반 통계 (계약건 - 상태별) - c.contract_date 기준
     // 해당 월에 작성된 모든 계약 기록을 집계
