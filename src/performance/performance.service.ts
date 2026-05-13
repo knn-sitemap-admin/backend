@@ -115,10 +115,11 @@ export class PerformanceService {
       const isCanceled = s.status === 'canceled';
       const creatorId = Number(s.createdByAccountId);
 
-      // 1. 중복 여부 식별 (2개월 전 포함 전체 데이터 기준)
+      // 1. 중복 여부 식별 (2개월 전 포함 전체 데이터 기준 - 동일 플랫폼 내 연락처 단일 매칭)
       let isRevisit = false;
-      if (loc && phone) {
-        const key = `${p}_${loc}_${phone}`;
+      const normalizedPhone = phone.replace(/[^0-9]/g, '');
+      if (normalizedPhone) {
+        const key = `${p}_${normalizedPhone}`;
         if (visitedMap.has(key)) {
           isRevisit = true;
         } else {
