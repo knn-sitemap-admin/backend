@@ -22,6 +22,7 @@ import { SchedulesModule } from './schedules/schedules.module';
 import { SettlementsModule } from './settlements/settlements.module';
 import { RequestQueryLogger } from './common/typeorm/request-query.logger';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         };
       },
     }),
+    EventsModule,
     PinsModule,
     UnitsModule,
     PinDirectionsModule,

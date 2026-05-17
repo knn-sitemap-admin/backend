@@ -9,10 +9,14 @@ import { DataSource } from 'typeorm';
 import { SurveyReservation } from './entities/survey-reservation.entity';
 import { CreateSurveyReservationDto } from './dto/create-survey-reservation.dto';
 import { ReorderSurveyReservationsDto } from './dto/reorder-survey-reservations.dto';
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class SurveyReservationsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly eventsGateway: EventsGateway,
+  ) {}
 
   // 공통 메서드
   async resolveMyAccountId(credId: string): Promise<string> {
@@ -120,6 +124,13 @@ export class SurveyReservationsService {
       });
 
       const id = insert.identifiers?.[0]?.id ?? null;
+      
+      this.eventsGateway.broadcastReservationChanged({
+        draftId: String(dto.pinDraftId),
+        reservationId: String(id),
+        action: 'created',
+      });
+
       return { id: String(id), sortOrder };
     });
   }
@@ -215,6 +226,12 @@ export class SurveyReservationsService {
         })
         .execute();
 
+      this.eventsGateway.broadcastReservationChanged({
+        draftId: String(found.pinDraftId),
+        reservationId: String(id),
+        action: 'deleted',
+      });
+
       return {
         reservationId: id,
         pin_draft_id: Number(found.pinDraftId),
@@ -280,6 +297,10 @@ export class SurveyReservationsService {
           .andWhere('id IN (:...ids)', { ids })
           .execute();
       }
+
+      this.eventsGateway.broadcastReservationChanged({
+        action: 'updated',
+      });
 
       return { count: normalized.length };
     });

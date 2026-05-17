@@ -46,7 +46,6 @@ export class PinsController {
    * 핀 필터 검색 API
    */
   @Get('search')
-  @Header('Cache-Control', 'public, max-age=60')
   async search(@Query() dto: SearchPinsDto, @Req() req: any) {
     const id = String(req.user?.credentialId ?? req.session?.user?.credentialId ?? '');
     const isAuthed = !!id;
@@ -66,7 +65,6 @@ export class PinsController {
    * https://www.notion.so/2858186df78b80f0aca7c1fb6be70865?source=copy_link
    */
   @Get('map')
-  @Header('Cache-Control', 'public, max-age=60')
   async getMapPins(@Query() dto: MapPinsDto) {
     const data = await this.pinsService.getMapPins(dto);
     return { data };

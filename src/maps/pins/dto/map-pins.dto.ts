@@ -91,4 +91,8 @@ export class MapPinsDto {
   })
   @IsBoolean()
   isCompleted?: boolean;
+
+  /** Cache busting timestamp */
+  @IsOptional()
+  _t?: string;
 }

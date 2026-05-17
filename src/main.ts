@@ -12,6 +12,7 @@ import { createClient, type RedisClientType } from 'redis';
 import { join } from 'path';
 import express from 'express';
 import expressLayouts from 'express-ejs-layouts';
+import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 
 import { NestExpressApplication } from '@nestjs/platform-express';
 
@@ -160,6 +161,11 @@ async function bootstrap() {
       client: redisClient,
       prefix: 'sess:',
     } satisfies RedisStoreCtorArg);
+
+    // 웹소켓 Redis 어댑터 적용
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis(redisClient);
+    app.useWebSocketAdapter(redisIoAdapter);
   }
 
   expressApp.set('sessionStore', store);

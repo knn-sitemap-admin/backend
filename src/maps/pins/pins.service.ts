@@ -78,6 +78,8 @@ type DraftSearchItem = {
   draftState: 'BEFORE' | 'SCHEDULED';
 };
 
+import { EventsGateway } from '../../events/events.gateway';
+
 export class PinsService {
   private readonly logger = new Logger(PinsService.name);
 
@@ -90,7 +92,8 @@ export class PinsService {
     private readonly pinAreaGroupsService: PinAreaGroupsService,
     private readonly pinOptionsService: PinOptionsService,
     private readonly surveyReservationsService: SurveyReservationsService,
-  ) {}
+    private readonly eventsGateway: EventsGateway,
+  ) { }
 
   async getMapPins(dto: MapPinsDto): Promise<PointResp> {
     try {
@@ -256,7 +259,7 @@ export class PinsService {
       throw new BadRequestException('잘못된 좌표');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const pinRepo = manager.getRepository(Pin);
       const draftRepo = manager.getRepository(PinDraft);
       const resvRepo = manager.getRepository(SurveyReservation);
@@ -456,6 +459,13 @@ export class PinsService {
         matchedReservationId: matchedReservation?.id ?? null,
       };
     });
+
+    this.eventsGateway.broadcastPinUpdated({
+      pinId: String(result.id),
+      action: 'created',
+    });
+
+    return result;
   }
 
   async findDetail(id: string): Promise<PinResponseDto> {
@@ -556,7 +566,7 @@ export class PinsService {
   }
 
   async update(id: string, dto: UpdatePinDto, meCredentialId: string | null) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const pinRepo = manager.getRepository(Pin);
       const pin = await pinRepo.findOne({ where: { id } });
       if (!pin) throw new NotFoundException('핀 없음');
@@ -751,6 +761,13 @@ export class PinsService {
 
       return { id: String(pin.id) };
     });
+
+    this.eventsGateway.broadcastPinUpdated({
+      pinId: String(result.id),
+      action: 'updated',
+    });
+
+    return result;
   }
 
   async searchPins(
@@ -854,14 +871,19 @@ export class PinsService {
         { moveInMax: dto.minRealMoveInCostMax },
       );
     }
-    
-    // 5.5) 키워드 검색 (매물명/이름) — 부분 일치 (%keyword%)
+
+    // 5.5) 키워드 검색 (매물명/이름/주소) — 부분 일치 (%keyword%)
     if (dto.q && dto.q.trim()) {
       const keywords = dto.q.trim().split(/\s+/);
       keywords.forEach((keyword, index) => {
-        qb.andWhere(`p.name LIKE :qInclusion${index}`, {
-          [`qInclusion${index}`]: `%${keyword}%`,
-        });
+        qb.andWhere(
+          new Brackets((w) => {
+            w.where(`p.name LIKE :qInclusion${index}`, {
+              [`qInclusion${index}`]: `%${keyword}%`,
+            });
+            w.orWhere(`p.address_line LIKE :qInclusion${index}`);
+          }),
+        );
       });
     }
 
@@ -942,9 +964,14 @@ export class PinsService {
       if (dto.q && dto.q.trim()) {
         const keywords = dto.q.trim().split(/\s+/);
         keywords.forEach((keyword, index) => {
-          draftQb.andWhere(`d.name LIKE :dqInclusion${index}`, {
-            [`dqInclusion${index}`]: `%${keyword}%`,
-          });
+          draftQb.andWhere(
+            new Brackets((w) => {
+              w.where(`d.name LIKE :dqInclusion${index}`, {
+                [`dqInclusion${index}`]: `%${keyword}%`,
+              });
+              w.orWhere(`d.address_line LIKE :dqInclusion${index}`);
+            }),
+          );
         });
       }
 
@@ -965,11 +992,11 @@ export class PinsService {
         this.pinRepository.manager.getRepository(SurveyReservation);
       const resvRows = draftIds.length
         ? await resvRepo
-            .createQueryBuilder('r')
-            .select(['r.pin_draft_id AS pinDraftId', 'r.assignee_id AS assigneeId'])
-            .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
-            .andWhere('r.is_deleted = :isDeleted', { isDeleted: 0 })
-            .getRawMany<{ pinDraftId: string; assigneeId: string }>()
+          .createQueryBuilder('r')
+          .select(['r.pin_draft_id AS pinDraftId', 'r.assignee_id AS assigneeId'])
+          .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
+          .andWhere('r.is_deleted = :isDeleted', { isDeleted: 0 })
+          .getRawMany<{ pinDraftId: string; assigneeId: string }>()
         : [];
 
       const assigneesByDraft = resvRows.reduce((map, r) => {
@@ -998,7 +1025,7 @@ export class PinsService {
             assigneesByDraft.get(String(d.id)) ?? new Set<string>();
           const hasReservation = assignees.size > 0;
           const isMine = !!myAccountId && assignees.has(String(myAccountId));
-          
+
           const base = {
             id: String(d.id),
             lat: Number(d.lat),
@@ -1013,13 +1040,11 @@ export class PinsService {
               draftState: 'BEFORE',
             };
           }
-          if (isMine) {
-            return {
-              ...base,
-              draftState: 'SCHEDULED',
-            };
-          }
-          return null;
+
+          return {
+            ...base,
+            draftState: 'SCHEDULED',
+          };
         })
         .filter((x): x is DraftSearchItem => x !== null);
     }

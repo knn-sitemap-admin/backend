@@ -9,12 +9,16 @@ import { CreatePinDraftDto } from './dto/create-pin-draft.dto';
 import { PinDraft } from './entities/pin-draft.entity';
 import { PinDraftDetailDto } from './dto/pin-draft-detail.dto';
 import { SurveyReservation } from './entities/survey-reservation.entity';
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class PinDraftsService {
   private readonly logger = new Logger(PinDraftsService.name);
 
-  constructor(private readonly ds: DataSource) {}
+  constructor(
+    private readonly ds: DataSource,
+    private readonly eventsGateway: EventsGateway,
+  ) {}
 
   private async resolveMyAccountId(credId: string): Promise<string | null> {
     if (!credId) return null;
@@ -53,6 +57,11 @@ export class PinDraftsService {
       });
 
       await repo.save(draft);
+
+      this.eventsGateway.broadcastReservationChanged({
+        draftId: String(draft.id),
+        action: 'created',
+      });
 
       return { draftId: draft.id };
     } catch (err: any) {
@@ -105,6 +114,11 @@ export class PinDraftsService {
     } as any);
 
     await draftRepo.delete(draft.id);
+
+    this.eventsGateway.broadcastReservationChanged({
+      draftId: String(draft.id),
+      action: 'deleted',
+    });
 
     return {
       deletedDraftId: String(draft.id),
