@@ -6,13 +6,31 @@ import {
 import { DataSource, In } from 'typeorm';
 import { FavoriteGroup } from '../group/entities/group.entity';
 import { FavoriteGroupItem } from './entities/item.entity';
+import { Account } from '../../dashboard/accounts/entities/account.entity';
 
 @Injectable()
 export class ItemService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async deleteItem(accountId: string, groupId: string, itemId: string) {
+  /** credentialId → account.id */
+  private async resolveAccountId(
+    m: any,
+    credentialId: string,
+  ): Promise<string> {
+    const accountRepo = m.getRepository(Account);
+
+    const account = await accountRepo.findOne({
+      where: { credential_id: credentialId },
+      select: { id: true },
+    });
+
+    if (!account) throw new NotFoundException('계정을 찾을 수 없습니다');
+    return String(account.id);
+  }
+
+  async deleteItem(credentialId: string, groupId: string, itemId: string) {
     return this.dataSource.transaction(async (m) => {
+      const accountId = await this.resolveAccountId(m, credentialId);
       const favoriteGroupRepo = m.getRepository(FavoriteGroup);
       const favoriteGroupItemRepo = m.getRepository(FavoriteGroupItem);
 
@@ -50,7 +68,7 @@ export class ItemService {
   }
 
   async reorderItems(
-    accountId: string,
+    credentialId: string,
     groupId: string,
     orders: { itemId: string; sortOrder: number }[],
   ) {
@@ -58,6 +76,7 @@ export class ItemService {
       throw new BadRequestException('정렬할 데이터가 없습니다.');
 
     return this.dataSource.transaction(async (m) => {
+      const accountId = await this.resolveAccountId(m, credentialId);
       const favoriteGroupRepos = m.getRepository(FavoriteGroup);
       const favoriteGroupItemRepo = m.getRepository(FavoriteGroupItem);
 

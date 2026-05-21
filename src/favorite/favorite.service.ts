@@ -9,12 +9,31 @@ import { UpsertFavoriteItemDto } from './dto/upsert-favorite-item.dto';
 import { FavoriteGroup } from './group/entities/group.entity';
 import { FavoriteGroupItem } from './item/entities/item.entity';
 
+import { Account } from '../dashboard/accounts/entities/account.entity';
+
 @Injectable()
 export class FavoriteService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async upsertItem(accountId: string, dto: UpsertFavoriteItemDto) {
+  /** credentialId → account.id */
+  private async resolveAccountId(
+    m: any,
+    credentialId: string,
+  ): Promise<string> {
+    const accountRepo = m.getRepository(Account);
+
+    const account = await accountRepo.findOne({
+      where: { credential_id: credentialId },
+      select: { id: true },
+    });
+
+    if (!account) throw new NotFoundException('계정을 찾을 수 없습니다');
+    return String(account.id);
+  }
+
+  async upsertItem(credentialId: string, dto: UpsertFavoriteItemDto) {
     return this.dataSource.transaction(async (m) => {
+      const accountId = await this.resolveAccountId(m, credentialId);
       const groupRepo = m.getRepository(FavoriteGroup);
       const itemRepo = m.getRepository(FavoriteGroupItem);
 
