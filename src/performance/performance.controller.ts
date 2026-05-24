@@ -4,7 +4,7 @@ import { PerformanceFilterDto } from './dto/performance-filter.dto';
 
 @Controller('performance')
 export class PerformanceController {
-  constructor(private readonly service: PerformanceService) {}
+  constructor(private readonly service: PerformanceService) { }
 
   @Get('summary')
   async summary(@Query() dto: PerformanceFilterDto) {
@@ -16,6 +16,18 @@ export class PerformanceController {
   async platformStatistics(@Query() dto: PerformanceFilterDto) {
     const data = await this.service.getPlatformStatistics(dto);
     return { message: '플랫폼별 통계', data };
+  }
+
+  @Get('survey/employees/:accountId')
+  async employeeSurveyPerformance(
+    @Param('accountId') accountId: string,
+  ) {
+    const data = await this.service.getEmployeeSurveyPerformance(accountId);
+    return {
+      success: true,
+      message: '직원별 답사 성과 이력 조회 성공',
+      data
+    };
   }
 
   @Get('teams/:teamId')

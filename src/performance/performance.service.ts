@@ -72,6 +72,7 @@ export class PerformanceService {
     private readonly scheduleRepo: Repository<Schedule>,
     @InjectRepository(SurveyPerformance)
     private readonly surveyRepo: Repository<SurveyPerformance>,
+
   ) { }
 
   async getPlatformStatistics(dto: PerformanceFilterDto) {
@@ -537,8 +538,8 @@ export class PerformanceService {
       )
       .leftJoin(AccountCredential, 'cr', 'cr.id = acc.credential_id')
       .leftJoin(
-        ContractAssignee, 
-        'a', 
+        ContractAssignee,
+        'a',
         'a.account_id = acc.id AND (a.team_id = :tid OR (a.team_id IS NULL AND EXISTS (SELECT 1 FROM team_members tm2 WHERE tm2.account_id = a.account_id AND tm2.team_id = :tid)))'
       )
       .leftJoin(
@@ -665,7 +666,7 @@ export class PerformanceService {
     const grandTotalExpr = this.sqlGrandTotalExpr();
     const companyAmountExpr = this.sqlCompanyAmountExpr(grandTotalExpr);
     const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
-    
+
     const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
     const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
 
@@ -770,7 +771,7 @@ export class PerformanceService {
       const y = Number(r.year);
       const m = Number(r.month);
       if (!y || !m) return;
-      
+
       let monthSet = yearMonthMap.get(y);
       if (!monthSet) {
         monthSet = new Set<number>();
@@ -781,7 +782,7 @@ export class PerformanceService {
 
     const years = Array.from(yearMonthMap.keys()).sort((a, b) => b - a);
     const yearMonths: { year: number; month: number }[] = [];
-    
+
     years.forEach(y => {
       const monthSet = yearMonthMap.get(y);
       if (monthSet) {
@@ -793,5 +794,18 @@ export class PerformanceService {
     });
 
     return { years, yearMonths };
+  }
+
+  /**
+    * 특정 직원의 답사 이력을 최신순으로 조회 (Pin 정보 포함)
+    */
+  async getEmployeeSurveyPerformance(accountId: string) {
+    return await this.surveyRepo.find({
+      where: { accountId },
+      relations: ['pin'], // 👈 프론트 UI에 매물명/주소를 노출하기 위해 관계 조인
+      order: {
+        surveyedAt: 'DESC', // 최신 답사 건이 맨 위로 오도록 정렬
+      },
+    });
   }
 }
