@@ -11,6 +11,7 @@ export type CompanyKpi = {
   completedContractCount: number; // 완료 계약 건수 (done)
   rejectedContractCount: number; // 부결 계약 건수 (rejected)
   headcount: number; // 전체 인원수(비활성 제외)
+  surveyCount: number; // 전체 답사 건수
 };
 
 export type TeamSummary = {
@@ -23,6 +24,7 @@ export type TeamSummary = {
   completedContractCount: number; // 완료 계약
   rejectedContractCount: number; // 부결 계약
   memberCount: number; // team_members 기준
+  surveyCount: number; // 팀 답사 건수
 };
 
 export type TopTeam = {
@@ -34,6 +36,7 @@ export type TopTeam = {
   totalContractCount: number;
   completedContractCount: number;
   rejectedContractCount: number;
+  surveyCount: number;
   rank: 1 | 2 | 3;
 };
 
@@ -54,6 +57,7 @@ export type TeamEmployeeItem = {
   totalContractCount: number;
   completedContractCount: number;
   rejectedContractCount: number;
+  surveyCount: number;
 };
 
 export type TeamEmployeesResponse = {
@@ -71,6 +75,7 @@ export type EmployeeMonthlyStat = {
   totalContractCount: number;
   completedContractCount: number;
   rejectedContractCount: number;
+  surveyCount: number;
 };
 
 export type EmployeePerformanceResponse = {

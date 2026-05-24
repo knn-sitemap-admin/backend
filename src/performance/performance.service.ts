@@ -21,6 +21,7 @@ import { TeamMember } from '../dashboard/accounts/entities/team-member.entity';
 import { Account } from '../dashboard/accounts/entities/account.entity';
 import { AccountCredential } from '../dashboard/accounts/entities/account-credential.entity';
 import { Schedule } from 'src/schedules/entities/schedule.entity';
+import { SurveyPerformance } from './entities/survey-performance.entity';
 
 const TAX_FACTOR = 0.967;
 const VAT_RATE = 0.1;
@@ -69,6 +70,8 @@ export class PerformanceService {
     private readonly credentialRepo: Repository<AccountCredential>,
     @InjectRepository(Schedule)
     private readonly scheduleRepo: Repository<Schedule>,
+    @InjectRepository(SurveyPerformance)
+    private readonly surveyRepo: Repository<SurveyPerformance>,
   ) { }
 
   async getPlatformStatistics(dto: PerformanceFilterDto) {
@@ -368,6 +371,15 @@ export class PerformanceService {
         rejectedContractCount: string;
       }>();
 
+    // 1-1) 회사 답사 통계
+    const companySurveyCount = await this.surveyRepo
+      .createQueryBuilder('sp')
+      .where('sp.surveyedAt >= :s AND sp.surveyedAt <= :e', {
+        s: `${range.startDate} 00:00:00`,
+        e: `${range.endDate} 23:59:59`,
+      })
+      .getCount();
+
     // 2) 총 인원수
     const headcount = await this.credentialRepo
       .createQueryBuilder('cr')
@@ -387,7 +399,24 @@ export class PerformanceService {
       memberRows.map((r) => [String(r.teamId), Number(r.memberCount)]),
     );
 
-    // 4) 팀별 실적
+    // 4) 팀별 답사 실적
+    const teamSurveyRows = await this.teamRepo
+      .createQueryBuilder('t')
+      .leftJoin(TeamMember, 'tm', 'tm.team_id = t.id')
+      .leftJoin(SurveyPerformance, 'sp', 'sp.account_id = tm.account_id AND sp.surveyedAt >= :s AND sp.surveyedAt <= :e', {
+        s: `${range.startDate} 00:00:00`,
+        e: `${range.endDate} 23:59:59`,
+      })
+      .select('t.id', 'teamId')
+      .addSelect('COUNT(sp.id)', 'surveyCount')
+      .groupBy('t.id')
+      .getRawMany<{ teamId: string; surveyCount: string }>();
+
+    const teamSurveyMap = new Map<string, number>(
+      teamSurveyRows.map((r) => [String(r.teamId), Number(r.surveyCount)]),
+    );
+
+    // 5) 팀별 실적
     const myAmountExpr = this.sqlMyAmountExpr(grandTotalExpr);
     const gSalesContribExpr = this.sqlGrossSalesContribExpr(grandTotalExpr);
     const nProfitContribExpr = this.sqlNetProfitContribExpr(companyAmountExpr);
@@ -447,6 +476,7 @@ export class PerformanceService {
       completedContractCount: Number(r.completedContractCount),
       rejectedContractCount: Number(r.rejectedContractCount),
       memberCount: memberCountMap.get(String(r.teamId)) ?? 0,
+      surveyCount: teamSurveyMap.get(String(r.teamId)) ?? 0,
     }));
 
     const topTeams: TopTeam[] = teams.slice(0, 3).map((t, idx) => ({
@@ -458,6 +488,7 @@ export class PerformanceService {
       totalContractCount: t.totalContractCount,
       completedContractCount: t.completedContractCount,
       rejectedContractCount: t.rejectedContractCount,
+      surveyCount: t.surveyCount,
       rank: (idx + 1) as 1 | 2 | 3,
     }));
 
@@ -470,6 +501,7 @@ export class PerformanceService {
         completedContractCount: Number(companyRaw?.completedContractCount ?? 0),
         rejectedContractCount: Number(companyRaw?.rejectedContractCount ?? 0),
         headcount,
+        surveyCount: companySurveyCount,
       },
       teams,
       topTeams,
@@ -555,6 +587,31 @@ export class PerformanceService {
         rejectedContractCount: string;
       }>();
 
+    // 답사 실적 조회 (팀원별)
+    const surveyRows = await this.surveyRepo
+      .createQueryBuilder('sp')
+      .select('sp.account_id', 'accountId')
+      .addSelect('COUNT(sp.id)', 'count')
+      .where('sp.surveyedAt >= :s AND sp.surveyedAt <= :e', {
+        s: `${range.startDate} 00:00:00`,
+        e: `${range.endDate} 23:59:59`,
+      })
+      .andWhere((qb) => {
+        const sub = qb
+          .subQuery()
+          .select('tm.account_id')
+          .from(TeamMember, 'tm')
+          .where('tm.team_id = :tid', { tid: String(teamId) })
+          .getQuery();
+        return `sp.account_id IN ${sub}`;
+      })
+      .groupBy('sp.account_id')
+      .getRawMany<{ accountId: string; count: string }>();
+
+    const surveyMap = new Map<string, number>(
+      surveyRows.map((r) => [String(r.accountId), Number(r.count)]),
+    );
+
     return {
       resolvedRange: range,
       team: { teamId: String(team.id), teamName: team.name },
@@ -568,6 +625,7 @@ export class PerformanceService {
         totalContractCount: Number(r.totalContractCount),
         completedContractCount: Number(r.completedContractCount),
         rejectedContractCount: Number(r.rejectedContractCount),
+        surveyCount: surveyMap.get(String(r.accountId)) ?? 0,
       })),
     };
   }
@@ -643,10 +701,21 @@ export class PerformanceService {
         rejectedContractCount: string;
       }>();
 
+    // 월별 답사 실적 조회
+    const surveyRows = await this.surveyRepo
+      .createQueryBuilder('sp')
+      .select('MONTH(sp.surveyedAt)', 'month')
+      .addSelect('COUNT(sp.id)', 'count')
+      .where('sp.account_id = :aid', { aid: String(accountId) })
+      .andWhere('YEAR(sp.surveyedAt) = :year', { year })
+      .groupBy('month')
+      .getRawMany<{ month: string | number; count: string }>();
+
     // 1~12월 데이터 보장
     const monthlyStats = Array.from({ length: 12 }, (_, i) => {
       const m = i + 1;
       const found = rows.find((r) => Number(r.month) === m);
+      const sFound = surveyRows.find((r) => Number(r.month) === m);
       return {
         year,
         month: m,
@@ -656,6 +725,7 @@ export class PerformanceService {
         totalContractCount: Number(found?.totalContractCount ?? 0),
         completedContractCount: Number(found?.completedContractCount ?? 0),
         rejectedContractCount: Number(found?.rejectedContractCount ?? 0),
+        surveyCount: Number(sFound?.count ?? 0),
       };
     });
 

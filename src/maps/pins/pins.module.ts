@@ -10,10 +10,16 @@ import { PinOptionsModule } from '../pin-options/pin-options.module';
 import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
 import { SurveyReservationsModule } from '../../survey-reservations/survey-reservations.module';
 import { SurveyReservation } from '../../survey-reservations/entities/survey-reservation.entity';
+import { SurveyPerformance } from '../../performance/entities/survey-performance.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Pin, PinDraft, SurveyReservation]),
+    TypeOrmModule.forFeature([
+      Pin,
+      PinDraft,
+      SurveyReservation,
+      SurveyPerformance,
+    ]),
     UnitsModule,
     PinDirectionsModule,
     PinAreaGroupsModule,

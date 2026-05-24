@@ -10,6 +10,7 @@ import { TeamMember } from '../dashboard/accounts/entities/team-member.entity';
 import { Account } from '../dashboard/accounts/entities/account.entity';
 import { AccountCredential } from '../dashboard/accounts/entities/account-credential.entity';
 import { Schedule } from '../schedules/entities/schedule.entity';
+import { SurveyPerformance } from './entities/survey-performance.entity';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { Schedule } from '../schedules/entities/schedule.entity';
       Account,
       AccountCredential,
       Schedule,
+      SurveyPerformance,
     ]),
   ],
   controllers: [PerformanceController],

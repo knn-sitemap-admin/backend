@@ -28,6 +28,7 @@ import { PinDraft } from '../../survey-reservations/entities/pin-draft.entity';
 import { SurveyReservationsService } from '../../survey-reservations/survey-reservations.service';
 import { Account } from '../../dashboard/accounts/entities/account.entity';
 import { SurveyReservation } from '../../survey-reservations/entities/survey-reservation.entity';
+import { SurveyPerformance } from '../../performance/entities/survey-performance.entity';
 
 export type AgeType = 'OLD' | 'NEW' | null;
 
@@ -328,6 +329,10 @@ export class PinsService {
         if (matchedReservation) {
           surveyedBy = String(matchedReservation.assignee.id);
           surveyedAt = new Date(matchedReservation.reservedDate);
+        } else if (creatorAccountId) {
+          // 예약은 없지만 임시핀에서 변환하는 경우, 현재 작업자를 답사자로 간주
+          surveyedBy = creatorAccountId;
+          surveyedAt = new Date();
         }
       }
 
@@ -399,6 +404,19 @@ export class PinsService {
       } as DeepPartial<Pin>);
 
       await pinRepo.save(pin);
+
+      // 4.5) 답사 실적 기록 (임시핀에서 변환된 경우)
+      if (candidate) {
+        const surveyorId = surveyedBy || creatorAccountId;
+        if (surveyorId) {
+          await manager.getRepository(SurveyPerformance).save({
+            accountId: surveyorId,
+            pinId: pin.id,
+            pinDraftId: candidate.id,
+            surveyedAt: surveyedAt || new Date(),
+          });
+        }
+      }
 
       // 5) 옵션/방향/면적그룹/유닛
       if (dto.options) {

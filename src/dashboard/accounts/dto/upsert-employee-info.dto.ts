@@ -48,21 +48,21 @@ export class UpsertEmployeeInfoDto {
 
   @IsOptional()
   @IsArray()
-  @IsUrl({}, { each: true })
+  @IsString({ each: true })
   docUrlResidentRegistration?: string[] | null;
 
   @IsOptional()
   @IsArray()
-  @IsUrl({}, { each: true })
+  @IsString({ each: true })
   docUrlResidentAbstract?: string[] | null;
 
   @IsOptional()
   @IsArray()
-  @IsUrl({}, { each: true })
+  @IsString({ each: true })
   docUrlIdCard?: string[] | null;
 
   @IsOptional()
   @IsArray()
-  @IsUrl({}, { each: true })
+  @IsString({ each: true })
   docUrlFamilyRelation?: string[] | null;
 }
