@@ -328,7 +328,7 @@ export class PinsService {
 
         if (matchedReservation) {
           surveyedBy = String(matchedReservation.assignee.id);
-          surveyedAt = new Date(matchedReservation.reservedDate);
+          surveyedAt = new Date();
         } else if (creatorAccountId) {
           // 예약은 없지만 임시핀에서 변환하는 경우, 현재 작업자를 답사자로 간주
           surveyedBy = creatorAccountId;
