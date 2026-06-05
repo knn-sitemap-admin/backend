@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
   InternalServerErrorException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -83,7 +84,7 @@ type AccountWithCredential = Account & {
 };
 
 @Injectable()
-export class ContractsService {
+export class ContractsService implements OnModuleInit {
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(Contract)
@@ -100,6 +101,64 @@ export class ContractsService {
     private readonly scheduleRepo: Repository<Schedule>,
     private readonly uploadService: UploadService,
   ) { }
+
+  async onModuleInit() {
+    console.log('[OnModuleInit] Existing contracts auto-matching start...');
+    try {
+      // Find all contracts that don't have scheduleId
+      const unlinkedContracts = await this.contractRepo.find({
+        where: { scheduleId: require('typeorm').IsNull() },
+        select: ['id', 'customerPhone'],
+      });
+
+      console.log(`[OnModuleInit] Found ${unlinkedContracts.length} unlinked contracts.`);
+
+      let matchCount = 0;
+      for (const contract of unlinkedContracts) {
+        if (!contract.customerPhone) continue;
+        const cleanPhone = contract.customerPhone.replace(/\D/g, '');
+        if (!cleanPhone) continue;
+
+        // Find a matching schedule
+        const matchedSchedule = await this.scheduleRepo
+          .createQueryBuilder('s')
+          .leftJoin('s.contract', 'c')
+          .where("REPLACE(s.customer_phone, '-', '') = :cleanPhone", { cleanPhone })
+          .andWhere('c.id IS NULL')
+          .orderBy('s.start_date', 'DESC')
+          .getOne();
+
+        if (matchedSchedule) {
+          await this.contractRepo.update({ id: contract.id }, { scheduleId: String(matchedSchedule.id) });
+          
+          // Sync owner and phone too
+          const firstAssignee = await this.assigneeRepo.findOne({
+            where: { contract: { id: contract.id } as any },
+            order: { sortOrder: 'ASC' },
+          });
+          const firstAssigneeId = firstAssignee?.accountId;
+
+          let isScheduleUpdated = false;
+          if (firstAssigneeId && String(matchedSchedule.created_by_account_id) !== firstAssigneeId) {
+            matchedSchedule.created_by_account_id = firstAssigneeId;
+            isScheduleUpdated = true;
+          }
+          if (contract.customerPhone && matchedSchedule.customer_phone !== contract.customerPhone) {
+            matchedSchedule.customer_phone = contract.customerPhone;
+            isScheduleUpdated = true;
+          }
+          if (isScheduleUpdated) {
+            await this.scheduleRepo.save(matchedSchedule);
+          }
+
+          matchCount++;
+        }
+      }
+      console.log(`[OnModuleInit] Existing contracts auto-matching completed. Matched ${matchCount} contracts.`);
+    } catch (err) {
+      console.error('[OnModuleInit] Auto-matching failed:', err);
+    }
+  }
 
   /**
    * 계약 데이터가 존재하는 연도 및 월 목록 조회
@@ -300,6 +359,26 @@ export class ContractsService {
       const aRepo = m.getRepository(ContractAssignee);
       const fRepo = m.getRepository(ContractFile);
 
+      // 계약 생성 시 연동할 일정 ID 조회 (전화번호 기준 자동 매칭 포함)
+      let scheduleId = dto.scheduleId ?? null;
+      if (!scheduleId && dto.customerPhone) {
+        const cleanPhone = dto.customerPhone.replace(/\D/g, '');
+        if (cleanPhone) {
+          const matchedSchedule = await m.getRepository(Schedule)
+            .createQueryBuilder('s')
+            .leftJoin('s.contract', 'c')
+            .where("REPLACE(s.customer_phone, '-', '') = :cleanPhone", { cleanPhone })
+            .andWhere('c.id IS NULL')
+            .orderBy('s.start_date', 'DESC')
+            .getOne();
+
+          if (matchedSchedule) {
+            scheduleId = String(matchedSchedule.id);
+            console.log(`[Auto-Match] Found matching schedule (ID: ${matchedSchedule.id}) for phone: ${dto.customerPhone}`);
+          }
+        }
+      }
+
       // 1) 계약 먼저 저장 (contractNo TEMP)
       const created = cRepo.create({
         contractNo: 'TEMP',
@@ -327,7 +406,7 @@ export class ContractsService {
         salesTeamPhone: dto.salesTeamPhone,
         bank: dto.bank ?? null,
         account: dto.account ?? null,
-        scheduleId: dto.scheduleId ?? null,
+        scheduleId,
       });
 
       const saved = await cRepo.save(created);
@@ -372,15 +451,15 @@ export class ContractsService {
 
       // [ 양방향 동기화 ] 계약 생성 시 연결된 일정 및 계약 소유자 정보 동기화
       try {
-        if (dto.scheduleId || dto.assignees?.length || dto.customerPhone) {
+        if (scheduleId || dto.assignees?.length || dto.customerPhone) {
           const firstAssigneeId = (dto.assignees && dto.assignees.length > 0) ? String(dto.assignees[0].accountId) : null;
 
           if (firstAssigneeId) {
             await cRepo.update({ id: saved.id }, { createdBy: { id: firstAssigneeId } as any });
           }
 
-          if (dto.scheduleId) {
-            const linkedSchedule = await m.getRepository(Schedule).findOne({ where: { id: Number(dto.scheduleId) as any } });
+          if (scheduleId) {
+            const linkedSchedule = await m.getRepository(Schedule).findOne({ where: { id: Number(scheduleId) as any } });
             if (linkedSchedule) {
               let isScheduleUpdated = false;
               if (firstAssigneeId && String(linkedSchedule.created_by_account_id) !== firstAssigneeId) {
@@ -1018,8 +1097,32 @@ export class ContractsService {
         }
       }
 
-      // [ 양방향 동기화 ] 계약 수정 시 연결된 일정 및 계약 소유자 정보 동기화
+      // [ 양방향 동기화 및 자동 매칭 ] 계약 수정 시 연결된 일정 및 계약 소유자 정보 동기화
       try {
+        let scheduleId = contract.scheduleId;
+        if (!scheduleId) {
+          const currentPhone = dto.customerPhone ?? contract.customerPhone;
+          if (currentPhone) {
+            const cleanPhone = currentPhone.replace(/\D/g, '');
+            if (cleanPhone) {
+              const matchedSchedule = await m.getRepository(Schedule)
+                .createQueryBuilder('s')
+                .leftJoin('s.contract', 'c')
+                .where("REPLACE(s.customer_phone, '-', '') = :cleanPhone", { cleanPhone })
+                .andWhere('c.id IS NULL')
+                .orderBy('s.start_date', 'DESC')
+                .getOne();
+
+              if (matchedSchedule) {
+                scheduleId = String(matchedSchedule.id);
+                contract.scheduleId = scheduleId;
+                await cRepo.save(contract);
+                console.log(`[Auto-Match Update] Found matching schedule (ID: ${matchedSchedule.id}) for contract (ID: ${id}) phone: ${currentPhone}`);
+              }
+            }
+          }
+        }
+
         if (contract.scheduleId || dto.assignees !== undefined || dto.customerPhone !== undefined) {
           const firstAssigneeId = (dto.assignees && dto.assignees.length > 0) ? String(dto.assignees[0].accountId) : null;
 
