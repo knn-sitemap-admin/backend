@@ -130,7 +130,7 @@ export class ContractsService implements OnModuleInit {
 
         if (matchedSchedule) {
           await this.contractRepo.update({ id: contract.id }, { scheduleId: String(matchedSchedule.id) });
-          
+
           // Sync owner and phone too
           const firstAssignee = await this.assigneeRepo.findOne({
             where: { contract: { id: contract.id } as any },
