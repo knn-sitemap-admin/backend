@@ -233,16 +233,24 @@ export class CredentialsService {
         'acc',
         'acc.credential_id = cred.id AND acc.is_deleted = 0',
       )
+      .select([
+        'cred.id AS id',
+        'cred.email AS email',
+        'cred.role AS role',
+        'cred.is_disabled AS disabled',
+        'acc.name AS name',
+        'acc.phone AS phone',
+      ])
       .orderBy('cred.id', 'DESC')
-      .getMany();
+      .getRawMany();
 
-    return rows.map((c: any) => ({
-      id: c.id,
-      email: c.email,
-      role: c.role,
-      disabled: c.is_disabled,
-      name: c.account?.name ?? null,
-      phone: c.account?.phone ?? null,
+    return rows.map((r: any) => ({
+      id: String(r.id),
+      email: r.email,
+      role: r.role,
+      disabled: !!r.disabled,
+      name: r.name ?? null,
+      phone: r.phone ?? null,
     }));
   }
 
@@ -512,5 +520,62 @@ export class CredentialsService {
       // 모든 세션 즉시 종료
       await this.deactivateAllSessionsByCredentialId(String(cred.id));
     });
+  }
+
+  async restore(credentialId: string): Promise<void> {
+    await this.dataSource.transaction(async (tx) => {
+      const credRepo = tx.getRepository(AccountCredential);
+      const accRepo = tx.getRepository(Account);
+
+      const cred = await credRepo.findOne({
+        where: { id: String(credentialId) },
+      });
+      if (!cred) throw new NotFoundException('계정을 찾을 수 없습니다.');
+
+      const acc = await accRepo.findOne({
+        where: { credential_id: String(credentialId) },
+      });
+
+      if (acc) {
+        acc.is_deleted = false;
+        acc.deleted_at = null;
+        await accRepo.save(acc);
+      }
+
+      // 계정 재활성화 처리
+      cred.is_disabled = false;
+      await credRepo.save(cred);
+    });
+  }
+
+  async listDeletedCredentials() {
+    const rows = await this.accountCredentialRepository
+      .createQueryBuilder('cred')
+      .innerJoin(
+        Account,
+        'acc',
+        'acc.credential_id = cred.id AND acc.is_deleted = 1',
+      )
+      .select([
+        'cred.id AS id',
+        'cred.email AS email',
+        'cred.role AS role',
+        'cred.is_disabled AS disabled',
+        'acc.name AS name',
+        'acc.phone AS phone',
+        'acc.deleted_at AS deletedAt',
+      ])
+      .orderBy('acc.deleted_at', 'DESC')
+      .getRawMany();
+
+    return rows.map((r: any) => ({
+      id: String(r.id),
+      email: r.email,
+      role: r.role,
+      disabled: !!r.disabled,
+      name: r.name ?? null,
+      phone: r.phone ?? null,
+      deletedAt: r.deletedAt ?? null,
+    }));
   }
 }

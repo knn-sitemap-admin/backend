@@ -47,6 +47,13 @@ export class CredentialsController {
   }
 
   @Roles(SystemRole.ADMIN, SystemRole.MANAGER)
+  @Get('deleted')
+  async listDeletedCredentials() {
+    const items = await this.service.listDeletedCredentials();
+    return { message: '삭제된 계정 목록', data: items };
+  }
+
+  @Roles(SystemRole.ADMIN, SystemRole.MANAGER)
   @Get(':id')
   async getCredentialDetail(@Param('id') id: string) {
     const data = await this.service.getCredentialDetail(id);
@@ -91,5 +98,12 @@ export class CredentialsController {
   async softDelete(@Param('id') id: string) {
     await this.service.softDelete(id);
     return { message: '계정 가삭제 완료' };
+  }
+
+  @Roles(SystemRole.ADMIN)
+  @Post(':id/restore')
+  async restore(@Param('id') id: string) {
+    await this.service.restore(id);
+    return { message: '계정 복원 완료' };
   }
 }

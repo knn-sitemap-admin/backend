@@ -836,15 +836,15 @@ export class PinsService {
       }
     }
 
-    // 2) 매매가 (유닛 기준) – 기존 유지
+    // 2) 매매가 (유닛 기준) – 기존 유지 (필터 입력값인 백만원 단위와 DB의 원 단위 매칭을 위해 * 1000000)
     if (dto.salePriceMin != null) {
       qb.andWhere('u.min_price >= :priceMin', {
-        priceMin: dto.salePriceMin,
+        priceMin: dto.salePriceMin * 1000000,
       });
     }
     if (dto.salePriceMax != null) {
       qb.andWhere('u.max_price <= :priceMax', {
-        priceMax: dto.salePriceMax,
+        priceMax: dto.salePriceMax * 1000000,
       });
     }
 
