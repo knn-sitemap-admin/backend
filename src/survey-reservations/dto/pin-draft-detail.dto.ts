@@ -10,6 +10,8 @@ export class PinDraftDetailDto {
   contactSubPhone: string | null;
   createdAt!: Date;
 
+  isSalesStopped!: boolean;
+
   static fromEntity(d: PinDraft): PinDraftDetailDto {
     const dto = new PinDraftDetailDto();
     dto.id = String(d.id);
@@ -20,6 +22,7 @@ export class PinDraftDetailDto {
     dto.contactMainPhone = d.contactMainPhone ?? null;
     dto.contactSubPhone = d.contactSubPhone ?? null;
     dto.createdAt = d.createdAt;
+    dto.isSalesStopped = !!d.isSalesStopped;
     return dto;
   }
 }

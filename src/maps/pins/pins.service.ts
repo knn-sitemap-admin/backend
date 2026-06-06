@@ -175,6 +175,7 @@ export class PinsService {
           'd.lng AS lng',
           'd.name AS name',
           'd.addressLine AS addressLine',
+          'd.is_sales_stopped AS isSalesStopped',
         ])
         .where('d.isActive = 1');
 
@@ -214,6 +215,7 @@ export class PinsService {
           name: d.name ?? null,
           addressLine: d.addressLine ?? '',
           draftState: hasResv.has(String(d.id)) ? 'SCHEDULED' : 'BEFORE',
+          isSalesStopped: !!d.isSalesStopped,
         }));
       }
 
@@ -836,15 +838,15 @@ export class PinsService {
       }
     }
 
-    // 2) 매매가 (유닛 기준) – 기존 유지 (필터 입력값인 백만원 단위와 DB의 원 단위 매칭을 위해 * 1000000)
+    // 2) 매매가 (유닛 기준)
     if (dto.salePriceMin != null) {
       qb.andWhere('u.min_price >= :priceMin', {
-        priceMin: dto.salePriceMin * 1000000,
+        priceMin: dto.salePriceMin,
       });
     }
     if (dto.salePriceMax != null) {
       qb.andWhere('u.max_price <= :priceMax', {
-        priceMax: dto.salePriceMax * 1000000,
+        priceMax: dto.salePriceMax,
       });
     }
 
@@ -950,8 +952,27 @@ export class PinsService {
       }));
     }
 
-    // 8) 임시핀(답사예정 핀) 검색: 아직 매물 정보가 없는 상태이므로 필터검색(searchPins)에서는 아예 제외
-    const drafts: DraftSearchItem[] = [];
+    // 8) 임시핀(답사예정 핀) 검색: 매물명/주소 키워드 검색 시 포함
+    let drafts: DraftSearchItem[] = [];
+    if (dto.q && dto.q.trim()) {
+      const q = dto.q.trim();
+      const draftRows = await this.dataSource
+        .getRepository(PinDraft)
+        .createQueryBuilder('d')
+        .where('d.name LIKE :q', { q: `%${q}%` })
+        .orWhere('d.address_line LIKE :q', { q: `%${q}%` })
+        .getMany();
+
+      drafts = draftRows.map((r) => ({
+        id: String(r.id),
+        lat: Number(r.lat),
+        lng: Number(r.lng),
+        name: r.name,
+        addressLine: r.addressLine,
+        draftState: 'BEFORE',
+        isSalesStopped: !!r.isSalesStopped,
+      }));
+    }
 
     return { pins, drafts };
   }

@@ -55,4 +55,7 @@ export class PinDraft {
     nullable: true,
   })
   creatorId: string | null = null;
+
+  @Column({ type: 'boolean', name: 'is_sales_stopped', default: false })
+  isSalesStopped!: boolean;
 }

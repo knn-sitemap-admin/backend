@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Logger,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -64,5 +65,11 @@ export class PinDraftsController {
       message: '임시핀 삭제 완료',
       data: result,
     };
+  }
+
+  @Patch(':id')
+  async updateDraft(@Param('id') id: string, @Body() dto: import('./dto/update-pin-draft.dto').UpdatePinDraftDto) {
+    const data = await this.service.updateDraft(id, dto);
+    return { message: '임시핀 수정 완료', data };
   }
 }

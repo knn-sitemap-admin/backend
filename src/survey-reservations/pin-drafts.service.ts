@@ -124,4 +124,26 @@ export class PinDraftsService {
       deletedDraftId: String(draft.id),
     };
   }
+
+  async updateDraft(draftId: string, dto: import('./dto/update-pin-draft.dto').UpdatePinDraftDto) {
+    const draftRepo = this.ds.getRepository(PinDraft);
+    const draft = await draftRepo.findOne({ where: { id: String(draftId) } });
+
+    if (!draft) {
+      throw new NotFoundException('임시핀을 찾을 수 없습니다.');
+    }
+
+    if (typeof dto.isSalesStopped === 'boolean') {
+      draft.isSalesStopped = dto.isSalesStopped;
+    }
+
+    await draftRepo.save(draft);
+
+    this.eventsGateway.broadcastReservationChanged({
+      draftId: String(draft.id),
+      action: 'updated',
+    });
+
+    return PinDraftDetailDto.fromEntity(draft);
+  }
 }

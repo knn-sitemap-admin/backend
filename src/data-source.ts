@@ -13,7 +13,7 @@ export const AppDataSource = new DataSource({
   username: process.env.TEST_DB_USERNAME,
   password: process.env.TEST_DB_PASSWORD,
   database: process.env.TEST_DB_DATABASE,
-  entities: ['src/**/entities/*.entity.ts'],
-  migrations: ['src/migrations/*.ts'],
+  entities: [resolve(__dirname, 'src/**/entities/*.entity.ts')],
+  migrations: [resolve(__dirname, 'src/common/typeorm/migrations/*.ts')],
   synchronize: false,
 });
