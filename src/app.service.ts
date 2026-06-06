@@ -14,7 +14,16 @@ export class AppService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    //
+    try {
+      // 긴급: 배포 서버 재시작 시 DB에 컬럼이 없어서 뻗는 이슈 해결용
+      const columnsResult = await this.ds.query(`SHOW COLUMNS FROM pin_drafts LIKE 'is_sales_stopped'`);
+      if (columnsResult.length === 0) {
+        await this.ds.query(`ALTER TABLE pin_drafts ADD COLUMN is_sales_stopped BOOLEAN DEFAULT FALSE NOT NULL`);
+        this.logger.log('Emergency Migration: Added is_sales_stopped to pin_drafts');
+      }
+    } catch (err) {
+      this.logger.error('Emergency Migration Failed:', err);
+    }
   }
 
   async check() {
