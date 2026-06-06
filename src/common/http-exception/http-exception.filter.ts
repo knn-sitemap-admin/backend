@@ -73,8 +73,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         description: `**${method} ${path}**\n${messages.join('\n')}`,
         fields: [
           { name: 'User', value: JSON.stringify(errorLog.user), inline: true },
-          { name: 'Request Body', value: `\`\`\`json\n${JSON.stringify(req.body, null, 2).slice(0, 1000)}\n\`\`\`` },
-          { name: 'Stack Trace', value: `\`\`\`text\n${errorLog.stack?.slice(0, 1000)}\n\`\`\`` },
+          { name: 'Request Body', value: `\`\`\`json\n${(JSON.stringify(req.body, null, 2) || '').slice(0, 1000)}\n\`\`\`` },
+          { name: 'Stack Trace', value: `\`\`\`text\n${(errorLog.stack || '').slice(0, 1000)}\n\`\`\`` },
         ],
         color: 0xff0000,
       });
