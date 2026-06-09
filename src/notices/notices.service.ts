@@ -31,14 +31,38 @@ export class NoticesService {
     return await this.noticeRepo.save(notice);
   }
 
-  async findAll() {
-    return await this.noticeRepo.find({
+  async findAll(credentialId?: string) {
+    const notices = await this.noticeRepo.find({
       relations: ['author'],
       order: {
         isPinned: 'DESC',
         createdAt: 'DESC',
       },
     });
+
+    if (credentialId) {
+      const viewer = await this.accountRepo.findOne({
+        where: { credential_id: String(credentialId) },
+      });
+
+      if (viewer) {
+        const reads = await this.noticeReadRepo.find({
+          where: { account: { id: viewer.id } },
+          relations: ['notice'],
+        });
+        const readNoticeIds = new Set(reads.map((r) => r.notice.id));
+
+        return notices.map((notice) => ({
+          ...notice,
+          isRead: readNoticeIds.has(notice.id),
+        }));
+      }
+    }
+
+    return notices.map((notice) => ({
+      ...notice,
+      isRead: false,
+    }));
   }
 
   async findOne(id: number, credentialId?: string) {

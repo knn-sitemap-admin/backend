@@ -174,11 +174,11 @@ async function bootstrap() {
   const ttlMs = 1000 * 60 * 60 * (Number.isFinite(ttlHours) ? ttlHours : 6);
 
   // 운영 환경 판별 강화 (Railway/배포 환경 대응)
-  const isActualProd = 
-    process.env.NODE_ENV === 'production' || 
-    process.env.IS_DEV === 'false' || 
+  const isActualProd =
+    process.env.NODE_ENV === 'production' ||
+    process.env.IS_DEV === 'false' ||
     !!process.env.RAILWAY_ENVIRONMENT ||
-    (!!process.env.PORT && process.env.PORT !== '3050');
+    (!!process.env.PORT && process.env.PORT !== '4000');
 
   const sessionMiddleware = session({
     store,
@@ -190,8 +190,8 @@ async function bootstrap() {
     cookie: {
       httpOnly: true,
       // 🔒 [보안/Safari 대응] 배포 환경에서는 무조건 secure: true, sameSite: 'none' 필수 (크로스 도메인 쿠키 허용)
-      secure: isActualProd, 
-      sameSite: isActualProd ? 'none' : 'lax', 
+      secure: isActualProd,
+      sameSite: isActualProd ? 'none' : 'lax',
       path: '/',
       maxAge: ttlMs,
     },
@@ -208,6 +208,6 @@ async function bootstrap() {
   const doc = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, doc);
 
-  await app.listen(Number(process.env.PORT ?? 3050));
+  await app.listen(Number(process.env.PORT ?? 4000));
 }
 bootstrap();

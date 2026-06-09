@@ -44,8 +44,9 @@ export class NoticesController {
   }
 
   @Get()
-  async findAll() {
-    const data = await this.noticesService.findAll();
+  async findAll(@Req() req: { session: SessionData }) {
+    const credentialId = String(req.session?.user?.credentialId ?? '');
+    const data = await this.noticesService.findAll(credentialId);
     return { data };
   }
 
