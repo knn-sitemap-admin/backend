@@ -50,7 +50,9 @@ export class NoticesService {
           where: { account: { id: viewer.id } },
           relations: ['notice'],
         });
-        const readNoticeIds = new Set(reads.map((r) => r.notice.id));
+        const readNoticeIds = new Set(
+          reads.filter((r) => r.notice != null).map((r) => r.notice.id)
+        );
 
         return notices.map((notice) => ({
           ...notice,
@@ -128,7 +130,9 @@ export class NoticesService {
       relations: ['account'],
     });
 
-    const readAccountIds = new Set(reads.map((r) => r.account.id));
+    const readAccountIds = new Set(
+      reads.filter((r) => r.account != null).map((r) => r.account.id)
+    );
 
     const readList = allEmployees.filter((e) => readAccountIds.has(e.id));
     const unreadList = allEmployees.filter((e) => !readAccountIds.has(e.id));
