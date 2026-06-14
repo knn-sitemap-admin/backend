@@ -197,17 +197,18 @@ export class PinsService {
       let drafts: DraftMarker[] = [];
 
       if (draftIds.length > 0) {
-        const resvRepo =
-          this.pinRepository.manager.getRepository(SurveyReservation);
-        const resvRows = await resvRepo
-          .createQueryBuilder('r')
-          .select('r.pin_draft_id', 'pinDraftId')
-          .where('r.pin_draft_id IN (:...ids)', { ids: draftIds })
-          .andWhere('r.is_deleted = 0')
-          .groupBy('r.pin_draft_id')
-          .getRawMany();
+        // NOTE: TypeORM 관계 프로퍼티를 통한 쿼리는 getRawMany() 결과의
+        // 컬럼명이 불안정하여 raw SQL로 직접 조회합니다.
+        const ds = this.pinRepository.manager.connection;
 
-        const hasResv = new Set(resvRows.map((r) => String(r.pinDraftId)));
+        const resvRows: Array<{ pin_draft_id: string }> = await ds
+          .createEntityManager()
+          .query(
+            `SELECT DISTINCT pin_draft_id FROM survey_reservations WHERE pin_draft_id IN (${draftIds.map(() => '?').join(',')}) AND is_deleted = 0`,
+            draftIds,
+          );
+
+        const hasResv = new Set(resvRows.map((r) => String(r.pin_draft_id)));
         drafts = draftsRaw.map((d) => ({
           id: String(d.id),
           lat: Number(d.lat),

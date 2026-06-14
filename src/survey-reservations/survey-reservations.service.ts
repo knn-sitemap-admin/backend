@@ -53,7 +53,7 @@ export class SurveyReservationsService {
   }
 
   async create(meCredentialId: string, dto: CreateSurveyReservationDto, isPrivileged: boolean = false) {
-    return this.dataSource.transaction(async (m) => {
+    const result = await this.dataSource.transaction(async (m) => {
       const myAccountId = await this.resolveMyAccountId(meCredentialId);
 
       // 관리자/매니저가 대리 예약 시 대상 계정 ID 사용
@@ -124,15 +124,16 @@ export class SurveyReservationsService {
       });
 
       const id = insert.identifiers?.[0]?.id ?? null;
-      
-      this.eventsGateway.broadcastReservationChanged({
-        draftId: String(dto.pinDraftId),
-        reservationId: String(id),
-        action: 'created',
-      });
-
-      return { id: String(id), sortOrder };
+      return { id: String(id), sortOrder, draftId: String(dto.pinDraftId) };
     });
+
+    this.eventsGateway.broadcastReservationChanged({
+      draftId: result.draftId,
+      reservationId: result.id,
+      action: 'created',
+    });
+
+    return { id: result.id, sortOrder: result.sortOrder };
   }
 
   async listScheduled(meCredentialId: string) {
@@ -173,7 +174,7 @@ export class SurveyReservationsService {
   }
 
   async cancel(id: number, meCredentialId: string, isPrivileged: boolean = false) {
-    return this.dataSource.transaction(async (m) => {
+    const result = await this.dataSource.transaction(async (m) => {
       const myAccountId = await this.resolveMyAccountId(meCredentialId);
       const surveyReservationRepo = m.getRepository(SurveyReservation);
 
@@ -205,6 +206,7 @@ export class SurveyReservationsService {
           id: Number(found.id),
           pin_draft_id: Number(found.pinDraftId),
           alreadyCanceled: true,
+          shouldBroadcast: false,
         };
       }
 
@@ -226,22 +228,31 @@ export class SurveyReservationsService {
         })
         .execute();
 
-      this.eventsGateway.broadcastReservationChanged({
-        draftId: String(found.pinDraftId),
-        reservationId: String(id),
-        action: 'deleted',
-      });
-
       return {
         reservationId: id,
         pin_draft_id: Number(found.pinDraftId),
         alreadyCanceled: false,
+        shouldBroadcast: true,
       };
     });
+
+    if (result.shouldBroadcast) {
+      this.eventsGateway.broadcastReservationChanged({
+        draftId: String(result.pin_draft_id),
+        reservationId: String(result.reservationId),
+        action: 'deleted',
+      });
+    }
+
+    return {
+      reservationId: result.reservationId ?? result.id,
+      pin_draft_id: result.pin_draft_id,
+      alreadyCanceled: result.alreadyCanceled,
+    };
   }
 
   async reorder(meCredentialId: string, dto: ReorderSurveyReservationsDto) {
-    return this.dataSource.transaction(async (m) => {
+    const result = await this.dataSource.transaction(async (m) => {
       const myAccountId = await this.resolveMyAccountId(meCredentialId);
       const surveyReservationRepo = m.getRepository(SurveyReservation);
 
@@ -298,11 +309,13 @@ export class SurveyReservationsService {
           .execute();
       }
 
-      this.eventsGateway.broadcastReservationChanged({
-        action: 'updated',
-      });
-
       return { count: normalized.length };
     });
+
+    this.eventsGateway.broadcastReservationChanged({
+      action: 'updated',
+    });
+
+    return result;
   }
 }
