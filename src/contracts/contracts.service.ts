@@ -237,10 +237,8 @@ export class ContractsService implements OnModuleInit {
       const sysRole = acc?.credential?.role ?? 'staff';
       const teamRole = tm?.team_role || null;
 
-      // 실제 역할 결정: 시스템 매니저/어드민이거나, 팀 내 직함이 매니저면 'manager' 취급
-      const finalRole: Role = (sysRole === 'admin' || sysRole === 'manager' || teamRole === 'manager')
-        ? 'manager'
-        : 'staff';
+      // 실제 역할 결정: 팀 내 직함이 매니저면 'manager' 취급 (시스템 권한과 무관하게 영업자 분배를 위해)
+      const finalRole: Role = teamRole === 'manager' ? 'manager' : 'staff';
 
       const list = map.get(Number(a.contractId)) ?? [];
       list.push({
