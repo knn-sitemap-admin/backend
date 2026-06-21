@@ -67,7 +67,7 @@ export class AuthService {
   ) { }
 
   private isManagerRank(rank: string | null | undefined): boolean {
-    return rank === 'TEAM_LEADER' || rank === 'DIRECTOR';
+    return rank === 'TEAM_LEADER' || rank === 'GENERAL_MANAGER' || rank === 'DIRECTOR';
   }
 
   private async resolveEffectiveRole(

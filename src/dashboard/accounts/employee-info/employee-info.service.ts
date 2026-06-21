@@ -138,6 +138,7 @@ export class EmployeeInfoService {
   private isManagerRank(rank: PositionRank | null | undefined): boolean {
     return (
       rank === PositionRank.TEAM_LEADER ||
+      rank === PositionRank.GENERAL_MANAGER ||
       rank === PositionRank.DIRECTOR ||
       rank === PositionRank.CEO
     );
@@ -770,8 +771,8 @@ export class EmployeeInfoService {
       .innerJoin(AccountCredential, 'cred', 'cred.id = a.credential_id')
       .select(['a.id AS accountId', 'a.name AS name', 'a.position_rank AS positionRank', 'cred.role AS currentRole'])
       .where(
-        `((a.position_rank IN ('TEAM_LEADER', 'DIRECTOR', 'CEO') AND cred.role != 'manager') OR
-          (a.position_rank NOT IN ('TEAM_LEADER', 'DIRECTOR', 'CEO') AND cred.role = 'manager'))`,
+        `((a.position_rank IN ('TEAM_LEADER', 'GENERAL_MANAGER', 'DIRECTOR', 'CEO') AND cred.role != 'manager') OR
+          (a.position_rank NOT IN ('TEAM_LEADER', 'GENERAL_MANAGER', 'DIRECTOR', 'CEO') AND cred.role = 'manager'))`,
       )
       .andWhere('a.is_deleted = 0')
       .getRawMany();

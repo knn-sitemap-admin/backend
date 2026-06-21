@@ -65,7 +65,7 @@ export class CredentialsService {
   }
 
   private isManagerRank(rank: PositionRank | null | undefined): boolean {
-    return rank === PositionRank.TEAM_LEADER || rank === PositionRank.DIRECTOR;
+    return rank === PositionRank.TEAM_LEADER || rank === PositionRank.GENERAL_MANAGER || rank === PositionRank.DIRECTOR;
   }
 
   private toRoleFromRank(
