@@ -855,11 +855,13 @@ export class PinsService {
     if (dto.buildingTypes?.length) {
       qb.andWhere(
         new Brackets((w) => {
+          let i = 0;
           for (const bt of dto.buildingTypes!) {
             w.orWhere(
-              `(JSON_CONTAINS(p.building_types, :bt${bt}) OR p.building_type = :bt${bt}s)`,
-              { [`bt${bt}`]: JSON.stringify(bt), [`bt${bt}s`]: bt },
+              `(JSON_CONTAINS(p.building_types, :bt${i}) OR p.building_type = :bt${i}s)`,
+              { [`bt${i}`]: JSON.stringify(bt), [`bt${i}s`]: bt },
             );
+            i++;
           }
         }),
       );
