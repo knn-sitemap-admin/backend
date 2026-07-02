@@ -278,34 +278,14 @@ export class CredentialsService {
         select: ['id', 'position_rank'],
       });
 
-      // 직급이 팀장인 속한 팀 삭제
-      if (disabled && account?.position_rank === PositionRank.TEAM_LEADER) {
-        const myTeams = await tmRepo
-          .createQueryBuilder('tm')
-          .select(['tm.team_id AS teamId'])
-          .where('tm.account_id = :aid', { aid: String(account.id) })
-          .groupBy('tm.team_id')
-          .getRawMany<{ teamId: string }>();
-
-        const teamIds = myTeams.map((r) => String(r.teamId));
-
-        if (teamIds.length > 0) {
-          // 팀원 전부 방출
-          await tmRepo
-            .createQueryBuilder()
-            .delete()
-            .from(TeamMember)
-            .where('team_id IN (:...tids)', { tids: teamIds })
-            .execute();
-
-          // 팀 하드 삭제
-          await teamRepo
-            .createQueryBuilder()
-            .delete()
-            .from(Team)
-            .where('id IN (:...tids)', { tids: teamIds })
-            .execute();
-        }
+      // 계정 비활성화 시, 해당 계정이 팀장으로 등록된 팀의 팀장 자리를 공석으로 변경
+      if (disabled && account) {
+        await teamRepo
+          .createQueryBuilder()
+          .update(Team)
+          .set({ leader_account_id: null })
+          .where('leader_account_id = :aid', { aid: String(account.id) })
+          .execute();
       }
 
       // 세션 즉시 끊기 (트랜잭션 내에서 처리)
