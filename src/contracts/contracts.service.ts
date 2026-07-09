@@ -425,6 +425,7 @@ export class ContractsService implements OnModuleInit {
         const teamMembers = await m.getRepository(TeamMember)
           .createQueryBuilder('tm')
           .where('tm.account_id IN (:...accountIds)', { accountIds })
+          .orderBy('tm.is_primary', 'DESC')
           .getMany();
 
         const rows = dto.assignees.map((a, idx) => {
@@ -1056,6 +1057,7 @@ export class ContractsService implements OnModuleInit {
           const teamMembers = await m.getRepository(TeamMember)
             .createQueryBuilder('tm')
             .where('tm.account_id IN (:...accountIds)', { accountIds })
+            .orderBy('tm.is_primary', 'DESC')
             .getMany();
 
           const rows = dto.assignees.map((a, idx) => {
