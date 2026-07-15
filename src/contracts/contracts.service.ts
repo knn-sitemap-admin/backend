@@ -164,28 +164,47 @@ export class ContractsService implements OnModuleInit {
    * 계약 데이터가 존재하는 연도 및 월 목록 조회
    */
   async getFilterOptions() {
-    const results = await this.contractRepo
+    const contractDates = await this.contractRepo
       .createQueryBuilder('c')
       .select('EXTRACT(YEAR FROM c.contractDate)', 'year')
       .addSelect('EXTRACT(MONTH FROM c.contractDate)', 'month')
       .where('c.contractDate IS NOT NULL')
       .groupBy('year')
       .addGroupBy('month')
-      .orderBy('year', 'DESC')
-      .addOrderBy('month', 'ASC')
       .getRawMany();
 
-    const yearMonthMap: Record<string, string[]> = {};
-    results.forEach((r) => {
-      const y = String(r.year);
-      const m = String(r.month);
-      if (!yearMonthMap[y]) {
-        yearMonthMap[y] = [];
-      }
-      yearMonthMap[y].push(m);
-    });
+    const paymentDates = await this.contractRepo
+      .createQueryBuilder('c')
+      .select('EXTRACT(YEAR FROM c.finalPaymentDate)', 'year')
+      .addSelect('EXTRACT(MONTH FROM c.finalPaymentDate)', 'month')
+      .where('c.finalPaymentDate IS NOT NULL')
+      .groupBy('year')
+      .addGroupBy('month')
+      .getRawMany();
 
-    return yearMonthMap;
+    const processDates = (dates: any[]) => {
+      const yearMonthSet: Record<string, Set<string>> = {};
+      dates.forEach((r) => {
+        if (!r.year || !r.month) return;
+        const y = String(r.year);
+        const m = String(r.month);
+        if (!yearMonthSet[y]) {
+          yearMonthSet[y] = new Set<string>();
+        }
+        yearMonthSet[y].add(m);
+      });
+
+      const yearMonthMap: Record<string, string[]> = {};
+      Object.keys(yearMonthSet).forEach((y) => {
+        yearMonthMap[y] = Array.from(yearMonthSet[y]).sort((a, b) => Number(a) - Number(b));
+      });
+      return yearMonthMap;
+    };
+
+    return {
+      contractDate: processDates(contractDates),
+      balanceDate: processDates(paymentDates),
+    };
   }
 
   private async resolveAccountByCredentialIdOrThrow(
